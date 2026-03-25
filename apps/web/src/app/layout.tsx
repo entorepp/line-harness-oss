@@ -3,8 +3,13 @@ import './globals.css'
 import AppShell from '@/components/app-shell'
 
 export const metadata: Metadata = {
-  title: 'LINE CRM 管理画面',
-  description: 'LINE公式アカウント CRM 管理画面',
+  title: 'LINEharness | 管理画面',
+  description: 'LINEharness の CRM 管理画面',
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({
