@@ -5,8 +5,10 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   // Skip auth for the LINE webhook endpoint — it uses signature verification instead
   // Skip auth for OpenAPI docs — public documentation
   const path = new URL(c.req.url).pathname;
+  const method = c.req.method.toUpperCase();
   if (
     path === '/webhook' ||
+    path === '/webhook/whatsapp' ||
     path === '/docs' ||
     path === '/openapi.json' ||
     path === '/api/affiliates/click' ||
@@ -16,8 +18,11 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path.startsWith('/auth/') ||
     path === '/api/integrations/stripe/webhook' ||
     path.match(/^\/api\/webhooks\/incoming\/[^/]+\/receive$/) ||
-    path.match(/^\/api\/forms\/[^/]+\/submit$/) ||
-    path.match(/^\/api\/forms\/[^/]+$/) // GET form definition (public for LIFF)
+    (method === 'POST' && path.match(/^\/api\/forms\/[^/]+\/submit$/)) ||
+    (method === 'GET' && path.match(/^\/api\/forms\/[^/]+$/)) || // GET form definition (public for LIFF)
+    (method === 'GET' && path.match(/^\/api\/form-issues\/[^/]+$/)) ||
+    path.startsWith('/api/images/') || // Public image serving for LINE (legacy)
+    path.startsWith('/api/files/') // Public file serving
   ) {
     return next();
   }

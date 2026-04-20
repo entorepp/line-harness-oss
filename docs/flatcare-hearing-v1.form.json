@@ -1,0 +1,221 @@
+{
+  "name": "flatcare 事前ヒアリング v1",
+  "description": "FlatWorker の案件プロフィールへ取り込むための事前ヒアリングテンプレート。",
+  "locale": "ja",
+  "saveToMetadata": true,
+  "fields": [
+    {
+      "name": "fullNameKanji",
+      "label": "氏名",
+      "type": "text",
+      "required": true,
+      "helperText": "旅券表記と一致する氏名を入力してください。"
+    },
+    {
+      "name": "fullNameKana",
+      "label": "氏名カナ",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "dob",
+      "label": "生年月日",
+      "type": "date",
+      "required": true
+    },
+    {
+      "name": "phone",
+      "label": "電話番号",
+      "type": "tel",
+      "required": true
+    },
+    {
+      "name": "email",
+      "label": "メールアドレス",
+      "type": "email",
+      "required": true
+    },
+    {
+      "name": "passport.number",
+      "label": "パスポート番号",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "passport.expiresOn",
+      "label": "パスポート有効期限",
+      "type": "date",
+      "required": true
+    },
+    {
+      "name": "passport.nameRoman",
+      "label": "旅券ローマ字氏名",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "emergencyContact.name",
+      "label": "緊急連絡先 氏名",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "emergencyContact.relation",
+      "label": "緊急連絡先 続柄",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "emergencyContact.phone",
+      "label": "緊急連絡先 電話番号",
+      "type": "tel",
+      "required": true
+    },
+    {
+      "name": "disabilityCategory",
+      "label": "障害区分",
+      "type": "checkbox",
+      "required": true,
+      "options": ["肢体", "視覚", "聴覚", "内部", "精神", "知的"]
+    },
+    {
+      "name": "transferAssistLevel",
+      "label": "移乗介助レベル",
+      "type": "radio",
+      "required": true,
+      "options": ["independent", "partial", "full"]
+    },
+    {
+      "name": "wheelchair",
+      "label": "車椅子タイプ",
+      "type": "radio",
+      "required": true,
+      "options": ["none", "manual", "power", "scooter", "rental-on-site"]
+    },
+    {
+      "name": "batteryChemistry",
+      "label": "バッテリー種別",
+      "type": "radio",
+      "options": ["none", "dry", "wet", "lithium_ion", "unknown"]
+    },
+    {
+      "name": "batteryVoltageV",
+      "label": "バッテリー電圧 (V)",
+      "type": "number"
+    },
+    {
+      "name": "batteryCapacityAh",
+      "label": "バッテリー容量 (Ah)",
+      "type": "number"
+    },
+    {
+      "name": "batteryRemovable",
+      "label": "バッテリーは取り外せますか",
+      "type": "radio",
+      "options": ["true", "false"]
+    },
+    {
+      "name": "foldable",
+      "label": "車椅子は折りたためますか",
+      "type": "radio",
+      "required": true,
+      "options": ["true", "false"]
+    },
+    {
+      "name": "wheelchairWeightKg",
+      "label": "車椅子重量 (kg)",
+      "type": "number",
+      "required": true
+    },
+    {
+      "name": "foldedDimensionsCm.w",
+      "label": "折りたたみ幅 (cm)",
+      "type": "number"
+    },
+    {
+      "name": "foldedDimensionsCm.d",
+      "label": "折りたたみ奥行 (cm)",
+      "type": "number"
+    },
+    {
+      "name": "foldedDimensionsCm.h",
+      "label": "折りたたみ高さ (cm)",
+      "type": "number"
+    },
+    {
+      "name": "medications",
+      "label": "服薬中のお薬",
+      "type": "textarea",
+      "required": true,
+      "helperText": "一般名と1日量を改行区切りで入力してください。"
+    },
+    {
+      "name": "insurance.provider",
+      "label": "海外旅行保険会社",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "insurance.policyNumber",
+      "label": "保険証券番号",
+      "type": "text",
+      "required": true
+    },
+    {
+      "name": "insurance.emergencyPhone",
+      "label": "保険 緊急連絡先",
+      "type": "tel",
+      "required": true
+    },
+    {
+      "name": "specialCareConsent",
+      "label": "特別配慮申出書に同意する",
+      "type": "radio",
+      "required": true,
+      "options": ["true", "false"]
+    },
+    {
+      "name": "accommodationRequirements",
+      "label": "宿泊施設の要件",
+      "type": "textarea",
+      "helperText": "段差、ドア幅、シャワーチェアなど。複数ある場合は改行で入力してください。"
+    },
+    {
+      "name": "transportRequirements",
+      "label": "移動時の要件",
+      "type": "textarea",
+      "helperText": "リフト車、通路側座席、アームレスト可動など。"
+    },
+    {
+      "name": "companions[0].name",
+      "label": "同伴者 1 氏名",
+      "type": "text"
+    },
+    {
+      "name": "companions[0].relation",
+      "label": "同伴者 1 続柄",
+      "type": "text"
+    },
+    {
+      "name": "companions[0].isCaregiver",
+      "label": "同伴者 1 は介助者ですか",
+      "type": "radio",
+      "options": ["true", "false"]
+    },
+    {
+      "name": "companions[0].caregiverQualifications",
+      "label": "同伴者 1 の資格",
+      "type": "checkbox",
+      "options": [
+        "care_worker_national",
+        "initial_training",
+        "practical_training",
+        "guide_helper",
+        "doukou_engo",
+        "nurse",
+        "travel_helper",
+        "travel_care_attendant"
+      ]
+    }
+  ]
+}

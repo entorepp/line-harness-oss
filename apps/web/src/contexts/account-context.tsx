@@ -13,6 +13,9 @@ export interface AccountWithStats {
   displayName?: string
   pictureUrl?: string
   basicId?: string
+  channelType?: 'line' | 'whatsapp'
+  locale?: string
+  defaultSlackChannel?: string | null
   isActive: boolean
   stats?: {
     friendCount: number

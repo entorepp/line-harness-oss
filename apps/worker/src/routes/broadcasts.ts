@@ -191,7 +191,22 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
       return c.json({ success: false, error: 'Broadcast is already sent or sending' }, 400);
     }
 
-    const lineClient = new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN);
+    let accessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
+    if (existing.line_account_id) {
+      const account = await c.env.DB
+        .prepare(`SELECT channel_access_token, channel_type FROM line_accounts WHERE id = ?`)
+        .bind(existing.line_account_id)
+        .first<{ channel_access_token: string; channel_type: string }>();
+      if (!account) {
+        return c.json({ success: false, error: 'Associated account not found' }, 404);
+      }
+      if (account.channel_type === 'whatsapp') {
+        return c.json({ success: false, error: 'WhatsApp broadcasts are not supported' }, 400);
+      }
+      accessToken = account.channel_access_token;
+    }
+
+    const lineClient = new LineClient(accessToken);
     await processBroadcastSend(c.env.DB, lineClient, id);
 
     const result = await getBroadcastById(c.env.DB, id);

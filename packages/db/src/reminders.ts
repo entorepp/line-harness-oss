@@ -120,13 +120,26 @@ export async function cancelFriendReminder(db: D1Database, id: string): Promise<
 }
 
 /** リマインダ配信処理用: 配信が必要な友だちリマインダを取得 */
-export async function getDueReminderDeliveries(db: D1Database, now: string): Promise<Array<FriendReminderRow & { steps: ReminderStepRow[] }>> {
+export async function getDueReminderDeliveries(
+  db: D1Database,
+  now: string,
+  lineAccountId?: string | null,
+): Promise<Array<FriendReminderRow & { steps: ReminderStepRow[] }>> {
   // activeなリマインダ登録を取得
-  const activeReminders = await db
-    .prepare(`SELECT fr.* FROM friend_reminders fr
+  const queryBase = `SELECT fr.* FROM friend_reminders fr
               INNER JOIN reminders r ON r.id = fr.reminder_id
-              WHERE fr.status = 'active' AND r.is_active = 1`)
-    .all<FriendReminderRow>();
+              WHERE fr.status = 'active' AND r.is_active = 1`;
+  const activeReminders =
+    lineAccountId === undefined
+      ? await db.prepare(queryBase).all<FriendReminderRow>()
+      : lineAccountId === null
+        ? await db
+            .prepare(`${queryBase} AND r.line_account_id IS NULL`)
+            .all<FriendReminderRow>()
+        : await db
+            .prepare(`${queryBase} AND r.line_account_id = ?`)
+            .bind(lineAccountId)
+            .all<FriendReminderRow>();
 
   const results: Array<FriendReminderRow & { steps: ReminderStepRow[] }> = [];
   for (const fr of activeReminders.results) {

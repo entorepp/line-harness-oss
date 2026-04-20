@@ -14,6 +14,7 @@ export * from './scoring';
 export * from './templates';
 export * from './chats';
 export * from './notifications';
+export * from './scheduled-messages';
 export * from './stripe';
 export * from './health';
 export * from './automations';

@@ -1,0 +1,14 @@
+/*.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/scenarios
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/broadcasts
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/reminders
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/affiliates
+  Cache-Control: no-cache, no-store, must-revalidate

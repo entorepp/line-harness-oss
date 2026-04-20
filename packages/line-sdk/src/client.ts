@@ -140,6 +140,21 @@ export class LineClient {
     );
   }
 
+  // ─── Content download ─────────────────────────────────────────────────────
+
+  /** Download message content (image, video, audio, file) as ArrayBuffer */
+  async getMessageContent(messageId: string): Promise<ArrayBuffer> {
+    const url = `https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.channelAccessToken}` },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`LINE Content API error: ${res.status} ${res.statusText} — ${text}`);
+    }
+    return res.arrayBuffer();
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   async pushTextMessage(to: string, text: string): Promise<void> {

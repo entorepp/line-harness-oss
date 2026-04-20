@@ -31,6 +31,7 @@ function serializeScenario(row: DbScenario) {
     description: row.description,
     triggerType: row.trigger_type,
     triggerTagId: row.trigger_tag_id,
+    triggerData: row.trigger_data ?? null,
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -134,6 +135,7 @@ scenarios.post('/api/scenarios', async (c) => {
       triggerTagId?: string | null;
       isActive?: boolean;
       lineAccountId?: string | null;
+      triggerData?: string | null;
     }>();
 
     if (!body.name || !body.triggerType) {
@@ -147,10 +149,20 @@ scenarios.post('/api/scenarios', async (c) => {
       triggerTagId: body.triggerTagId ?? null,
     });
 
-    // Save line_account_id if provided
+    // Save line_account_id and trigger_data if provided
+    const extraUpdates: string[] = [];
+    const extraValues: (string | null)[] = [];
     if (body.lineAccountId) {
-      await c.env.DB.prepare(`UPDATE scenarios SET line_account_id = ? WHERE id = ?`)
-        .bind(body.lineAccountId, scenario.id).run();
+      extraUpdates.push('line_account_id = ?');
+      extraValues.push(body.lineAccountId);
+    }
+    if (body.triggerData) {
+      extraUpdates.push('trigger_data = ?');
+      extraValues.push(body.triggerData);
+    }
+    if (extraUpdates.length > 0) {
+      await c.env.DB.prepare(`UPDATE scenarios SET ${extraUpdates.join(', ')} WHERE id = ?`)
+        .bind(...extraValues, scenario.id).run();
     }
 
     // createScenario() always sets is_active=1; override if the caller requested inactive
@@ -175,6 +187,7 @@ scenarios.put('/api/scenarios/:id', async (c) => {
       description?: string | null;
       triggerType?: ScenarioTriggerType;
       triggerTagId?: string | null;
+      triggerData?: string | null;
       isActive?: boolean;
     }>();
 
@@ -185,6 +198,12 @@ scenarios.put('/api/scenarios/:id', async (c) => {
       trigger_tag_id: body.triggerTagId,
       is_active: body.isActive !== undefined ? (body.isActive ? 1 : 0) : undefined,
     });
+
+    // Update trigger_data if provided
+    if (body.triggerData !== undefined) {
+      await c.env.DB.prepare('UPDATE scenarios SET trigger_data = ? WHERE id = ?')
+        .bind(body.triggerData, id).run();
+    }
 
     if (!updated) {
       return c.json({ success: false, error: 'Scenario not found' }, 404);

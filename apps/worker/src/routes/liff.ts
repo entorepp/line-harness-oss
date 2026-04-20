@@ -43,7 +43,7 @@ liffRoutes.get('/auth/line', async (c) => {
 
   // Multi-account: resolve LINE Login channel + LIFF from DB if account param provided
   let channelId = c.env.LINE_LOGIN_CHANNEL_ID;
-  let liffUrl = c.env.LIFF_URL;
+  let liffUrl = c.env.LIFF_URL || '';
   if (accountParam) {
     const account = await getLineAccountByChannelId(c.env.DB, accountParam);
     if (account?.login_channel_id) {
@@ -86,7 +86,9 @@ liffRoutes.get('/auth/line', async (c) => {
   if (ref) qrParams.set('ref', ref);
   if (uidParam) qrParams.set('uid', uidParam);
   if (accountParam) qrParams.set('account', accountParam);
-  const qrUrl = qrParams.toString() ? `${liffUrl}?${qrParams.toString()}` : liffUrl;
+  const qrUrl = liffUrl
+    ? (qrParams.toString() ? `${liffUrl}?${qrParams.toString()}` : liffUrl)
+    : loginUrl.toString();
 
   // Mobile: redirect to LIFF URL (opens LINE app directly)
   // Exception: cross-account links (account param) use OAuth directly
@@ -94,8 +96,8 @@ liffRoutes.get('/auth/line', async (c) => {
   const ua = (c.req.header('user-agent') || '').toLowerCase();
   const isMobile = /iphone|ipad|android|mobile/.test(ua);
   if (isMobile) {
-    if (accountParam) {
-      // Cross-account: use OAuth (LIFF won't work across accounts)
+    if (accountParam || !liffUrl) {
+      // Cross-account or no LIFF configured: use OAuth directly
       return c.redirect(loginUrl.toString());
     }
     return c.redirect(qrUrl);

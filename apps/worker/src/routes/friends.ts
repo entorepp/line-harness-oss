@@ -4,30 +4,89 @@ import {
   getFriendById,
   getFriendCount,
   addTagToFriend,
+  createChat,
+  createScheduledMessage,
+  getChatByFriendId,
   removeTagFromFriend,
   getFriendTags,
   getScenarios,
   enrollFriendInScenario,
   jstNow,
+  listScheduledMessagesByFriend,
+  type ScheduledMessageRow,
+  updateChat,
 } from '@line-crm/db';
 import type { Friend as DbFriend, Tag as DbTag } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
-import { buildMessage } from '../services/step-delivery.js';
 import type { Env } from '../index.js';
+import {
+  dispatchOutboundMessage,
+  getMessagingFriendContext,
+} from '../services/outbound-messages.js';
+import {
+  formatWhatsappPhoneForDisplay,
+  presentWhatsappDisplayName,
+} from '../services/whatsapp-display.js';
 
 const friends = new Hono<Env>();
 
-/** Convert a D1 snake_case Friend row to the shared camelCase shape */
-function serializeFriend(row: DbFriend) {
+function serializeScheduledMessage(row: ScheduledMessageRow) {
   return {
     id: row.id,
-    lineUserId: row.line_user_id,
-    displayName: row.display_name,
+    friendId: row.friend_id,
+    chatId: row.chat_id,
+    messageType: row.message_type,
+    content: row.content,
+    metadata: row.metadata,
+    scheduledAt: row.scheduled_at,
+    status: row.status,
+    sentAt: row.sent_at,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function serializeScheduleMetadata(body: {
+  fileName?: string;
+  fileSize?: string;
+  fileIcon?: string;
+}): string | null {
+  if (!body.fileName && !body.fileSize && !body.fileIcon) {
+    return null;
+  }
+
+  return JSON.stringify({
+    fileName: body.fileName ?? null,
+    fileSize: body.fileSize ?? null,
+    fileIcon: body.fileIcon ?? null,
+  });
+}
+
+type FriendRowWithChannel = DbFriend & {
+  channel_type?: string | null;
+}
+
+/** Convert a D1 snake_case Friend row to the shared camelCase shape */
+function serializeFriend(row: FriendRowWithChannel) {
+  const isWhatsApp = row.channel_type === 'whatsapp'
+  const lineUserId = isWhatsApp
+    ? formatWhatsappPhoneForDisplay(row.line_user_id)
+    : row.line_user_id
+  const displayName = isWhatsApp
+    ? presentWhatsappDisplayName(row.display_name, row.line_user_id)
+    : row.display_name
+
+  return {
+    id: row.id,
+    lineUserId,
+    displayName,
     pictureUrl: row.picture_url,
     statusMessage: row.status_message,
     isFollowing: Boolean(row.is_following),
     metadata: JSON.parse(row.metadata || '{}'),
     refCode: (row as unknown as Record<string, unknown>).ref_code as string | null,
+    slackChannelId: (row as unknown as Record<string, unknown>).slack_channel_id as string | null,
     userId: row.user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -72,10 +131,15 @@ friends.get('/api/friends', async (c) => {
     const total = totalRow?.count ?? 0;
 
     const listStmt = db.prepare(
-      `SELECT f.* FROM friends f ${where} ORDER BY f.created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT f.*, la.channel_type
+         FROM friends f
+         LEFT JOIN line_accounts la ON la.id = f.line_account_id
+         ${where}
+        ORDER BY f.created_at DESC
+        LIMIT ? OFFSET ?`,
     );
     const listBinds = [...binds, limit, offset];
-    const listResult = await listStmt.bind(...listBinds).all<DbFriend>();
+    const listResult = await listStmt.bind(...listBinds).all<FriendRowWithChannel>();
     const items = listResult.results;
 
     // Fetch tags for each friend in parallel so the list response includes tags
@@ -154,7 +218,15 @@ friends.get('/api/friends/:id', async (c) => {
     const db = c.env.DB;
 
     const [friend, tags] = await Promise.all([
-      getFriendById(db, id),
+      db
+        .prepare(
+          `SELECT f.*, la.channel_type
+             FROM friends f
+             LEFT JOIN line_accounts la ON la.id = f.line_account_id
+            WHERE f.id = ?`,
+        )
+        .bind(id)
+        .first<FriendRowWithChannel>(),
       getFriendTags(db, id),
     ]);
 
@@ -285,6 +357,20 @@ friends.get('/api/friends/:id/messages', async (c) => {
   }
 });
 
+friends.get('/api/friends/:id/scheduled-messages', async (c) => {
+  try {
+    const friendId = c.req.param('id');
+    const items = await listScheduledMessagesByFriend(c.env.DB, friendId);
+    return c.json({
+      success: true,
+      data: items.map(serializeScheduledMessage),
+    });
+  } catch (err) {
+    console.error('GET /api/friends/:id/scheduled-messages error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // POST /api/friends/:id/messages - send message to friend
 friends.post('/api/friends/:id/messages', async (c) => {
   try {
@@ -292,6 +378,10 @@ friends.post('/api/friends/:id/messages', async (c) => {
     const body = await c.req.json<{
       messageType?: string;
       content: string;
+      fileName?: string;
+      fileSize?: string;
+      fileIcon?: string;
+      scheduledAt?: string | null;
     }>();
 
     if (!body.content) {
@@ -299,31 +389,111 @@ friends.post('/api/friends/:id/messages', async (c) => {
     }
 
     const db = c.env.DB;
-    const friend = await getFriendById(db, friendId);
+    const friend = await getMessagingFriendContext(db, friendId);
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
 
-    const { LineClient } = await import('@line-crm/line-sdk');
-    const lineClient = new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN);
     const messageType = body.messageType ?? 'text';
+    const existingChat = await getChatByFriendId(db, friendId);
 
-    const message = buildMessage(messageType, body.content);
-    await lineClient.pushMessage(friend.line_user_id, [message]);
+    if (body.scheduledAt) {
+      const scheduled = await createScheduledMessage(db, {
+        friendId,
+        chatId: existingChat?.id ?? null,
+        messageType,
+        content: body.content,
+        metadata: serializeScheduleMetadata(body),
+        scheduledAt: body.scheduledAt,
+      });
+
+      return c.json({
+        success: true,
+        data: {
+          scheduled: true,
+          scheduledMessage: serializeScheduledMessage(scheduled),
+        },
+      }, 201);
+    }
+
+    const dispatchResult = await dispatchOutboundMessage({
+      env: c.env,
+      friend,
+      input: {
+        messageType,
+        content: body.content,
+        fileName: body.fileName,
+        fileSize: body.fileSize,
+        fileIcon: body.fileIcon,
+      },
+    });
 
     // Log outgoing message
+    const now = jstNow();
     const logId = crypto.randomUUID();
     await db
       .prepare(
         `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
          VALUES (?, ?, 'outgoing', ?, ?, NULL, NULL, ?)`,
       )
-      .bind(logId, friend.id, messageType, body.content, jstNow())
+      .bind(logId, friend.id, dispatchResult.messageType, dispatchResult.storedContent, now)
       .run();
+
+    if (existingChat) {
+      await updateChat(db, existingChat.id, {
+        status: 'in_progress',
+        lastMessageAt: now,
+      });
+    } else {
+      const newChat = await createChat(db, { friendId: friend.id });
+      await updateChat(db, newChat.id, {
+        status: 'in_progress',
+        lastMessageAt: now,
+      });
+    }
 
     return c.json({ success: true, data: { messageId: logId } });
   } catch (err) {
     console.error('POST /api/friends/:id/messages error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// PUT /api/friends/:id/slack - link friend to Slack channel
+friends.put('/api/friends/:id/slack', async (c) => {
+  try {
+    const friendId = c.req.param('id');
+    const body = await c.req.json<{ slackChannelId: string | null }>();
+
+    await c.env.DB.prepare('UPDATE friends SET slack_channel_id = ?, updated_at = ? WHERE id = ?')
+      .bind(body.slackChannelId, jstNow(), friendId)
+      .run();
+
+    return c.json({ success: true, data: { friendId, slackChannelId: body.slackChannelId } });
+  } catch (err) {
+    console.error('PUT /api/friends/:id/slack error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// POST /api/friends/bulk-slack - bulk link friends to Slack channel
+friends.post('/api/friends/bulk-slack', async (c) => {
+  try {
+    const body = await c.req.json<{ friendIds: string[]; slackChannelId: string }>();
+    if (!body.friendIds?.length || !body.slackChannelId) {
+      return c.json({ success: false, error: 'friendIds and slackChannelId are required' }, 400);
+    }
+
+    const now = jstNow();
+    for (const friendId of body.friendIds) {
+      await c.env.DB.prepare('UPDATE friends SET slack_channel_id = ?, updated_at = ? WHERE id = ?')
+        .bind(body.slackChannelId, now, friendId)
+        .run();
+    }
+
+    return c.json({ success: true, data: { updated: body.friendIds.length } });
+  } catch (err) {
+    console.error('POST /api/friends/bulk-slack error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

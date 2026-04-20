@@ -22,12 +22,28 @@ import type {
   Notification,
   AccountHealthLog,
   AccountMigration,
+  Form as HarnessForm,
 } from '@line-crm/shared'
 
 import type { Broadcast } from '@line-crm/shared'
 
 /** Broadcast type from API (now camelCase after worker serialization) */
 export type ApiBroadcast = Broadcast
+
+export type ApiScheduledMessage = {
+  id: string
+  friendId: string
+  chatId: string | null
+  messageType: string
+  content: string
+  metadata: string | null
+  scheduledAt: string
+  status: 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled'
+  sentAt: string | null
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
@@ -43,13 +59,20 @@ function getApiKey(): string {
   return process.env.NEXT_PUBLIC_API_KEY || ''
 }
 
-export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+export async function fetchApi<T>(path: string, options?: RequestInit & { rawBody?: boolean }): Promise<T> {
+  const { rawBody, ...fetchOptions } = options || {}
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${getApiKey()}`,
+  }
+  // Don't set Content-Type for FormData (browser sets it with boundary automatically)
+  if (!rawBody) {
+    headers['Content-Type'] = 'application/json'
+  }
   const res = await fetch(`${API_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getApiKey()}`,
-      ...options?.headers,
+      ...headers,
+      ...fetchOptions?.headers,
     },
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
@@ -92,6 +115,13 @@ export const api = {
       fetchApi<ApiResponse<null>>(`/api/friends/${friendId}/tags/${tagId}`, {
         method: 'DELETE',
       }),
+    sendMessage: (friendId: string, data: Record<string, string | null | undefined>) =>
+      fetchApi<ApiResponse<unknown>>(`/api/friends/${friendId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    listScheduledMessages: (friendId: string) =>
+      fetchApi<ApiResponse<ApiScheduledMessage[]>>(`/api/friends/${friendId}/scheduled-messages`),
   },
   tags: {
     list: () =>
@@ -111,7 +141,7 @@ export const api = {
     },
     get: (id: string) =>
       fetchApi<ApiResponse<Scenario & { steps: ScenarioStep[] }>>(`/api/scenarios/${id}`),
-    create: (data: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> & { lineAccountId?: string }) =>
+    create: (data: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> & { lineAccountId?: string; triggerData?: string | null }) =>
       fetchApi<ApiResponse<Scenario>>('/api/scenarios', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -216,12 +246,20 @@ export const api = {
       fetchApi<ApiResponse<LineAccount[]>>('/api/line-accounts'),
     get: (id: string) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}`),
-    create: (data: { channelId: string; name: string; channelAccessToken: string; channelSecret: string }) =>
+    create: (data: {
+      channelId: string
+      name: string
+      channelAccessToken: string
+      channelSecret?: string
+      channelType?: 'line' | 'whatsapp'
+      locale?: string
+      defaultSlackChannel?: string | null
+    }) =>
       fetchApi<ApiResponse<LineAccount>>('/api/line-accounts', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'isActive'>>) =>
+    update: (id: string, data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'channelType' | 'locale' | 'defaultSlackChannel' | 'isActive'>>) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
@@ -293,6 +331,55 @@ export const api = {
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/templates/${id}`, { method: 'DELETE' }),
   },
+  forms: {
+    list: () =>
+      fetchApi<ApiResponse<HarnessForm[]>>('/api/forms'),
+    get: (id: string) =>
+      fetchApi<ApiResponse<HarnessForm>>(`/api/forms/${id}`),
+    create: (data: {
+      name: string
+      description?: string | null
+      fields: HarnessForm['fields']
+      onSubmitTagId?: string | null
+      onSubmitScenarioId?: string | null
+      saveToMetadata?: boolean
+    }) =>
+      fetchApi<ApiResponse<HarnessForm>>('/api/forms', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: Partial<{
+      name: string
+      description: string | null
+      fields: HarnessForm['fields']
+      onSubmitTagId: string | null
+      onSubmitScenarioId: string | null
+      saveToMetadata: boolean
+      isActive: boolean
+    }>) =>
+      fetchApi<ApiResponse<HarnessForm>>(`/api/forms/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      fetchApi<ApiResponse<null>>(`/api/forms/${id}`, {
+        method: 'DELETE',
+      }),
+    shareUrl: (id: string, params?: { lineAccountId?: string; sharedByFriendId?: string | null; slackChannelId?: string | null }) => {
+      const query = new URLSearchParams()
+      if (params?.lineAccountId) query.set('lineAccountId', params.lineAccountId)
+      if (params?.sharedByFriendId) query.set('sharedByFriendId', params.sharedByFriendId)
+      if (params?.slackChannelId) query.set('slackChannelId', params.slackChannelId)
+      const qs = query.toString()
+      return fetchApi<ApiResponse<{ shareUrl: string }>>(
+        `/api/forms/${id}/share-url${qs ? `?${qs}` : ''}`,
+      )
+    },
+    submissions: (id: string) =>
+      fetchApi<ApiResponse<{ id: string; formId: string; friendId: string | null; data: Record<string, unknown>; createdAt: string }[]>>(
+        `/api/forms/${id}/submissions`,
+      ),
+  },
   automations: {
     list: (params?: { accountId?: string }) => {
       const query = params?.accountId ? '?lineAccountId=' + params.accountId : ''
@@ -348,10 +435,21 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
-    send: (id: string, data: { content: string; messageType?: string }) =>
+    send: (id: string, data: Record<string, string | null | undefined>) =>
       fetchApi<ApiResponse<unknown>>(`/api/chats/${id}/send`, {
         method: 'POST',
         body: JSON.stringify(data),
+      }),
+  },
+  scheduledMessages: {
+    update: (id: string, data: { scheduledAt: string }) =>
+      fetchApi<ApiResponse<ApiScheduledMessage>>(`/api/scheduled-messages/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    cancel: (id: string) =>
+      fetchApi<ApiResponse<null>>(`/api/scheduled-messages/${id}`, {
+        method: 'DELETE',
       }),
   },
   reminders: {
@@ -479,5 +577,41 @@ export const api = {
       }),
     getMigration: (migrationId: string) =>
       fetchApi<ApiResponse<AccountMigration>>(`/api/accounts/migrations/${migrationId}`),
+  },
+
+  // ── Entry Routes (流入経路) ────────────────────────────────────────────
+  entryRoutes: {
+    list: (params?: { accountId?: string }) => {
+      const query = params?.accountId ? '?lineAccountId=' + params.accountId : ''
+      return fetchApi<ApiResponse<{ id: string; name: string; refCode: string; description: string | null; tagId: string | null; tagName: string | null; lineAccountId: string | null; trackingUrl: string; isActive: boolean; createdAt: string }[]>>(
+        '/api/entry-routes' + query,
+      )
+    },
+    create: (data: { name: string; refCode?: string; description?: string; tagId?: string; lineAccountId?: string }) =>
+      fetchApi<ApiResponse<{ id: string; refCode: string }>>('/api/entry-routes', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: { name?: string; description?: string; tagId?: string | null; isActive?: boolean }) =>
+      fetchApi<ApiResponse<unknown>>(`/api/entry-routes/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      fetchApi<ApiResponse<null>>(`/api/entry-routes/${id}`, { method: 'DELETE' }),
+  },
+
+  // ── Slack linking ──────────────────────────────────────────────────────
+  slack: {
+    linkFriend: (friendId: string, slackChannelId: string | null) =>
+      fetchApi<ApiResponse<unknown>>(`/api/friends/${friendId}/slack`, {
+        method: 'PUT',
+        body: JSON.stringify({ slackChannelId }),
+      }),
+    bulkLink: (friendIds: string[], slackChannelId: string) =>
+      fetchApi<ApiResponse<unknown>>('/api/friends/bulk-slack', {
+        method: 'POST',
+        body: JSON.stringify({ friendIds, slackChannelId }),
+      }),
   },
 }

@@ -16,6 +16,9 @@ function serializeLineAccount(row: DbLineAccount) {
     id: row.id,
     channelId: row.channel_id,
     name: row.name,
+    channelType: row.channel_type || 'line',
+    locale: row.locale || 'ja',
+    defaultSlackChannel: row.default_slack_channel ?? null,
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -54,8 +57,11 @@ lineAccounts.get('/api/line-accounts', async (c) => {
     // Get stats for all accounts in parallel
     const results = await Promise.all(
       items.map(async (item) => {
+        const isWhatsApp = item.channel_type === 'whatsapp';
         const [profile, friendCount, scenarioCount, msgCount] = await Promise.all([
-          fetchBotProfile(item.channel_access_token),
+          isWhatsApp
+            ? Promise.resolve<{ displayName?: string; pictureUrl?: string; basicId?: string }>({})
+            : fetchBotProfile(item.channel_access_token),
           db.prepare(`SELECT COUNT(*) as count FROM friends WHERE is_following = 1 AND line_account_id = ?`).bind(item.id).first<{ count: number }>(),
           db.prepare(
             `SELECT COUNT(*) as count FROM friend_scenarios fs
@@ -110,17 +116,32 @@ lineAccounts.post('/api/line-accounts', async (c) => {
       channelId: string;
       name: string;
       channelAccessToken: string;
-      channelSecret: string;
+      channelSecret?: string;
+      channelType?: 'line' | 'whatsapp';
+      locale?: string;
+      defaultSlackChannel?: string | null;
     }>();
 
-    if (!body.channelId || !body.name || !body.channelAccessToken || !body.channelSecret) {
+    const channelType = body.channelType === 'whatsapp' ? 'whatsapp' : 'line';
+
+    if (!body.channelId || !body.name || !body.channelAccessToken || (channelType === 'line' && !body.channelSecret)) {
       return c.json(
-        { success: false, error: 'channelId, name, channelAccessToken, and channelSecret are required' },
+        {
+          success: false,
+          error:
+            channelType === 'whatsapp'
+              ? 'channelId, name, and channelAccessToken are required'
+              : 'channelId, name, channelAccessToken, and channelSecret are required',
+        },
         400,
       );
     }
 
-    const account = await createLineAccount(c.env.DB, body);
+    const account = await createLineAccount(c.env.DB, {
+      ...body,
+      channelType,
+      channelSecret: body.channelSecret ?? '',
+    });
     return c.json({ success: true, data: serializeLineAccountFull(account) }, 201);
   } catch (err) {
     console.error('POST /api/line-accounts error:', err);
@@ -136,6 +157,9 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       name?: string;
       channelAccessToken?: string;
       channelSecret?: string;
+      channelType?: 'line' | 'whatsapp';
+      locale?: string;
+      defaultSlackChannel?: string | null;
       isActive?: boolean;
     }>();
 
@@ -143,6 +167,9 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       name: body.name,
       channel_access_token: body.channelAccessToken,
       channel_secret: body.channelSecret,
+      channel_type: body.channelType,
+      locale: body.locale,
+      default_slack_channel: body.defaultSlackChannel,
       is_active: body.isActive !== undefined ? (body.isActive ? 1 : 0) : undefined,
     });
 

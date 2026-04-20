@@ -183,20 +183,32 @@ jobs:
 ## 管理パネル デプロイ (Cloudflare Pages)
 
 ```bash
-# 1. ビルド
+# 本番 Pages へデプロイ
 pnpm deploy:web
-# => next build (apps/web/)
+# => apps/web/out を build して https://line-crm-web-2ob.pages.dev に反映
+```
 
-# 2. Cloudflare Pages にデプロイ
-# Dashboard から GitHub リポジトリを接続、または:
-wrangler pages deploy apps/web/.next --project-name=line-crm-admin
+`pnpm deploy:web` は `scripts/deploy-web-production.sh` を経由し、以下を固定します。
+
+- Pages プロジェクト: `line-crm-web`
+- 本番ブランチ: `main`
+- 出力ディレクトリ: `apps/web/out`
+- 公開 URL: `https://line-crm-web-2ob.pages.dev`
+
+ローカルで deploy コマンドを直接確認したい場合も、同じ向き先だけを使います。
+
+```bash
+cd apps/worker
+pnpm exec wrangler pages deploy ../web/out --project-name=line-crm-web --branch=main
 ```
 
 ### Pages 設定
 
-- ビルドコマンド: `pnpm install && pnpm -r build && pnpm --filter web build`
-- 出力ディレクトリ: `apps/web/.next`
+- ビルドコマンド: `pnpm install && pnpm build:web`
+- 出力ディレクトリ: `apps/web/out`
 - Node.js バージョン: 22
+
+GitHub Actions でも `.github/workflows/deploy-web.yml` から同じ `pnpm deploy:web` を実行し、別の Pages プロジェクトに分岐しない構成に統一しています。
 
 ---
 

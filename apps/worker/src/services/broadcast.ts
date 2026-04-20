@@ -42,7 +42,13 @@ export async function processBroadcastSend(
       }
 
       const friends = await getFriendsByTag(db, broadcast.target_tag_id);
-      const followingFriends = friends.filter((f) => f.is_following);
+      const followingFriends = friends.filter(
+        (f) =>
+          f.is_following &&
+          (broadcast.line_account_id === null
+            ? f.line_account_id === null
+            : f.line_account_id === broadcast.line_account_id),
+      );
       totalCount = followingFriends.length;
 
       // Send in batches with stealth delays to mimic human patterns
@@ -100,9 +106,10 @@ export async function processBroadcastSend(
 export async function processScheduledBroadcasts(
   db: D1Database,
   lineClient: LineClient,
+  lineAccountId?: string | null,
 ): Promise<void> {
   const now = jstNow();
-  const allBroadcasts = await getBroadcasts(db);
+  const allBroadcasts = await getBroadcasts(db, lineAccountId);
 
   const nowMs = Date.now();
   const scheduled = allBroadcasts.filter(

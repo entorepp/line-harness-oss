@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --forms-bg: #edf5ef;
+  --forms-surface: #ffffff;
+  --forms-primary: #1d5c47;
+  --forms-primary-soft: #e8f3ed;
+  --forms-border: #d7e5dc;
+  --forms-text: #202124;
+  --forms-muted: #5f6368;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--forms-bg);
+  color: var(--forms-text);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: #cfe1d5;
+}

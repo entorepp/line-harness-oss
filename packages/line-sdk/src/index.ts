@@ -42,6 +42,7 @@ export type {
   RoomSource,
   Source,
   StickerEventMessage,
+  StickerMessage,
   TemplateMessage,
   TextEventMessage,
   TextMessage,

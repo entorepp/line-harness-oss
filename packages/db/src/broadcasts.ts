@@ -10,6 +10,7 @@ export interface Broadcast {
   message_content: string;
   target_type: BroadcastTargetType;
   target_tag_id: string | null;
+  line_account_id: string | null;
   status: BroadcastStatus;
   scheduled_at: string | null;
   sent_at: string | null;
@@ -18,10 +19,23 @@ export interface Broadcast {
   created_at: string;
 }
 
-export async function getBroadcasts(db: D1Database): Promise<Broadcast[]> {
-  const result = await db
-    .prepare(`SELECT * FROM broadcasts ORDER BY created_at DESC`)
-    .all<Broadcast>();
+export async function getBroadcasts(
+  db: D1Database,
+  lineAccountId?: string | null,
+): Promise<Broadcast[]> {
+  const result =
+    lineAccountId === undefined
+      ? await db
+          .prepare(`SELECT * FROM broadcasts ORDER BY created_at DESC`)
+          .all<Broadcast>()
+      : lineAccountId === null
+        ? await db
+            .prepare(`SELECT * FROM broadcasts WHERE line_account_id IS NULL ORDER BY created_at DESC`)
+            .all<Broadcast>()
+        : await db
+            .prepare(`SELECT * FROM broadcasts WHERE line_account_id = ? ORDER BY created_at DESC`)
+            .bind(lineAccountId)
+            .all<Broadcast>();
   return result.results;
 }
 

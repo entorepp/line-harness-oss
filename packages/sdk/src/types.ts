@@ -23,7 +23,7 @@ export interface PaginatedData<T> {
 }
 
 // ─── Common ─────────────────────────────────────────────
-export type ScenarioTriggerType = 'friend_add' | 'tag_added' | 'manual'
+export type ScenarioTriggerType = 'friend_add' | 'tag_added' | 'manual' | 'postback' | 'keyword'
 export type MessageType = 'text' | 'image' | 'flex'
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent'
 

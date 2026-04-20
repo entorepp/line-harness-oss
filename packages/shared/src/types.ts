@@ -63,7 +63,7 @@ export interface FriendTag {
 // -----------------------------------------------------------------------------
 
 /** シナリオのトリガー種別 */
-export type ScenarioTriggerType = "friend_add" | "tag_added" | "manual";
+export type ScenarioTriggerType = "friend_add" | "tag_added" | "manual" | "postback" | "keyword";
 
 export interface Scenario {
   /** 主キー (UUIDv4) */
@@ -278,10 +278,16 @@ export interface LineAccount {
   channelId: string;
   /** アカウント名 */
   name: string;
+  /** チャネル種別 */
+  channelType?: "line" | "whatsapp";
   /** Channel Access Token */
   channelAccessToken: string;
   /** Channel Secret */
   channelSecret: string;
+  /** このアカウント向けの通知・文言ロケール */
+  locale?: string;
+  /** 個別Slack未紐付け時のデフォルト通知先 */
+  defaultSlackChannel?: string | null;
   /** 有効/無効 */
   isActive: boolean;
   /** 作成日時 (ISO 8601) */
@@ -413,6 +419,64 @@ export interface OutgoingWebhook {
   url: string;
   eventTypes: string[];
   secret: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -----------------------------------------------------------------------------
+// フォーム (Forms / Surveys)
+// -----------------------------------------------------------------------------
+
+export interface FormField {
+  name: string;
+  label: string;
+  type: "text" | "email" | "tel" | "number" | "textarea" | "select" | "radio" | "checkbox" | "date" | "time";
+  required?: boolean;
+  options?: string[];
+  placeholder?: string;
+  helperText?: string;
+  allowOtherOption?: boolean;
+  otherOptionLabel?: string;
+}
+
+export interface Form {
+  id: string;
+  name: string;
+  description: string | null;
+  fields: FormField[];
+  locale: string | null;
+  translationGroupId: string | null;
+  submitButtonLabel: string | null;
+  successTitle: string | null;
+  successDescription: string | null;
+  onSubmitTagId: string | null;
+  onSubmitScenarioId: string | null;
+  saveToMetadata: boolean;
+  isActive: boolean;
+  submitCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FormSubmission {
+  id: string;
+  formId: string;
+  formIssueId: string | null;
+  friendId: string | null;
+  slackChannelId: string | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface FormIssue {
+  id: string;
+  formId: string;
+  name: string;
+  lineAccountId: string | null;
+  slackChannelId: string | null;
+  sharedByFriendId: string | null;
+  locale: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -620,6 +684,7 @@ export type AutomationEventType =
   | "score_threshold"
   | "cv_fire"
   | "message_received"
+  | "form_submit"
   | "calendar_booked";
 
 export interface AutomationAction {

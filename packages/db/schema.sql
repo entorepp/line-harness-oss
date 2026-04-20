@@ -13,12 +13,18 @@ CREATE TABLE IF NOT EXISTS friends (
   is_following     INTEGER NOT NULL DEFAULT 1,
   user_id          TEXT,
   score            INTEGER NOT NULL DEFAULT 0,
+  ref_code         TEXT,
+  line_account_id  TEXT REFERENCES line_accounts(id),
+  slack_channel_id TEXT,
+  metadata         TEXT NOT NULL DEFAULT '{}',
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_friends_line_user_id ON friends (line_user_id);
 CREATE INDEX IF NOT EXISTS idx_friends_user_id ON friends (user_id);
+CREATE INDEX IF NOT EXISTS idx_friends_ref_code ON friends (ref_code);
+CREATE INDEX IF NOT EXISTS idx_friends_line_account_id ON friends (line_account_id);
 
 -- ============================================================
 -- Tags
@@ -176,6 +182,13 @@ CREATE TABLE IF NOT EXISTS line_accounts (
   name                 TEXT NOT NULL,
   channel_access_token TEXT NOT NULL,
   channel_secret       TEXT NOT NULL,
+  login_channel_id     TEXT,
+  login_channel_secret TEXT,
+  liff_id              TEXT,
+  channel_type         TEXT NOT NULL DEFAULT 'line',
+  locale               TEXT NOT NULL DEFAULT 'ja',
+  default_slack_channel TEXT,
+  token_expires_at     TEXT,
   is_active            INTEGER NOT NULL DEFAULT 1,
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
@@ -402,6 +415,25 @@ CREATE INDEX IF NOT EXISTS idx_chats_friend ON chats (friend_id);
 CREATE INDEX IF NOT EXISTS idx_chats_operator ON chats (operator_id);
 CREATE INDEX IF NOT EXISTS idx_chats_status ON chats (status);
 
+CREATE TABLE IF NOT EXISTS scheduled_messages (
+  id            TEXT PRIMARY KEY,
+  friend_id     TEXT NOT NULL REFERENCES friends (id) ON DELETE CASCADE,
+  chat_id       TEXT REFERENCES chats (id) ON DELETE SET NULL,
+  message_type  TEXT NOT NULL,
+  content       TEXT NOT NULL,
+  metadata      TEXT,
+  scheduled_at  TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'sending', 'sent', 'failed', 'cancelled')),
+  sent_at       TEXT,
+  last_error    TEXT,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_friend ON scheduled_messages (friend_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_chat ON scheduled_messages (chat_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_status_time ON scheduled_messages (status, scheduled_at);
+
 -- ============================================================
 -- Round 3: 通知機能
 -- ============================================================
@@ -504,3 +536,60 @@ CREATE TABLE IF NOT EXISTS automation_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_automation_logs_automation ON automation_logs (automation_id);
+
+-- ============================================================
+-- Round 3.5: Forms / Surveys
+-- ============================================================
+CREATE TABLE IF NOT EXISTS forms (
+  id                  TEXT PRIMARY KEY,
+  name                TEXT NOT NULL,
+  description         TEXT,
+  fields              TEXT NOT NULL DEFAULT '[]',
+  locale              TEXT,
+  translation_group_id TEXT,
+  submit_button_label TEXT,
+  success_title       TEXT,
+  success_description TEXT,
+  on_submit_tag_id    TEXT REFERENCES tags (id) ON DELETE SET NULL,
+  on_submit_scenario_id TEXT REFERENCES scenarios (id) ON DELETE SET NULL,
+  save_to_metadata    INTEGER NOT NULL DEFAULT 1,
+  is_active           INTEGER NOT NULL DEFAULT 1,
+  submit_count        INTEGER NOT NULL DEFAULT 0,
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_forms_translation_group ON forms (translation_group_id);
+CREATE INDEX IF NOT EXISTS idx_forms_locale ON forms (locale);
+
+CREATE TABLE IF NOT EXISTS form_issues (
+  id                  TEXT PRIMARY KEY,
+  form_id             TEXT NOT NULL REFERENCES forms (id) ON DELETE CASCADE,
+  name                TEXT NOT NULL,
+  line_account_id     TEXT REFERENCES line_accounts (id) ON DELETE SET NULL,
+  slack_channel_id    TEXT,
+  shared_by_friend_id TEXT REFERENCES friends (id) ON DELETE SET NULL,
+  locale              TEXT,
+  is_active           INTEGER NOT NULL DEFAULT 1,
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_form_issues_form ON form_issues (form_id);
+CREATE INDEX IF NOT EXISTS idx_form_issues_channel ON form_issues (slack_channel_id);
+CREATE INDEX IF NOT EXISTS idx_form_issues_shared_by ON form_issues (shared_by_friend_id);
+
+CREATE TABLE IF NOT EXISTS form_submissions (
+  id            TEXT PRIMARY KEY,
+  form_id       TEXT NOT NULL REFERENCES forms (id) ON DELETE CASCADE,
+  form_issue_id TEXT REFERENCES form_issues (id) ON DELETE SET NULL,
+  friend_id     TEXT REFERENCES friends (id) ON DELETE SET NULL,
+  slack_channel_id TEXT,
+  data          TEXT NOT NULL DEFAULT '{}',
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_form_submissions_form ON form_submissions (form_id);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_issue ON form_submissions (form_issue_id);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_friend ON form_submissions (friend_id);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_slack_channel ON form_submissions (slack_channel_id);

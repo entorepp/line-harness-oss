@@ -18,9 +18,10 @@ import { addJitter, sleep } from './stealth.js';
 export async function processReminderDeliveries(
   db: D1Database,
   lineClient: LineClient,
+  lineAccountId?: string | null,
 ): Promise<void> {
   const now = jstNow();
-  const dueReminders = await getDueReminderDeliveries(db, now);
+  const dueReminders = await getDueReminderDeliveries(db, now, lineAccountId);
 
   for (let i = 0; i < dueReminders.length; i++) {
     const fr = dueReminders[i];

@@ -12,7 +12,7 @@ L社/U社代替。AI（CC）ネイティブ設計。
 
 ## デプロイ先
 - **API**: https://line-crm-worker.line-crm-api.workers.dev
-- **管理画面**: https://line-crm-admin.pages.dev
+- **管理画面**: https://line-crm-web-2ob.pages.dev
 - **D1**: line-crm (YOUR_D1_DATABASE_ID) APAC/KIX
 - **Cron**: 5分毎ステップ配信チェック + リマインダー配信
 

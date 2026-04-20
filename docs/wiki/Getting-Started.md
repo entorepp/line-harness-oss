@@ -190,9 +190,11 @@ pnpm dev:web
 ### Cloudflare Pages（推奨）
 
 ```bash
-cd apps/web
-npx wrangler pages deploy .next --project-name=line-crm-admin
+pnpm deploy:web
+# => https://line-crm-web-2ob.pages.dev にデプロイ
 ```
+
+`pnpm deploy:web` は `main` ブランチ以外からの実行を拒否し、Cloudflare Pages の本番プロジェクト `line-crm-web` にだけデプロイします。公開 URL は `https://line-crm-web-2ob.pages.dev` です。
 
 ### Vercel
 

@@ -1,4 +1,4 @@
-name = "line-crm-worker"
+name = "line-flattravel"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 workers_dev = true
@@ -7,12 +7,18 @@ workers_dev = true
 # Do NOT hardcode secrets here
 
 [vars]
-WORKER_URL = "https://line-crm-worker.line-crm-api.workers.dev"
+WORKER_URL = "https://line-flattravel.flat-travel.workers.dev"
+WEB_APP_URL = "https://line-crm-web-2ob.pages.dev"
+FORMS_APP_URL = "https://liffform-studio.pages.dev"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "line-crm"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "30c0fa9b-3b5c-468e-bc49-873c531c97d0"
+
+[[kv_namespaces]]
+binding = "UPLOADS"
+id = "184a9482110e47eaab42fecd655f00ef"
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["* * * * *"]

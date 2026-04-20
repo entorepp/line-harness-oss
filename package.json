@@ -6,9 +6,14 @@
   "scripts": {
     "dev:worker": "pnpm --filter worker dev",
     "dev:web": "pnpm --filter web dev",
+    "dev:forms-studio": "pnpm --filter forms-studio dev",
     "build": "pnpm -r build",
+    "build:web": "pnpm --filter web build",
+    "build:forms-studio": "pnpm --filter forms-studio build",
     "deploy:worker": "pnpm --filter worker deploy",
-    "deploy:web": "pnpm --filter web build",
+    "deploy:web": "bash scripts/deploy-web-production.sh",
+    "deploy:forms-studio": "bash scripts/deploy-forms-studio-production.sh",
+    "forms:register-flatcare-hearing": "node scripts/register-flatcare-hearing-form.mjs",
     "db:migrate": "wrangler d1 execute line-crm --file=packages/db/schema.sql",
     "db:migrate:local": "wrangler d1 execute line-crm --file=packages/db/schema.sql --local"
   },

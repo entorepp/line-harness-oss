@@ -140,8 +140,8 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
       } else {
         setError(res.error)
       }
-    } catch {
-      setError('シナリオの読み込みに失敗しました')
+    } catch (err) {
+      setError(`シナリオの読み込みに失敗しました: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoading(false)
     }

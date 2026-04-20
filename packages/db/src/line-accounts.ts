@@ -3,6 +3,8 @@ import { jstNow } from './utils.js';
 // LINE Accounts — Multi-Account Management
 // =============================================================================
 
+export type LineAccountChannelType = 'line' | 'whatsapp';
+
 export interface LineAccount {
   id: string;
   channel_id: string;
@@ -12,6 +14,10 @@ export interface LineAccount {
   login_channel_id: string | null;
   login_channel_secret: string | null;
   liff_id: string | null;
+  channel_type: LineAccountChannelType;
+  locale: string;
+  default_slack_channel: string | null;
+  token_expires_at: string | null;
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -21,7 +27,10 @@ export interface CreateLineAccountInput {
   channelId: string;
   name: string;
   channelAccessToken: string;
-  channelSecret: string;
+  channelSecret?: string;
+  channelType?: LineAccountChannelType;
+  locale?: string;
+  defaultSlackChannel?: string | null;
 }
 
 export async function createLineAccount(
@@ -33,10 +42,22 @@ export async function createLineAccount(
 
   await db
     .prepare(
-      `INSERT INTO line_accounts (id, channel_id, name, channel_access_token, channel_secret, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+      `INSERT INTO line_accounts
+         (id, channel_id, name, channel_access_token, channel_secret, channel_type, locale, default_slack_channel, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     )
-    .bind(id, input.channelId, input.name, input.channelAccessToken, input.channelSecret, now, now)
+    .bind(
+      id,
+      input.channelId,
+      input.name,
+      input.channelAccessToken,
+      input.channelSecret ?? '',
+      input.channelType ?? 'line',
+      input.locale ?? 'ja',
+      input.defaultSlackChannel ?? null,
+      now,
+      now,
+    )
     .run();
 
   return (await getLineAccountById(db, id))!;
@@ -69,9 +90,16 @@ export async function getLineAccountByChannelId(
     .first<LineAccount>();
 }
 
-export type UpdateLineAccountInput = Partial<
-  Pick<LineAccount, 'name' | 'channel_access_token' | 'channel_secret' | 'is_active'>
->;
+export interface UpdateLineAccountInput {
+  name?: string;
+  channel_access_token?: string;
+  channel_secret?: string;
+  channel_type?: LineAccountChannelType;
+  locale?: string;
+  default_slack_channel?: string | null;
+  token_expires_at?: string | null;
+  is_active?: number;
+}
 
 export async function updateLineAccount(
   db: D1Database,
@@ -92,6 +120,22 @@ export async function updateLineAccount(
   if (updates.channel_secret !== undefined) {
     fields.push('channel_secret = ?');
     values.push(updates.channel_secret);
+  }
+  if (updates.channel_type !== undefined) {
+    fields.push('channel_type = ?');
+    values.push(updates.channel_type);
+  }
+  if (updates.locale !== undefined) {
+    fields.push('locale = ?');
+    values.push(updates.locale);
+  }
+  if ('default_slack_channel' in updates) {
+    fields.push('default_slack_channel = ?');
+    values.push(updates.default_slack_channel ?? null);
+  }
+  if (updates.token_expires_at !== undefined) {
+    fields.push('token_expires_at = ?');
+    values.push(updates.token_expires_at);
   }
   if (updates.is_active !== undefined) {
     fields.push('is_active = ?');

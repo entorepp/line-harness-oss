@@ -1,7 +1,11 @@
 import { Hono } from 'hono';
 import {
+  cancelScheduledMessage,
+  createScheduledMessage,
   getOperators,
   getOperatorById,
+  getScheduledMessageById,
+  updateScheduledMessage,
   createOperator,
   updateOperator,
   deleteOperator,
@@ -10,10 +14,52 @@ import {
   createChat,
   updateChat,
   jstNow,
+  type ScheduledMessageRow,
 } from '@line-crm/db';
 import type { Env } from '../index.js';
+import {
+  dispatchOutboundMessage,
+  getMessagingFriendContext,
+  summarizeOutboundMessage,
+} from '../services/outbound-messages.js';
+import {
+  presentWhatsappDisplayName,
+} from '../services/whatsapp-display.js';
 
 const chats = new Hono<Env>();
+
+function serializeScheduledMessage(row: ScheduledMessageRow) {
+  return {
+    id: row.id,
+    friendId: row.friend_id,
+    chatId: row.chat_id,
+    messageType: row.message_type,
+    content: row.content,
+    metadata: row.metadata,
+    scheduledAt: row.scheduled_at,
+    status: row.status,
+    sentAt: row.sent_at,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function serializeScheduleMetadata(body: {
+  fileName?: string;
+  fileSize?: string;
+  fileIcon?: string;
+}): string | null {
+  if (!body.fileName && !body.fileSize && !body.fileIcon) {
+    return null;
+  }
+
+  return JSON.stringify({
+    fileName: body.fileName ?? null,
+    fileSize: body.fileSize ?? null,
+    fileIcon: body.fileIcon ?? null,
+  });
+}
 
 // ========== オペレーターCRUD ==========
 
@@ -83,9 +129,24 @@ chats.get('/api/chats', async (c) => {
     const lineAccountId = c.req.query('lineAccountId') ?? undefined;
 
     // JOIN friends to get display_name and picture_url
-    let sql = `SELECT c.*, f.display_name, f.picture_url, f.line_user_id
+    let sql = `SELECT c.*, f.display_name, f.picture_url, f.line_user_id, la.channel_type,
+                      (
+                        SELECT ml.id
+                          FROM messages_log ml
+                         WHERE ml.friend_id = c.friend_id
+                         ORDER BY ml.created_at DESC, ml.id DESC
+                         LIMIT 1
+                      ) as last_message_id,
+                      (
+                        SELECT ml.direction
+                          FROM messages_log ml
+                         WHERE ml.friend_id = c.friend_id
+                         ORDER BY ml.created_at DESC, ml.id DESC
+                         LIMIT 1
+                      ) as last_message_direction
                FROM chats c
-               LEFT JOIN friends f ON c.friend_id = f.id`;
+               LEFT JOIN friends f ON c.friend_id = f.id
+               LEFT JOIN line_accounts la ON la.id = f.line_account_id`;
     const conditions: string[] = [];
     const bindings: unknown[] = [];
 
@@ -117,12 +178,23 @@ chats.get('/api/chats', async (c) => {
       data: result.results.map((ch: Record<string, unknown>) => ({
         id: ch.id,
         friendId: ch.friend_id,
-        friendName: ch.display_name || '名前なし',
+        friendName:
+          ch.channel_type === 'whatsapp'
+            ? presentWhatsappDisplayName(
+                typeof ch.display_name === 'string' ? ch.display_name : null,
+                typeof ch.line_user_id === 'string' ? ch.line_user_id : '',
+              ) || '名前なし'
+            : ch.display_name || '名前なし',
         friendPictureUrl: ch.picture_url || null,
         operatorId: ch.operator_id,
         status: ch.status,
         notes: ch.notes,
         lastMessageAt: ch.last_message_at,
+        lastMessageId: ch.last_message_id || null,
+        lastMessageDirection:
+          ch.last_message_direction === 'incoming' || ch.last_message_direction === 'outgoing'
+            ? ch.last_message_direction
+            : null,
         createdAt: ch.created_at,
         updatedAt: ch.updated_at,
       })),
@@ -140,9 +212,20 @@ chats.get('/api/chats/:id', async (c) => {
 
     // 友だち情報を取得
     const friend = await c.env.DB
-      .prepare(`SELECT display_name, picture_url, line_user_id FROM friends WHERE id = ?`)
+      .prepare(
+        `SELECT f.display_name, f.picture_url, f.line_user_id, f.slack_channel_id, la.channel_type
+           FROM friends f
+           LEFT JOIN line_accounts la ON la.id = f.line_account_id
+          WHERE f.id = ?`,
+      )
       .bind(item.friend_id)
-      .first<{ display_name: string | null; picture_url: string | null; line_user_id: string }>();
+      .first<{
+        display_name: string | null;
+        picture_url: string | null;
+        line_user_id: string;
+        slack_channel_id: string | null;
+        channel_type: string | null;
+      }>();
 
     // チャットに関連するメッセージログも取得
     const messages = await c.env.DB
@@ -155,8 +238,12 @@ chats.get('/api/chats/:id', async (c) => {
       data: {
         id: item.id,
         friendId: item.friend_id,
-        friendName: friend?.display_name || '名前なし',
+        friendName:
+          friend?.channel_type === 'whatsapp'
+            ? presentWhatsappDisplayName(friend.display_name, friend.line_user_id) || '名前なし'
+            : friend?.display_name || '名前なし',
         friendPictureUrl: friend?.picture_url || null,
+        slackChannelId: friend?.slack_channel_id || null,
         operatorId: item.operator_id,
         status: item.status,
         notes: item.notes,
@@ -219,40 +306,151 @@ chats.post('/api/chats/:id/send', async (c) => {
     const chat = await getChatById(c.env.DB, chatId);
     if (!chat) return c.json({ success: false, error: 'Chat not found' }, 404);
 
-    const body = await c.req.json<{ messageType?: string; content: string }>();
+    const body = await c.req.json<{
+      messageType?: string;
+      content: string;
+      fileName?: string;
+      fileSize?: string;
+      fileIcon?: string;
+      scheduledAt?: string | null;
+    }>();
     if (!body.content) return c.json({ success: false, error: 'content is required' }, 400);
 
-    const friend = await c.env.DB
-      .prepare(`SELECT * FROM friends WHERE id = ?`)
-      .bind(chat.friend_id)
-      .first<{ id: string; line_user_id: string }>();
+    const friend = await getMessagingFriendContext(c.env.DB, chat.friend_id);
     if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
 
-    // LINE APIでメッセージ送信
-    const { LineClient } = await import('@line-crm/line-sdk');
-    const lineClient = new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN);
     const messageType = body.messageType ?? 'text';
 
-    if (messageType === 'text') {
-      await lineClient.pushTextMessage(friend.line_user_id, body.content);
-    } else if (messageType === 'flex') {
-      const contents = JSON.parse(body.content);
-      await lineClient.pushFlexMessage(friend.line_user_id, 'Message', contents);
+    if (body.scheduledAt) {
+      const scheduled = await createScheduledMessage(c.env.DB, {
+        friendId: friend.id,
+        chatId,
+        messageType,
+        content: body.content,
+        metadata: serializeScheduleMetadata(body),
+        scheduledAt: body.scheduledAt,
+      });
+
+      return c.json({
+        success: true,
+        data: {
+          scheduled: true,
+          scheduledMessage: serializeScheduledMessage(scheduled),
+        },
+      }, 201);
     }
+
+    const now = jstNow();
+    const dispatchResult = await dispatchOutboundMessage({
+      env: c.env,
+      friend,
+      input: {
+        messageType,
+        content: body.content,
+        fileName: body.fileName,
+        fileSize: body.fileSize,
+        fileIcon: body.fileIcon,
+      },
+    });
 
     // メッセージログに記録
     const logId = crypto.randomUUID();
     await c.env.DB
       .prepare(`INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at) VALUES (?, ?, 'outgoing', ?, ?, ?)`)
-      .bind(logId, friend.id, messageType, body.content, jstNow())
+      .bind(logId, friend.id, dispatchResult.messageType, dispatchResult.storedContent, now)
       .run();
 
     // チャットの最終メッセージ日時を更新
-    await updateChat(c.env.DB, chatId, { status: 'in_progress', lastMessageAt: jstNow() });
+    await updateChat(c.env.DB, chatId, { status: 'in_progress', lastMessageAt: now });
+
+    // Slack通知
+    if (c.env.SLACK_BOT_TOKEN && ['text', 'image', 'file', 'sticker'].includes(dispatchResult.messageType)) {
+      const friendInfo = await c.env.DB.prepare(
+        `SELECT f.display_name, f.slack_channel_id,
+                la.name as account_name, la.locale, la.default_slack_channel
+         FROM friends f LEFT JOIN line_accounts la ON la.id = f.line_account_id WHERE f.id = ?`
+      ).bind(friend.id).first<{
+        display_name: string;
+        slack_channel_id: string | null;
+        account_name: string | null;
+        locale: string | null;
+        default_slack_channel: string | null;
+      }>();
+      if (friendInfo) {
+        const { notifySlackOutgoing, resolveSlackChannelId } = await import('../services/slack.js');
+        await notifySlackOutgoing({
+          slackToken: c.env.SLACK_BOT_TOKEN,
+          slackChannelId: resolveSlackChannelId(
+            friendInfo.slack_channel_id,
+            friendInfo.default_slack_channel,
+          ),
+          friendName: friendInfo.display_name || 'Unknown',
+          messageText: summarizeOutboundMessage(dispatchResult.messageType, dispatchResult.storedContent),
+          accountName: friendInfo.account_name || undefined,
+          locale: friendInfo.locale,
+        }).catch((err) => console.error('Slack outgoing notification error:', err));
+      }
+    }
 
     return c.json({ success: true, data: { sent: true, messageId: logId } });
   } catch (err) {
     console.error('POST /api/chats/:id/send error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+chats.delete('/api/scheduled-messages/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const item = await getScheduledMessageById(c.env.DB, id);
+    if (!item) return c.json({ success: false, error: 'Scheduled message not found' }, 404);
+    if (item.status === 'sent') {
+      return c.json({ success: false, error: 'Sent scheduled messages cannot be cancelled' }, 400);
+    }
+
+    await cancelScheduledMessage(c.env.DB, id);
+    return c.json({ success: true, data: null });
+  } catch (err) {
+    console.error('DELETE /api/scheduled-messages/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+chats.put('/api/scheduled-messages/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const item = await getScheduledMessageById(c.env.DB, id);
+    if (!item) return c.json({ success: false, error: 'Scheduled message not found' }, 404);
+    if (item.status === 'sent') {
+      return c.json({ success: false, error: 'Sent scheduled messages cannot be updated' }, 400);
+    }
+    if (item.status === 'sending') {
+      return c.json({ success: false, error: 'Sending scheduled messages cannot be updated' }, 400);
+    }
+
+    const body = await c.req.json<{ scheduledAt?: string | null }>();
+    if (!body.scheduledAt) {
+      return c.json({ success: false, error: 'scheduledAt is required' }, 400);
+    }
+
+    const scheduledAt = new Date(body.scheduledAt);
+    if (Number.isNaN(scheduledAt.getTime())) {
+      return c.json({ success: false, error: 'scheduledAt must be a valid datetime' }, 400);
+    }
+
+    const updated = await updateScheduledMessage(c.env.DB, id, {
+      scheduledAt: body.scheduledAt,
+    });
+    if (!updated) {
+      return c.json({ success: false, error: 'Scheduled message not found' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: serializeScheduledMessage(updated),
+    });
+  } catch (err) {
+    console.error('PUT /api/scheduled-messages/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

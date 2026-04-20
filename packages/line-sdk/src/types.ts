@@ -182,6 +182,12 @@ export interface TemplateMessage {
   template: Record<string, unknown>;
 }
 
+export interface StickerMessage {
+  type: 'sticker';
+  packageId: string;
+  stickerId: string;
+}
+
 export interface ImageMapMessageType {
   type: 'imagemap';
   baseUrl: string;
@@ -194,6 +200,7 @@ export type Message =
   | TextMessage
   | ImageMessage
   | FlexMessage
+  | StickerMessage
   | VideoMessage
   | TemplateMessage
   | ImageMapMessageType;

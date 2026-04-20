@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Scenario, ScenarioTriggerType } from '@line-crm/shared'
 import { api } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
@@ -33,6 +34,8 @@ type ScenarioWithCount = Scenario & { stepCount?: number }
 const triggerOptions: { value: ScenarioTriggerType; label: string }[] = [
   { value: 'friend_add', label: '友だち追加時' },
   { value: 'tag_added', label: 'タグ付与時' },
+  { value: 'keyword', label: 'キーワード (リッチメニュー等)' },
+  { value: 'postback', label: 'Postback (API経由)' },
   { value: 'manual', label: '手動' },
 ]
 
@@ -41,10 +44,12 @@ interface CreateFormState {
   description: string
   triggerType: ScenarioTriggerType
   triggerTagId: string
+  triggerData: string
   isActive: boolean
 }
 
 export default function ScenariosPage() {
+  const router = useRouter()
   const { selectedAccountId } = useAccount()
   const [scenarios, setScenarios] = useState<ScenarioWithCount[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,6 +60,7 @@ export default function ScenariosPage() {
     description: '',
     triggerType: 'friend_add',
     triggerTagId: '',
+    triggerData: '',
     isActive: true,
   })
   const [saving, setSaving] = useState(false)
@@ -94,12 +100,15 @@ export default function ScenariosPage() {
         description: form.description || null,
         triggerType: form.triggerType,
         triggerTagId: form.triggerTagId || null,
+        triggerData: form.triggerData || null,
         isActive: form.isActive,
+        lineAccountId: selectedAccountId || undefined,
       })
       if (res.success) {
         setShowCreate(false)
-        setForm({ name: '', description: '', triggerType: 'friend_add', triggerTagId: '', isActive: true })
-        loadScenarios()
+        setForm({ name: '', description: '', triggerType: 'friend_add', triggerTagId: '', triggerData: '', isActive: true })
+        // Auto-navigate to detail page to add steps
+        router.push(`/scenarios/detail?id=${res.data.id}`)
       } else {
         setFormError(res.error)
       }
@@ -112,19 +121,28 @@ export default function ScenariosPage() {
 
   const handleToggleActive = async (id: string, current: boolean) => {
     try {
-      await api.scenarios.update(id, { isActive: !current })
-      loadScenarios()
-    } catch {
-      setError('ステータスの変更に失敗しました')
+      const res = await api.scenarios.update(id, { isActive: !current })
+      if (res.success) {
+        loadScenarios()
+      } else {
+        setError(`ステータスの変更に失敗: ${res.error || '不明なエラー'}`)
+      }
+    } catch (err) {
+      setError(`ステータスの変更に失敗しました: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
   const handleDelete = async (id: string) => {
+    if (!confirm('このシナリオを削除してもよいですか？')) return
     try {
-      await api.scenarios.delete(id)
-      loadScenarios()
-    } catch {
-      setError('削除に失敗しました')
+      const res = await api.scenarios.delete(id)
+      if (res.success) {
+        loadScenarios()
+      } else {
+        setError(`削除に失敗: ${res.error || '不明なエラー'}`)
+      }
+    } catch (err) {
+      setError(`削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -187,6 +205,25 @@ export default function ScenariosPage() {
                 ))}
               </select>
             </div>
+            {(form.triggerType === 'keyword' || form.triggerType === 'postback') && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  {form.triggerType === 'keyword' ? 'キーワード' : 'Postback Data'} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder={form.triggerType === 'keyword' ? '例: 特典を見る' : '例: action=coupon'}
+                  value={form.triggerData}
+                  onChange={(e) => setForm({ ...form, triggerData: e.target.value })}
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  {form.triggerType === 'keyword'
+                    ? 'リッチメニューの「テキスト送信」に設定した文字列と完全一致で発火します'
+                    : 'リッチメニューのPostbackアクションに設定した data と一致させてください'}
+                </p>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"

@@ -189,7 +189,7 @@ app.use('*', cors({ origin: '*' }));
 
 ```typescript
 app.use('*', cors({
-  origin: ['https://line-crm-admin.pages.dev', 'https://your-domain.com'],
+  origin: ['https://line-crm-web-2ob.pages.dev', 'https://your-domain.com'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Authorization', 'Content-Type'],
 }));
@@ -308,8 +308,9 @@ ngrok http 8787
 pnpm dev:worker          # Workers ローカル起動
 pnpm dev:web             # 管理画面ローカル起動
 pnpm build               # 全パッケージビルド
+pnpm build:web           # 管理画面ビルドのみ
 pnpm deploy:worker       # Workers デプロイ
-pnpm deploy:web          # 管理画面ビルド
+pnpm deploy:web          # 管理画面を本番 Pages へデプロイ
 pnpm db:migrate          # 本番D1にスキーマ適用
 pnpm db:migrate:local    # ローカルD1にスキーマ適用
 ```

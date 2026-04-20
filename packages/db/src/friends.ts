@@ -8,6 +8,7 @@ export interface Friend {
   is_following: number;
   user_id: string | null;
   line_account_id: string | null;
+  slack_channel_id: string | null;
   metadata: string;
   created_at: string;
   updated_at: string;

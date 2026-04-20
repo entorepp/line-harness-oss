@@ -5,6 +5,7 @@ import { getLineAccounts } from '@line-crm/db';
 import { processStepDeliveries } from './services/step-delivery.js';
 import { processScheduledBroadcasts } from './services/broadcast.js';
 import { processReminderDeliveries } from './services/reminder-delivery.js';
+import { processScheduledMessages } from './services/scheduled-messages.js';
 import { checkAccountHealth } from './services/ban-monitor.js';
 import { authMiddleware } from './middleware/auth.js';
 import { webhook } from './routes/webhook.js';
@@ -32,6 +33,9 @@ import { automations } from './routes/automations.js';
 import { richMenus } from './routes/rich-menus.js';
 import { trackedLinks } from './routes/tracked-links.js';
 import { forms } from './routes/forms.js';
+import { entryRoutes } from './routes/entry-routes.js';
+import { uploads } from './routes/uploads.js';
+import { waWebhook } from './routes/wa-webhook.js';
 
 export type Env = {
   Bindings: {
@@ -44,13 +48,41 @@ export type Env = {
     LINE_LOGIN_CHANNEL_ID: string;
     LINE_LOGIN_CHANNEL_SECRET: string;
     WORKER_URL: string;
+    WEB_APP_URL?: string;
+    FORMS_APP_URL?: string;
+    SLACK_BOT_TOKEN: string;
+    GOOGLE_TRANSLATE_API_KEY: string;
+    FORMS_ENABLE_LINE_FOLLOWUP?: string;
+    GA4_MEASUREMENT_ID: string;
+    UPLOADS: KVNamespace;
+    WA_BRIDGE_SECRET: string;
   };
 };
 
 const app = new Hono<Env>();
+const DEFAULT_WEB_APP_URL = 'https://line-crm-web-2ob.pages.dev';
+
+function buildWebAppRedirectUrl(requestUrl: string, webAppUrl: string | undefined, path: string): string {
+  const source = new URL(requestUrl);
+  const base = (webAppUrl || DEFAULT_WEB_APP_URL).replace(/\/+$/, '');
+  const target = new URL(path, `${base}/`);
+
+  for (const [key, value] of source.searchParams.entries()) {
+    target.searchParams.append(key, value);
+  }
+
+  return target.toString();
+}
 
 // CORS — allow all origins for MVP
 app.use('*', cors({ origin: '*' }));
+
+// Human-friendly redirects for the Worker domain.
+app.get('/', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.WEB_APP_URL, '/'), 302));
+app.get('/forms', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/forms'), 302));
+app.get('/forms/new', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/forms/new'), 302));
+app.get('/forms/edit', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/forms/edit'), 302));
+app.get('/public-form', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/public-form'), 302));
 
 // Auth middleware — skips /webhook and /docs automatically
 app.use('*', authMiddleware);
@@ -82,74 +114,125 @@ app.route('/', automations);
 app.route('/', richMenus);
 app.route('/', trackedLinks);
 app.route('/', forms);
+app.route('/', entryRoutes);
+app.route('/', uploads);
+app.route('/', waWebhook);
 
-// Short link: /r/:ref → landing page with LINE open button
-app.get('/r/:ref', (c) => {
-  const ref = c.req.param('ref');
-  const liffUrl = c.env.LIFF_URL || 'https://liff.line.me/2009554425-4IMBmLQ9';
-  const target = `${liffUrl}?ref=${encodeURIComponent(ref)}`;
+// Short link: /r/:ref → record click with referrer → redirect to LINE add-friend URL
+// Also supports /r/ (no ref) as a universal tracking redirect
+app.get('/r/:ref?', async (c) => {
+  const ref = c.req.param('ref') || '_default';
+  const db = c.env.DB;
 
-  return c.html(`<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LINE Harness</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Hiragino Sans',system-ui,sans-serif;background:#0d1117;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh}
-.card{text-align:center;max-width:400px;width:90%;padding:48px 24px}
-h1{font-size:28px;font-weight:800;margin-bottom:8px}
-.sub{font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:40px}
-.btn{display:block;width:100%;padding:18px;border:none;border-radius:12px;font-size:18px;font-weight:700;text-decoration:none;text-align:center;color:#fff;background:#06C755;transition:opacity .15s}
-.btn:active{opacity:.85}
-.note{font-size:12px;color:rgba(255,255,255,0.3);margin-top:24px;line-height:1.6}
-</style>
-</head>
-<body>
-<div class="card">
-<h1>LINE Harness</h1>
-<p class="sub">L社 / U社 の無料代替 OSS</p>
-<a href="${target}" class="btn">LINE で体験する</a>
-<p class="note">友だち追加するだけで<br>ステップ配信・フォーム・自動返信を体験できます</p>
-</div>
-</body>
-</html>`);
+  // Capture where the user came from
+  const referrer = c.req.header('Referer') || '';
+  const utmSource = c.req.query('utm_source') || '';
+  const utmMedium = c.req.query('utm_medium') || '';
+  const utmCampaign = c.req.query('utm_campaign') || '';
+  const utmContent = c.req.query('utm_content') || '';
+
+  // Look up the entry route to find associated LINE account
+  let addFriendUrl = '';
+  try {
+    const route = await db.prepare(
+      'SELECT er.name, er.line_account_id, la.add_friend_url, la.basic_id FROM entry_routes er LEFT JOIN line_accounts la ON la.id = er.line_account_id WHERE er.ref_code = ? AND er.is_active = 1'
+    ).bind(ref).first<{ name: string; line_account_id: string | null; add_friend_url: string | null; basic_id: string | null }>();
+    if (route) {
+      addFriendUrl = route.add_friend_url || (route.basic_id ? `https://line.me/R/ti/p/${route.basic_id}` : '');
+    }
+  } catch { /* fallback */ }
+
+  // Fallback: first active account
+  if (!addFriendUrl) {
+    try {
+      const account = await db.prepare('SELECT add_friend_url, basic_id FROM line_accounts WHERE is_active = 1 LIMIT 1')
+        .first<{ add_friend_url: string | null; basic_id: string | null }>();
+      addFriendUrl = account?.add_friend_url || (account?.basic_id ? `https://line.me/R/ti/p/${account.basic_id}` : '');
+    } catch { /* fallback */ }
+  }
+
+  if (!addFriendUrl) {
+    addFriendUrl = c.env.LIFF_URL || 'https://liff.line.me/2009554425-4IMBmLQ9';
+  }
+
+  // Record click with referrer & UTM (non-blocking)
+  c.executionCtx.waitUntil((async () => {
+    try {
+      const trackId = crypto.randomUUID();
+      await db.prepare(
+        `INSERT INTO ref_tracking (id, ref_code, event_type, source_url, utm_source, utm_medium, utm_campaign, utm_content, user_agent, created_at) VALUES (?, ?, 'click', ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(trackId, ref, referrer, utmSource, utmMedium, utmCampaign, utmContent, c.req.header('User-Agent') || '').run();
+    } catch (err) {
+      console.error('ref_tracking insert error:', err);
+    }
+  })());
+
+  // GA4 Measurement Protocol: server-side event (non-blocking)
+  const ga4Id = c.env.GA4_MEASUREMENT_ID || '';
+  if (ga4Id) {
+    c.executionCtx.waitUntil((async () => {
+      try {
+        // Use GA4 Measurement Protocol to send event server-side
+        const clientId = crypto.randomUUID();
+        await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${ga4Id}&api_secret=`, {
+          method: 'POST',
+          body: JSON.stringify({
+            client_id: clientId,
+            events: [{
+              name: 'line_friend_click',
+              params: {
+                ref_code: ref,
+                referrer: referrer,
+                utm_source: utmSource,
+                utm_medium: utmMedium,
+                utm_campaign: utmCampaign,
+              },
+            }],
+          }),
+        });
+      } catch { /* non-blocking */ }
+    })());
+  }
+
+  // 302 redirect to LINE add-friend URL
+  return c.redirect(addFriendUrl, 302);
 });
 
 // 404 fallback
 app.notFound((c) => c.json({ success: false, error: 'Not found' }, 404));
 
-// Scheduled handler for cron triggers — runs for all active LINE accounts
+// Scheduled handler for cron triggers — runs per LINE account while leaving
+// WhatsApp delivery to the channel-aware scheduled message worker.
 async function scheduled(
   _event: ScheduledEvent,
   env: Env['Bindings'],
   _ctx: ExecutionContext,
 ): Promise<void> {
-  // Get all active accounts from DB, plus the default env account
   const dbAccounts = await getLineAccounts(env.DB);
-  const activeTokens = new Set<string>();
+  const jobs: Promise<unknown>[] = [];
 
-  // Default account from env
-  activeTokens.add(env.LINE_CHANNEL_ACCESS_TOKEN);
-
-  // DB accounts
-  for (const account of dbAccounts) {
-    if (account.is_active) {
-      activeTokens.add(account.channel_access_token);
-    }
-  }
-
-  // Run delivery for each account
-  const jobs = [];
-  for (const token of activeTokens) {
-    const lineClient = new LineClient(token);
+  if (env.LINE_CHANNEL_ACCESS_TOKEN) {
+    const defaultLineClient = new LineClient(env.LINE_CHANNEL_ACCESS_TOKEN);
     jobs.push(
-      processStepDeliveries(env.DB, lineClient, env.WORKER_URL),
-      processScheduledBroadcasts(env.DB, lineClient),
-      processReminderDeliveries(env.DB, lineClient),
+      processStepDeliveries(env.DB, defaultLineClient, env.WORKER_URL, null),
+      processScheduledBroadcasts(env.DB, defaultLineClient, null),
+      processReminderDeliveries(env.DB, defaultLineClient, null),
     );
   }
+
+  for (const account of dbAccounts) {
+    if (!account.is_active || account.channel_type === 'whatsapp') {
+      continue;
+    }
+
+    const lineClient = new LineClient(account.channel_access_token);
+    jobs.push(
+      processStepDeliveries(env.DB, lineClient, env.WORKER_URL, account.id),
+      processScheduledBroadcasts(env.DB, lineClient, account.id),
+      processReminderDeliveries(env.DB, lineClient, account.id),
+    );
+  }
+  jobs.push(processScheduledMessages(env));
   jobs.push(checkAccountHealth(env.DB));
 
   await Promise.allSettled(jobs);

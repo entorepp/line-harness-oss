@@ -5,7 +5,7 @@
  * POST channel_id + channel_secret → new access_token (30 days).
  * No refresh_token needed.
  *
- * Runs every cron cycle (5 min). Only refreshes when:
+ * Runs every cron cycle. Only refreshes when:
  * - token_expires_at is within 7 days, OR
  * - token_expires_at is NULL (legacy, unknown expiry — refresh once to start tracking)
  */

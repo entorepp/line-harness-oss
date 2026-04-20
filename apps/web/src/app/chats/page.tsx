@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api, fetchApi } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
-import CcPromptButton from '@/components/cc-prompt-button'
+import ChatComposer from '@/components/chat-composer'
+import ChatMessageContent from '@/components/chat-message-content'
 
 interface Chat {
   id: string
@@ -15,6 +16,8 @@ interface Chat {
   status: 'unread' | 'in_progress' | 'resolved'
   notes: string | null
   lastMessageAt: string | null
+  lastMessageId: string | null
+  lastMessageDirection: 'incoming' | 'outgoing' | null
   createdAt: string
   updatedAt: string
 }
@@ -30,6 +33,7 @@ interface ChatMessage {
 interface ChatDetail extends Chat {
   friendName: string
   friendPictureUrl: string | null
+  slackChannelId: string | null
   messages?: ChatMessage[]
 }
 
@@ -59,25 +63,6 @@ function formatDatetime(iso: string | null): string {
   })
 }
 
-const ccPrompts = [
-  {
-    title: 'チャット対応テンプレート',
-    prompt: `チャット対応で使えるテンプレートメッセージを作成してください。
-1. よくある質問への回答テンプレート（挨拶、FAQ、サポート）
-2. クレーム対応用の丁寧な返信テンプレート
-3. フォローアップメッセージのテンプレート
-手順を示してください。`,
-  },
-  {
-    title: '未対応チャット確認',
-    prompt: `未対応のチャットを確認し、対応優先度を整理してください。
-1. 未読・対応中のチャット数を集計
-2. 最終メッセージからの経過時間で優先度を判定
-3. 長時間未対応のチャットへの対応アクションを提案
-結果をレポートしてください。`,
-  },
-]
-
 interface FriendItem {
   id: string
   displayName: string
@@ -93,77 +78,37 @@ interface MessageLog {
   createdAt: string
 }
 
-function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
+function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onError }: {
   friendId: string
   friend: FriendItem | null
+  channelType?: 'line' | 'whatsapp'
   onBack: () => void
   onSent: () => void
+  onError: (message: string) => void
 }) {
-  const [message, setMessage] = useState('')
-  const [sending, setSending] = useState(false)
   const [messages, setMessages] = useState<MessageLog[]>([])
   const [loadingMessages, setLoadingMessages] = useState(true)
 
-  useEffect(() => {
-    const loadMessages = async () => {
-      setLoadingMessages(true)
-      try {
-        const res = await fetchApi<{ success: boolean; data: MessageLog[] }>(
-          `/api/friends/${friendId}/messages`
-        )
-        if (res.success) setMessages(res.data)
-      } catch { /* silent */ }
-      setLoadingMessages(false)
-    }
-    loadMessages()
+  const loadMessages = useCallback(async (silent = false) => {
+    if (!silent) setLoadingMessages(true)
+    try {
+      const res = await fetchApi<{ success: boolean; data: MessageLog[] }>(
+        `/api/friends/${friendId}/messages`
+      )
+      if (res.success) setMessages(res.data)
+    } catch { /* silent */ }
+    if (!silent) setLoadingMessages(false)
   }, [friendId])
 
-  const handleSend = async () => {
-    if (!message.trim() || sending) return
-    setSending(true)
-    try {
-      await fetchApi(`/api/friends/${friendId}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({ content: message, messageType: 'text' }),
-      })
-      setMessages((prev) => [...prev, {
-        id: crypto.randomUUID(),
-        direction: 'outgoing',
-        messageType: 'text',
-        content: message,
-        createdAt: new Date().toISOString(),
-      }])
-      setMessage('')
-    } catch { /* silent */ }
-    setSending(false)
-  }
+  useEffect(() => {
+    loadMessages()
+  }, [loadMessages])
 
-  function renderContent(msg: MessageLog) {
-    if (msg.messageType === 'text') return msg.content
-    if (msg.messageType === 'flex') {
-      try {
-        const parsed = JSON.parse(msg.content)
-        // Extract ALL text from flex (up to 200 chars)
-        const texts: string[] = []
-        const collectText = (obj: Record<string, unknown>) => {
-          if (texts.join(' ').length > 200) return
-          if (obj.type === 'text' && typeof obj.text === 'string') {
-            const t = (obj.text as string).trim()
-            if (t && !t.startsWith('{{')) texts.push(t)
-          }
-          for (const key of ['header', 'body', 'footer']) {
-            if (obj[key]) collectText(obj[key] as Record<string, unknown>)
-          }
-          if (Array.isArray(obj.contents)) {
-            for (const c of obj.contents) collectText(c as Record<string, unknown>)
-          }
-        }
-        collectText(parsed)
-        return texts.slice(0, 4).join('\n') || '[Flex Message]'
-      } catch { return '[Flex Message]' }
-    }
-    return `[${msg.messageType}]`
-  }
+  // Polling: auto-refresh messages every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => loadMessages(true), 5000)
+    return () => clearInterval(interval)
+  }, [loadMessages])
 
   return (
     <div className="flex flex-col h-full">
@@ -198,7 +143,9 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-100 text-gray-900'
               }`}>
-                <p className="text-sm whitespace-pre-wrap break-words">{renderContent(msg)}</p>
+                <div className="text-sm">
+                  <ChatMessageContent messageType={msg.messageType} content={msg.content} />
+                </div>
                 <p className={`text-xs mt-1 ${msg.direction === 'outgoing' ? 'text-green-200' : 'text-gray-400'}`}>
                   {new Date(msg.createdAt).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                 </p>
@@ -208,31 +155,22 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
         )}
       </div>
       <div className="px-4 py-3 border-t border-gray-200">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder="メッセージを入力..."
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!message.trim() || sending}
-            className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50"
-            style={{ backgroundColor: '#06C755' }}
-          >
-            {sending ? '...' : '送信'}
-          </button>
-        </div>
+        <ChatComposer
+          friendId={friendId}
+          channelType={channelType}
+          onSent={() => {
+            void loadMessages()
+            onSent()
+          }}
+          onError={onError}
+        />
       </div>
     </div>
   )
 }
 
 export default function ChatsPage() {
-  const { selectedAccountId } = useAccount()
+  const { selectedAccountId, selectedAccount } = useAccount()
   const [chats, setChats] = useState<Chat[]>([])
   const [allFriends, setAllFriends] = useState<FriendItem[]>([])
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
@@ -242,14 +180,34 @@ export default function ChatsPage() {
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState('')
-  const [messageContent, setMessageContent] = useState('')
-  const [sending, setSending] = useState(false)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [editingSlack, setEditingSlack] = useState(false)
+  const [slackInput, setSlackInput] = useState('')
+  const [savingSlack, setSavingSlack] = useState(false)
 
-  const loadChats = useCallback(async () => {
-    setLoading(true)
-    setError('')
+  // Track previous chat state for notification
+  const prevUnreadRef = useRef(0)
+  const prevLatestIncomingSignatureRef = useRef<string | null>(null)
+  const prevLatestIncomingAtRef = useRef<string | null>(null)
+  const notificationPermissionRef = useRef<NotificationPermission>('default')
+
+  // Request browser notification permission on mount
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') {
+      notificationPermissionRef.current = Notification.permission
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then((perm) => {
+          notificationPermissionRef.current = perm
+        })
+      }
+    }
+  }, [])
+
+  const loadChats = useCallback(async (silent = false) => {
+    if (!silent) { setLoading(true); setError('') }
     try {
       const params: { status?: string; accountId?: string } = {}
       if (statusFilter !== 'all') params.status = statusFilter
@@ -259,63 +217,123 @@ export default function ChatsPage() {
         api.friends.list({ accountId: selectedAccountId || undefined, limit: '100' }),
       ])
       if (chatRes.status === 'fulfilled' && chatRes.value.success) {
-        setChats(chatRes.value.data as unknown as Chat[])
+        const newChats = chatRes.value.data as unknown as Chat[]
+        setChats(newChats)
+
+        const latestIncomingChat = newChats
+          .filter((c) => c.lastMessageDirection === 'incoming' && c.lastMessageAt)
+          .sort((a, b) => {
+            const left = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0
+            const right = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0
+            return right - left
+          })[0]
+        const latestIncomingSignature = latestIncomingChat
+          ? `${latestIncomingChat.id}:${latestIncomingChat.lastMessageId || ''}:${latestIncomingChat.lastMessageAt || ''}`
+          : null
+
+        const unreadCount = newChats.filter((c) => c.status === 'unread').length
+        if (
+          silent &&
+          latestIncomingChat &&
+          prevLatestIncomingSignatureRef.current &&
+          latestIncomingSignature !== prevLatestIncomingSignatureRef.current &&
+          latestIncomingChat.lastMessageAt &&
+          new Date(latestIncomingChat.lastMessageAt).getTime() >
+            new Date(prevLatestIncomingAtRef.current || 0).getTime()
+        ) {
+          // Browser notification
+          if (notificationPermissionRef.current === 'granted') {
+            const latestName = latestIncomingChat.friendName || '顧客'
+            new Notification('LINE Harness: 新着メッセージ', {
+              body: `${latestName}さんからメッセージが届きました`,
+              icon: '/favicon.ico',
+              tag: 'lh-unread',
+            })
+          }
+        }
+        prevUnreadRef.current = unreadCount
+        prevLatestIncomingSignatureRef.current = latestIncomingSignature
+        prevLatestIncomingAtRef.current = latestIncomingChat?.lastMessageAt || null
+
+        // Update page title with unread count
+        document.title = unreadCount > 0
+          ? `(${unreadCount}) オペレーターチャット - LINE Harness`
+          : 'オペレーターチャット - LINE Harness'
       }
       if (friendRes.status === 'fulfilled' && friendRes.value.success) {
         setAllFriends((friendRes.value.data as unknown as { items: FriendItem[] }).items)
       }
     } catch {
-      setError('チャットの読み込みに失敗しました。もう一度お試しください。')
+      if (!silent) setError('チャットの読み込みに失敗しました。もう一度お試しください。')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [statusFilter, selectedAccountId])
 
-  const loadChatDetail = useCallback(async (chatId: string) => {
-    setDetailLoading(true)
+  const loadChatDetail = useCallback(async (chatId: string, silent = false) => {
+    if (!silent) setDetailLoading(true)
     try {
       const res = await api.chats.get(chatId)
       if (res.success) {
         setChatDetail(res.data as unknown as ChatDetail)
-        setNotes((res.data as unknown as ChatDetail).notes || '')
+        if (!silent) setNotes((res.data as unknown as ChatDetail).notes || '')
       }
     } catch {
-      setError('チャット詳細の読み込みに失敗しました。')
+      if (!silent) setError('チャット詳細の読み込みに失敗しました。')
     } finally {
-      setDetailLoading(false)
+      if (!silent) setDetailLoading(false)
     }
   }, [])
 
+  // Initial load
   useEffect(() => {
     loadChats()
   }, [loadChats])
 
   useEffect(() => {
     if (selectedChatId) {
+      setSettingsOpen(false)
+      setEditingSlack(false)
       loadChatDetail(selectedChatId)
     } else {
       setChatDetail(null)
     }
   }, [selectedChatId, loadChatDetail])
 
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesContainerRef.current && chatDetail?.messages?.length) {
+      requestAnimationFrame(() => {
+        const el = messagesContainerRef.current
+        if (el) el.scrollTop = el.scrollHeight
+      })
+    }
+  }, [chatDetail?.messages])
+
+  // Polling: auto-refresh chat list every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadChats(true) // silent refresh
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [loadChats])
+
+  // Polling: auto-refresh chat detail every 5 seconds when a chat is selected
+  useEffect(() => {
+    if (!selectedChatId) return
+    const interval = setInterval(() => {
+      loadChatDetail(selectedChatId, true) // silent refresh
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [selectedChatId, loadChatDetail])
+
+  // Cleanup title on unmount
+  useEffect(() => {
+    return () => { document.title = 'LINE Harness' }
+  }, [])
+
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId)
-    setMessageContent('')
-  }
-
-  const handleSendMessage = async () => {
-    if (!selectedChatId || !messageContent.trim()) return
-    setSending(true)
-    try {
-      await api.chats.send(selectedChatId, { content: messageContent.trim() })
-      setMessageContent('')
-      loadChatDetail(selectedChatId)
-      loadChats()
-    } catch {
-      setError('メッセージの送信に失敗しました。')
-    } finally {
-      setSending(false)
-    }
   }
 
   const handleStatusUpdate = async (newStatus: Chat['status']) => {
@@ -342,16 +360,42 @@ export default function ChatsPage() {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
+  const handleSlackSave = async (friendId: string) => {
+    setSavingSlack(true)
+    try {
+      await api.slack.linkFriend(friendId, slackInput.trim() || null)
+      setEditingSlack(false)
+      if (selectedChatId) loadChatDetail(selectedChatId)
+    } catch {
+      setError('Slackチャンネルの設定に失敗しました')
+    } finally {
+      setSavingSlack(false)
     }
   }
 
+  const handleSlackRemove = async (friendId: string) => {
+    try {
+      await api.slack.linkFriend(friendId, null)
+      if (selectedChatId) loadChatDetail(selectedChatId)
+    } catch {
+      setError('Slack連携の解除に失敗しました')
+    }
+  }
+
+  const unreadCount = chats.filter((c) => c.status === 'unread').length
+
   return (
     <div>
-      <Header title="オペレーターチャット" />
+      <Header title={
+        <span className="flex items-center gap-2">
+          オペレーターチャット
+          {unreadCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold text-white animate-pulse" style={{ backgroundColor: '#EF4444' }}>
+              {unreadCount}
+            </span>
+          )}
+        </span>
+      } />
 
       {/* Error */}
       {error && (
@@ -429,8 +473,8 @@ export default function ChatsPage() {
                     </button>
                   )
                 })}
-                {/* Friends without chats */}
-                {allFriends
+                {/* Friends without chats — only show on "全て" tab */}
+                {statusFilter === 'all' && allFriends
                   .filter((f) => f.isFollowing && !chats.some((c) => c.friendId === f.id))
                   .map((friend) => {
                     const isSelected = selectedFriendId === friend.id
@@ -473,8 +517,10 @@ export default function ChatsPage() {
             <DirectMessagePanel
               friendId={selectedFriendId}
               friend={allFriends.find((f) => f.id === selectedFriendId) || null}
+              channelType={selectedAccount?.channelType}
               onBack={() => setSelectedFriendId(null)}
-              onSent={() => { setSelectedFriendId(null); loadChats(); }}
+              onSent={() => { void loadChats() }}
+              onError={setError}
             />
           ) : !selectedChatId ? (
             <div className="flex-1 flex items-center justify-center">
@@ -502,9 +548,18 @@ export default function ChatsPage() {
                     <img src={chatDetail.friendPictureUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
                   )}
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {chatDetail.friendName}
-                    </p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {chatDetail.friendName}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setSettingsOpen((current) => !current)}
+                        className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-200"
+                      >
+                        設定
+                      </button>
+                    </div>
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${statusConfig[chatDetail.status].className}`}
                     >
@@ -540,8 +595,100 @@ export default function ChatsPage() {
                 </div>
               </div>
 
+              {settingsOpen && (
+                <div className="border-b border-gray-100 bg-gray-50/70 px-4 py-3">
+                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <svg className="h-4 w-4 shrink-0 text-purple-500" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.124 2.521a2.528 2.528 0 0 1 2.52-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.52V8.834zm-1.271 0a2.528 2.528 0 0 1-2.521 2.521 2.528 2.528 0 0 1-2.521-2.521V2.522A2.528 2.528 0 0 1 15.166 0a2.528 2.528 0 0 1 2.521 2.522v6.312zm-2.521 10.124a2.528 2.528 0 0 1 2.521 2.52A2.528 2.528 0 0 1 15.166 24a2.527 2.527 0 0 1-2.521-2.522v-2.52h2.521zm0-1.271a2.527 2.527 0 0 1-2.521-2.521 2.528 2.528 0 0 1 2.521-2.521h6.312A2.528 2.528 0 0 1 24 15.166a2.528 2.528 0 0 1-2.522 2.521h-6.312z"/></svg>
+                          <p className="text-sm font-semibold text-gray-900">Slack連携</p>
+                        </div>
+                        {!editingSlack && chatDetail.slackChannelId ? (
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                              {chatDetail.slackChannelId}
+                            </span>
+                            <button
+                              onClick={() => { setEditingSlack(true); setSlackInput(chatDetail.slackChannelId || '') }}
+                              className="text-xs text-gray-400 hover:text-gray-600"
+                            >
+                              変更
+                            </button>
+                            <button
+                              onClick={() => handleSlackRemove(chatDetail.friendId)}
+                              className="text-xs text-red-400 hover:text-red-600"
+                            >
+                              解除
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3">
+                        {editingSlack ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="text"
+                              value={slackInput}
+                              onChange={(e) => setSlackInput(e.target.value)}
+                              placeholder="SlackチャンネルID (例: C0123456789)"
+                              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 sm:w-56"
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleSlackSave(chatDetail.friendId) }}
+                            />
+                            <button
+                              onClick={() => handleSlackSave(chatDetail.friendId)}
+                              disabled={savingSlack}
+                              className="rounded-md px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                              style={{ backgroundColor: '#7C3AED' }}
+                            >
+                              保存
+                            </button>
+                            <button
+                              onClick={() => setEditingSlack(false)}
+                              className="rounded-md px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        ) : !chatDetail.slackChannelId ? (
+                          <button
+                            onClick={() => { setEditingSlack(true); setSlackInput('') }}
+                            className="text-xs font-medium text-purple-600 hover:text-purple-700"
+                          >
+                            Slackチャンネルを紐付け
+                          </button>
+                        ) : (
+                          <p className="text-xs text-gray-500">通知用チャンネルを紐付け済みです。</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-gray-900">メモ</p>
+                        <button
+                          onClick={handleSaveNotes}
+                          disabled={savingNotes}
+                          className="rounded-md bg-gray-100 px-2 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-200 disabled:opacity-50"
+                        >
+                          {savingNotes ? '保存中...' : '保存'}
+                        </button>
+                      </div>
+                      <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="内部メモ"
+                        rows={3}
+                        className="mt-3 w-full resize-none rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Messages — LINE-style chat bubbles */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundColor: '#7494C0' }}>
+              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundColor: '#7494C0' }}>
                 {(!chatDetail.messages || chatDetail.messages.length === 0) ? (
                   <div className="text-center py-8">
                     <p className="text-white/60 text-sm">メッセージはまだありません。</p>
@@ -549,35 +696,6 @@ export default function ChatsPage() {
                 ) : (
                   (chatDetail.messages ?? []).map((msg) => {
                     const isOutgoing = msg.direction === 'outgoing'
-
-                    // メッセージ表示の分岐
-                    let bubbleContent: React.ReactNode
-                    if (msg.messageType === 'flex') {
-                      // Flexメッセージ — JSONをフォーマットして表示
-                      let formatted = msg.content
-                      try {
-                        formatted = JSON.stringify(JSON.parse(msg.content), null, 2)
-                      } catch { /* use raw */ }
-                      bubbleContent = (
-                        <div className="max-w-[300px]">
-                          <div className="text-xs font-medium mb-1 opacity-70">📋 Flex Message</div>
-                          <pre className="text-xs overflow-x-auto whitespace-pre-wrap bg-black/10 rounded p-2 max-h-[200px] overflow-y-auto" style={{ fontSize: '10px' }}>
-                            {formatted}
-                          </pre>
-                        </div>
-                      )
-                    } else if (msg.messageType === 'image') {
-                      try {
-                        const parsed = JSON.parse(msg.content)
-                        bubbleContent = (
-                          <img src={parsed.originalContentUrl || parsed.previewImageUrl} alt="" className="max-w-[200px] rounded" />
-                        )
-                      } catch {
-                        bubbleContent = <span>🖼️ [画像]</span>
-                      }
-                    } else {
-                      bubbleContent = <span>{msg.content}</span>
-                    }
 
                     return (
                       <div
@@ -596,14 +714,14 @@ export default function ChatsPage() {
                         <div className={`flex flex-col ${isOutgoing ? 'items-end' : 'items-start'}`}>
                           {/* メッセージバブル */}
                           <div
-                            className={`max-w-[320px] px-3 py-2 text-sm break-words whitespace-pre-wrap ${
+                            className={`max-w-[78%] lg:max-w-[520px] px-3 py-2 text-sm break-words whitespace-pre-wrap ${
                               isOutgoing
                                 ? 'rounded-tl-2xl rounded-tr-md rounded-bl-2xl rounded-br-2xl text-white'
                                 : 'rounded-tl-md rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white text-gray-900'
                             }`}
                             style={isOutgoing ? { backgroundColor: '#06C755' } : undefined}
                           >
-                            {bubbleContent}
+                            <ChatMessageContent messageType={msg.messageType} content={msg.content} />
                           </div>
                           {/* 時刻 */}
                           <span className="text-xs text-white/50 mt-0.5 px-1">
@@ -616,52 +734,25 @@ export default function ChatsPage() {
                 )}
               </div>
 
-              {/* Notes */}
-              <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="メモを入力..."
-                    className="flex-1 text-xs border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
-                  />
-                  <button
-                    onClick={handleSaveNotes}
-                    disabled={savingNotes}
-                    className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
-                  >
-                    {savingNotes ? '保存中...' : 'メモ保存'}
-                  </button>
-                </div>
-              </div>
-
               {/* Send Message Form */}
               <div className="px-4 py-3 border-t border-gray-200">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={messageContent}
-                    onChange={(e) => setMessageContent(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="メッセージを入力..."
-                    className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={sending || !messageContent.trim()}
-                    className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: '#06C755' }}
-                  >
-                    {sending ? '送信中...' : '送信'}
-                  </button>
-                </div>
+                <ChatComposer
+                  friendId={chatDetail.friendId}
+                  chatId={selectedChatId}
+                  channelType={selectedAccount?.channelType}
+                  onSent={() => {
+                    if (selectedChatId) {
+                      void loadChatDetail(selectedChatId)
+                    }
+                    void loadChats()
+                  }}
+                  onError={setError}
+                />
               </div>
             </>
           ) : null}
         </div>
       </div>
-      <CcPromptButton prompts={ccPrompts} />
     </div>
   )
 }

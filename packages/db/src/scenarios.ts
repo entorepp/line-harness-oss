@@ -1,5 +1,5 @@
 import { jstNow } from './utils.js';
-export type ScenarioTriggerType = 'friend_add' | 'tag_added' | 'manual';
+export type ScenarioTriggerType = 'friend_add' | 'tag_added' | 'manual' | 'postback' | 'keyword';
 export type MessageType = 'text' | 'image' | 'flex';
 export type FriendScenarioStatus = 'active' | 'paused' | 'completed';
 
@@ -9,6 +9,7 @@ export interface Scenario {
   description: string | null;
   trigger_type: ScenarioTriggerType;
   trigger_tag_id: string | null;
+  trigger_data: string | null;
   line_account_id: string | null;
   is_active: number;
   created_at: string;
@@ -360,16 +361,28 @@ export async function enrollFriendInScenario(
 export async function getFriendScenariosDueForDelivery(
   db: D1Database,
   now: string,
+  lineAccountId?: string | null,
 ): Promise<FriendScenario[]> {
   // Fetch all active scenarios with a delivery time, then filter by epoch comparison
   // to handle mixed timestamp formats (Z and +09:00) during migration
-  const result = await db
-    .prepare(
-      `SELECT * FROM friend_scenarios
-       WHERE status = 'active'
-         AND next_delivery_at IS NOT NULL`,
-    )
-    .all<FriendScenario>();
+  const queryBase = `
+      SELECT fs.*
+      FROM friend_scenarios fs
+      INNER JOIN scenarios s ON s.id = fs.scenario_id
+      WHERE fs.status = 'active'
+        AND fs.next_delivery_at IS NOT NULL
+  `;
+  const result =
+    lineAccountId === undefined
+      ? await db.prepare(queryBase).all<FriendScenario>()
+      : lineAccountId === null
+        ? await db
+            .prepare(`${queryBase} AND s.line_account_id IS NULL`)
+            .all<FriendScenario>()
+        : await db
+            .prepare(`${queryBase} AND s.line_account_id = ?`)
+            .bind(lineAccountId)
+            .all<FriendScenario>();
   const nowMs = new Date(now).getTime();
   return result.results
     .filter((fs) => new Date(fs.next_delivery_at!).getTime() <= nowMs)

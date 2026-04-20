@@ -21,10 +21,40 @@ import {
   jstNow,
 } from '@line-crm/db';
 import { LineClient } from '@line-crm/line-sdk';
+import { notifySlackFormSubmission, notifySlackIncoming, resolveSlackChannelId } from './slack.js';
 
 interface EventPayload {
   friendId?: string;
+  notificationFriendId?: string;
+  notificationSlackChannelId?: string;
   eventData?: Record<string, unknown>;
+  suppressLineActions?: boolean;
+}
+
+interface SlackConfig {
+  token?: string;
+  googleTranslateApiKey?: string;
+}
+
+interface SlackFriendContext {
+  display_name: string | null;
+  picture_url: string | null;
+  slack_channel_id: string | null;
+  account_name: string | null;
+  locale: string | null;
+  default_slack_channel: string | null;
+}
+
+async function getSlackFriendContext(
+  db: D1Database,
+  friendId: string,
+): Promise<SlackFriendContext | null> {
+  return db.prepare(
+    `SELECT f.display_name, f.picture_url, f.slack_channel_id,
+            la.name as account_name, la.locale, la.default_slack_channel
+     FROM friends f LEFT JOIN line_accounts la ON la.id = f.line_account_id
+     WHERE f.id = ?`
+  ).bind(friendId).first<SlackFriendContext>();
 }
 
 /**
@@ -36,13 +66,128 @@ export async function fireEvent(
   payload: EventPayload,
   lineAccessToken?: string,
   lineAccountId?: string | null,
+  slack?: SlackConfig,
 ): Promise<void> {
   await Promise.allSettled([
     fireOutgoingWebhooks(db, eventType, payload),
     processScoring(db, eventType, payload),
     processAutomations(db, eventType, payload, lineAccessToken, lineAccountId),
     processNotifications(db, eventType, payload, lineAccountId),
+    processSlackNotification(db, eventType, payload, slack),
   ]);
+}
+
+/** Slack通知処理: 友だちに紐づいたSlackチャンネルに通知 */
+async function processSlackNotification(
+  db: D1Database,
+  eventType: string,
+  payload: EventPayload,
+  slack?: SlackConfig,
+): Promise<void> {
+  if (!slack?.token) {
+    return;
+  }
+  if (!['message_received', 'form_submit'].includes(eventType)) {
+    return;
+  }
+
+  try {
+    const routingFriendId = payload.notificationFriendId ?? payload.friendId ?? null;
+    const responderFriendId = payload.friendId ?? null;
+
+    const routingFriend = routingFriendId
+      ? await getSlackFriendContext(db, routingFriendId)
+      : null;
+    const responderFriend = responderFriendId
+      ? (responderFriendId === routingFriendId
+        ? routingFriend
+        : await getSlackFriendContext(db, responderFriendId))
+      : null;
+
+    const slackChannelId = resolveSlackChannelId(
+      payload.notificationSlackChannelId
+        ?? routingFriend?.slack_channel_id
+        ?? responderFriend?.slack_channel_id
+        ?? null,
+      routingFriend?.default_slack_channel ?? responderFriend?.default_slack_channel ?? null,
+    );
+
+    if (eventType === 'message_received') {
+      const friend = responderFriend ?? routingFriend;
+      if (!friend) {
+        return;
+      }
+
+      const text = (payload.eventData?.text as string) || '[メディアメッセージ]';
+      const msgType = (payload.eventData?.messageType as string) || 'text';
+      const mediaUrl = payload.eventData?.mediaUrl as string | undefined;
+      const fileName = payload.eventData?.fileName as string | undefined;
+      await notifySlackIncoming({
+        slackToken: slack.token,
+        slackChannelId,
+        friendName: friend.display_name || 'Unknown',
+        friendPictureUrl: friend.picture_url,
+        messageText: text,
+        messageType: msgType,
+        accountName: friend.account_name || undefined,
+        locale: friend.locale,
+        googleTranslateApiKey: slack.googleTranslateApiKey,
+        mediaUrl,
+        fileName,
+      });
+      return;
+    }
+
+    const answerRows = Array.isArray(payload.eventData?.answers)
+      ? payload.eventData.answers
+      : [];
+    const answers = answerRows
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const record = item as Record<string, unknown>;
+        const label = typeof record.label === 'string' ? record.label : null;
+        const value = typeof record.value === 'string' ? record.value : null;
+        return label && value ? { label, value } : null;
+      })
+      .filter((item): item is { label: string; value: string } => Boolean(item));
+
+    const responderName = responderFriend?.display_name
+      || (typeof payload.eventData?.respondentName === 'string'
+        ? payload.eventData.respondentName
+        : null)
+      || (typeof payload.eventData?.formIssueName === 'string'
+        ? payload.eventData.formIssueName
+        : null)
+      || (typeof payload.eventData?.formName === 'string'
+        ? payload.eventData.formName
+        : null)
+      || 'Unknown';
+    const responderPictureUrl = responderFriend?.picture_url
+      || (typeof payload.eventData?.respondentPictureUrl === 'string'
+        ? payload.eventData.respondentPictureUrl
+        : null);
+    const accountName = responderFriend?.account_name || routingFriend?.account_name || undefined;
+    const locale = responderFriend?.locale || routingFriend?.locale || null;
+
+    await notifySlackFormSubmission({
+      slackToken: slack.token,
+      slackChannelId,
+      friendName: responderName,
+      friendPictureUrl: responderPictureUrl,
+      formName: typeof payload.eventData?.formName === 'string'
+        ? payload.eventData.formName
+        : 'Form',
+      answers,
+      accountName,
+      locale,
+      submittedAt: typeof payload.eventData?.submittedAt === 'string'
+        ? payload.eventData.submittedAt
+        : undefined,
+      googleTranslateApiKey: slack.googleTranslateApiKey,
+    });
+  } catch (err) {
+    console.error('[Slack] notification error:', err);
+  }
 }
 
 /** 送信Webhookへの通知 */
@@ -194,6 +339,13 @@ async function executeAction(
   const friendId = payload.friendId;
   if (!friendId && action.type !== 'send_webhook') {
     throw new Error('friendId is required for this action');
+  }
+
+  if (
+    payload.suppressLineActions &&
+    ['start_scenario', 'send_message', 'switch_rich_menu', 'remove_rich_menu'].includes(action.type)
+  ) {
+    return;
   }
 
   switch (action.type) {

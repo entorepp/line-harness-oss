@@ -44,6 +44,8 @@ interface FormState {
   formDef: FormDef | null;
   profile: { userId: string; displayName: string; pictureUrl?: string } | null;
   friendId: string | null;
+  sharedByFriendId: string | null;
+  slackChannelId: string | null;
   submitting: boolean;
 }
 
@@ -51,6 +53,8 @@ const state: FormState = {
   formDef: null,
   profile: null,
   friendId: null,
+  sharedByFriendId: null,
+  slackChannelId: null,
   submitting: false,
 };
 
@@ -387,6 +391,10 @@ async function submitForm(): Promise<void> {
     console.log('Form data collected:', JSON.stringify(data));
     const body: Record<string, unknown> = { data };
     if (state.profile?.userId) body.lineUserId = state.profile.userId;
+    if (state.profile?.displayName) body.responderDisplayName = state.profile.displayName;
+    if (state.profile?.pictureUrl) body.responderPictureUrl = state.profile.pictureUrl;
+    if (state.sharedByFriendId) body.sharedByFriendId = state.sharedByFriendId;
+    if (state.slackChannelId) body.slackChannelId = state.slackChannelId;
     // Note: state.friendId is users.id (UUID), not friends.id — don't send as friendId
     console.log('Submitting to:', `${API_URL}/api/forms/${state.formDef.id}/submit`);
 
@@ -440,6 +448,10 @@ export async function initForm(formId: string | null): Promise<void> {
   renderLoading();
 
   try {
+    const params = new URLSearchParams(window.location.search);
+    state.sharedByFriendId = params.get('sharedBy');
+    state.slackChannelId = params.get('slackChannelId');
+
     // Fetch profile and form definition in parallel
     const [profile, res] = await Promise.all([
       liff.getProfile(),
