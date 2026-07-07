@@ -85,13 +85,6 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const hashPath = window.location.hash.replace(/^#/, '')
-    if (hashPath === '/cases' || hashPath.startsWith('/cases?') || hashPath.startsWith('/cases/')) {
-      window.location.replace(`/cases${hashPath.startsWith('/cases?') ? hashPath.slice('/cases'.length) : ''}`)
-    }
-  }, [])
-
-  useEffect(() => {
     const load = async () => {
       setLoading(true)
       setError('')
