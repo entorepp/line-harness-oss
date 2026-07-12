@@ -8,9 +8,11 @@ import {
 } from '@line-crm/db';
 import type { Broadcast as DbBroadcast, BroadcastMessageType, BroadcastTargetType } from '@line-crm/db';
 import { LineClient } from '@line-crm/line-sdk';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import { processBroadcastSend } from '../services/broadcast.js';
 import { processSegmentSend } from '../services/segment-send.js';
 import type { SegmentCondition } from '../services/segment-query.js';
+import { normalizeFutureScheduledAt } from '../services/schedule-validation.js';
 import type { Env } from '../index.js';
 
 const broadcasts = new Hono<Env>();
@@ -97,13 +99,25 @@ broadcasts.post('/api/broadcasts', async (c) => {
       );
     }
 
+    const messageContent = body.messageType === 'text'
+      ? replaceEmojiShortcodes(body.messageContent)
+      : body.messageContent;
+    let scheduledAt: string | null = null;
+    if (body.scheduledAt) {
+      const normalizedSchedule = normalizeFutureScheduledAt(body.scheduledAt);
+      if (!normalizedSchedule.ok) {
+        return c.json({ success: false, error: normalizedSchedule.error }, 400);
+      }
+      scheduledAt = normalizedSchedule.scheduledAt;
+    }
+
     const broadcast = await createBroadcast(c.env.DB, {
       title: body.title,
       messageType: body.messageType,
-      messageContent: body.messageContent,
+      messageContent,
       targetType: body.targetType,
       targetTagId: body.targetTagId ?? null,
-      scheduledAt: body.scheduledAt ?? null,
+      scheduledAt,
     });
 
     // Save line_account_id if provided
@@ -144,17 +158,33 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
 
     // Keep status in sync with scheduledAt changes
     let statusUpdate: 'draft' | 'scheduled' | undefined;
+    let scheduledAtUpdate: string | null | undefined;
     if (body.scheduledAt !== undefined) {
-      statusUpdate = body.scheduledAt ? 'scheduled' : 'draft';
+      if (body.scheduledAt) {
+        const normalizedSchedule = normalizeFutureScheduledAt(body.scheduledAt);
+        if (!normalizedSchedule.ok) {
+          return c.json({ success: false, error: normalizedSchedule.error }, 400);
+        }
+        scheduledAtUpdate = normalizedSchedule.scheduledAt;
+      } else {
+        scheduledAtUpdate = null;
+      }
+      statusUpdate = scheduledAtUpdate ? 'scheduled' : 'draft';
     }
+
+    const messageContent = body.messageContent === undefined
+      ? undefined
+      : (body.messageType ?? existing.message_type) === 'text'
+        ? replaceEmojiShortcodes(body.messageContent)
+        : body.messageContent;
 
     const updated = await updateBroadcast(c.env.DB, id, {
       title: body.title,
       message_type: body.messageType,
-      message_content: body.messageContent,
+      message_content: messageContent,
       target_type: body.targetType,
       target_tag_id: body.targetTagId,
-      scheduled_at: body.scheduledAt,
+      scheduled_at: scheduledAtUpdate,
       ...(statusUpdate !== undefined ? { status: statusUpdate } : {}),
     });
 

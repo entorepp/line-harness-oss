@@ -13,6 +13,7 @@ import {
   jstNow,
 } from '@line-crm/db';
 import type { LineClient, Message } from '@line-crm/line-sdk';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import { addJitter, sleep } from './stealth.js';
 
 export async function processReminderDeliveries(
@@ -65,14 +66,14 @@ export async function processReminderDeliveries(
 
 function buildMessage(messageType: string, messageContent: string): Message {
   if (messageType === 'text') {
-    return { type: 'text', text: messageContent };
+    return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
   }
   if (messageType === 'image') {
     try {
       const parsed = JSON.parse(messageContent) as { originalContentUrl: string; previewImageUrl: string };
       return { type: 'image', originalContentUrl: parsed.originalContentUrl, previewImageUrl: parsed.previewImageUrl };
     } catch {
-      return { type: 'text', text: messageContent };
+      return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
     }
   }
   if (messageType === 'flex') {
@@ -80,8 +81,8 @@ function buildMessage(messageType: string, messageContent: string): Message {
       const contents = JSON.parse(messageContent);
       return { type: 'flex', altText: 'Reminder', contents };
     } catch {
-      return { type: 'text', text: messageContent };
+      return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
     }
   }
-  return { type: 'text', text: messageContent };
+  return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
 }

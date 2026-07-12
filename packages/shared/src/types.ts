@@ -274,15 +274,15 @@ export interface User {
 export interface LineAccount {
   /** 主キー (UUIDv4) */
   id: string;
-  /** LINE Channel ID */
+  /** Provider channel ID */
   channelId: string;
   /** アカウント名 */
   name: string;
   /** チャネル種別 */
   channelType?: "line" | "whatsapp";
-  /** Channel Access Token */
+  /** Provider access token or API key */
   channelAccessToken: string;
-  /** Channel Secret */
+  /** Provider secret used for webhook verification */
   channelSecret: string;
   /** このアカウント向けの通知・文言ロケール */
   locale?: string;
@@ -428,6 +428,22 @@ export interface OutgoingWebhook {
 // フォーム (Forms / Surveys)
 // -----------------------------------------------------------------------------
 
+export type FormFieldVisibilityOperator =
+  | "equals"
+  | "not_equals"
+  | "includes"
+  | "not_includes"
+  | "greater_than"
+  | "less_than"
+  | "answered"
+  | "not_answered";
+
+export interface FormFieldVisibilityCondition {
+  field: string;
+  operator?: FormFieldVisibilityOperator;
+  value?: string | number | boolean;
+}
+
 export interface FormField {
   name: string;
   label: string;
@@ -436,8 +452,10 @@ export interface FormField {
   options?: string[];
   placeholder?: string;
   helperText?: string;
+  defaultValue?: string | number | string[];
   allowOtherOption?: boolean;
   otherOptionLabel?: string;
+  visibleWhen?: FormFieldVisibilityCondition;
 }
 
 export interface Form {

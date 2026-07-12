@@ -2,7 +2,7 @@
 
 ## プロジェクト概要
 LINE公式アカウント向けOSS CRM / マーケティングオートメーション
-L社/U社代替。AI（CC）ネイティブ設計。
+L社/U社代替。API ネイティブ設計。
 
 ## コンセプト
 - **LINE Harness** = AIがLINEを安全に操作するための基盤
@@ -116,7 +116,7 @@ templates, tracked_links, users
 - コア = LINE配信エンジン + UUID基盤 + CV計測
 - 外部連携 = Webhook/APIで繋ぐ（Stripe, GCal, SendGrid等）
 - ダッシュボード = 視覚的に見るべきものだけ
-- 設定・構築 = CC（Claude Code）経由でAPI操作
+- 設定・構築 = API / SDK 経由で操作
 - 安全策 = Zodバリデーション, dry_run, audit log, バージョニング, 配信制限
 
 ## 参考資料

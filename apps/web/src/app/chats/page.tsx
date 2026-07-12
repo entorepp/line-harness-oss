@@ -35,6 +35,8 @@ interface ChatDetail extends Chat {
   friendPictureUrl: string | null
   slackChannelId: string | null
   messages?: ChatMessage[]
+  hasMoreMessages?: boolean
+  oldestMessageId?: string | null
 }
 
 type StatusFilter = 'all' | 'unread' | 'in_progress' | 'resolved'
@@ -51,6 +53,30 @@ const statusFilters: { key: StatusFilter; label: string }[] = [
   { key: 'in_progress', label: '対応中' },
   { key: 'resolved', label: '解決済' },
 ]
+
+const MESSAGE_SCROLL_BOTTOM_THRESHOLD = 120
+const MESSAGE_SCROLL_TOP_LOAD_THRESHOLD = 80
+const MESSAGE_HISTORY_PAGE_SIZE = 200
+
+function isNearScrollBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= MESSAGE_SCROLL_BOTTOM_THRESHOLD
+}
+
+function mergeChatMessages(...groups: Array<ChatMessage[] | undefined>): ChatMessage[] {
+  const byId = new Map<string, ChatMessage>()
+  for (const group of groups) {
+    for (const message of group ?? []) {
+      byId.set(message.id, message)
+    }
+  }
+
+  return [...byId.values()].sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime()
+    const rightTime = new Date(right.createdAt).getTime()
+    if (leftTime !== rightTime) return leftTime - rightTime
+    return left.id.localeCompare(right.id)
+  })
+}
 
 function formatDatetime(iso: string | null): string {
   if (!iso) return '-'
@@ -181,12 +207,23 @@ export default function ChatsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const shouldStickToBottomRef = useRef(true)
+  const forceScrollToBottomRef = useRef(false)
+  const userReviewingHistoryRef = useRef(false)
+  const loadingOlderMessagesRef = useRef(false)
+  const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
+  const renderedMessagesRef = useRef<{
+    chatId: string | null
+    messageCount: number
+    lastMessageId: string | null
+  }>({ chatId: null, messageCount: 0, lastMessageId: null })
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingSlack, setEditingSlack] = useState(false)
   const [slackInput, setSlackInput] = useState('')
   const [savingSlack, setSavingSlack] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
 
   // Track previous chat state for notification
   const prevUnreadRef = useRef(0)
@@ -272,10 +309,39 @@ export default function ChatsPage() {
 
   const loadChatDetail = useCallback(async (chatId: string, silent = false) => {
     if (!silent) setDetailLoading(true)
+    if (silent) {
+      const el = messagesContainerRef.current
+      if (el) {
+        const nearBottom = isNearScrollBottom(el)
+        shouldStickToBottomRef.current = nearBottom
+        userReviewingHistoryRef.current = !nearBottom
+      }
+    }
     try {
       const res = await api.chats.get(chatId)
       if (res.success) {
-        setChatDetail(res.data as unknown as ChatDetail)
+        const nextDetail = res.data as unknown as ChatDetail
+        setChatDetail((current) => {
+          if (silent && current?.id === chatId) {
+            const currentMessages = current.messages ?? []
+            const nextMessages = nextDetail.messages ?? []
+            const mergedMessages = mergeChatMessages(currentMessages, nextMessages)
+            const currentOldestMessageId = currentMessages[0]?.id ?? current.oldestMessageId ?? null
+            const nextOldestMessageId = nextMessages[0]?.id ?? nextDetail.oldestMessageId ?? null
+            const hasLoadedOlderMessages =
+              Boolean(currentOldestMessageId && nextOldestMessageId && currentOldestMessageId !== nextOldestMessageId)
+
+            return {
+              ...nextDetail,
+              messages: mergedMessages,
+              hasMoreMessages: hasLoadedOlderMessages
+                ? current.hasMoreMessages
+                : nextDetail.hasMoreMessages,
+              oldestMessageId: mergedMessages[0]?.id ?? nextDetail.oldestMessageId ?? null,
+            }
+          }
+          return nextDetail
+        })
         if (!silent) setNotes((res.data as unknown as ChatDetail).notes || '')
       }
     } catch {
@@ -294,21 +360,154 @@ export default function ChatsPage() {
     if (selectedChatId) {
       setSettingsOpen(false)
       setEditingSlack(false)
+      shouldStickToBottomRef.current = true
+      forceScrollToBottomRef.current = true
+      userReviewingHistoryRef.current = false
+      loadingOlderMessagesRef.current = false
+      prependScrollRestoreRef.current = null
+      renderedMessagesRef.current = { chatId: null, messageCount: 0, lastMessageId: null }
+      setLoadingOlderMessages(false)
       loadChatDetail(selectedChatId)
     } else {
       setChatDetail(null)
+      shouldStickToBottomRef.current = true
+      forceScrollToBottomRef.current = false
+      userReviewingHistoryRef.current = false
+      loadingOlderMessagesRef.current = false
+      prependScrollRestoreRef.current = null
+      renderedMessagesRef.current = { chatId: null, messageCount: 0, lastMessageId: null }
+      setLoadingOlderMessages(false)
     }
   }, [selectedChatId, loadChatDetail])
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (messagesContainerRef.current && chatDetail?.messages?.length) {
-      requestAnimationFrame(() => {
-        const el = messagesContainerRef.current
-        if (el) el.scrollTop = el.scrollHeight
-      })
+  const loadOlderMessages = useCallback(async () => {
+    const currentMessages = chatDetail?.messages ?? []
+    const beforeMessageId = currentMessages[0]?.id ?? chatDetail?.oldestMessageId ?? null
+    if (
+      !selectedChatId ||
+      !chatDetail?.hasMoreMessages ||
+      !beforeMessageId ||
+      loadingOlderMessagesRef.current
+    ) {
+      return
     }
-  }, [chatDetail?.messages])
+
+    const el = messagesContainerRef.current
+    if (el) {
+      prependScrollRestoreRef.current = {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+      }
+    }
+
+    loadingOlderMessagesRef.current = true
+    setLoadingOlderMessages(true)
+    shouldStickToBottomRef.current = false
+    userReviewingHistoryRef.current = true
+
+    try {
+      const res = await api.chats.get(selectedChatId, {
+        beforeMessageId,
+        limit: MESSAGE_HISTORY_PAGE_SIZE,
+      })
+      if (!res.success) {
+        setError('過去のメッセージの読み込みに失敗しました。')
+        prependScrollRestoreRef.current = null
+        return
+      }
+
+      const olderDetail = res.data as unknown as ChatDetail
+      setChatDetail((current) => {
+        if (!current || current.id !== selectedChatId) return current
+        const mergedMessages = mergeChatMessages(olderDetail.messages, current.messages)
+        return {
+          ...current,
+          messages: mergedMessages,
+          hasMoreMessages: olderDetail.hasMoreMessages ?? false,
+          oldestMessageId: mergedMessages[0]?.id ?? null,
+        }
+      })
+    } catch {
+      setError('過去のメッセージの読み込みに失敗しました。')
+      prependScrollRestoreRef.current = null
+    } finally {
+      loadingOlderMessagesRef.current = false
+      setLoadingOlderMessages(false)
+    }
+  }, [
+    selectedChatId,
+    chatDetail?.hasMoreMessages,
+    chatDetail?.oldestMessageId,
+    chatDetail?.messages,
+  ])
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesContainerRef.current
+    if (!el) return
+    const nearBottom = isNearScrollBottom(el)
+    shouldStickToBottomRef.current = nearBottom
+    userReviewingHistoryRef.current = !nearBottom
+    if (el.scrollTop <= MESSAGE_SCROLL_TOP_LOAD_THRESHOLD) {
+      void loadOlderMessages()
+    }
+  }, [loadOlderMessages])
+
+  // Keep the chat pinned only while the operator is already reading the latest messages.
+  useEffect(() => {
+    const messages = chatDetail?.messages ?? []
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null
+    const current = {
+      chatId: chatDetail?.id ?? null,
+      messageCount: messages.length,
+      lastMessageId: lastMessage?.id ?? null,
+    }
+    const previous = renderedMessagesRef.current
+    const switchedChat = current.chatId !== previous.chatId
+    const messageListChanged =
+      current.messageCount !== previous.messageCount ||
+      current.lastMessageId !== previous.lastMessageId
+    const shouldScroll =
+      !!current.chatId &&
+      messages.length > 0 &&
+      (
+        switchedChat ||
+        forceScrollToBottomRef.current ||
+        (messageListChanged && shouldStickToBottomRef.current && !userReviewingHistoryRef.current)
+      )
+
+    renderedMessagesRef.current = current
+
+    const prependRestore = prependScrollRestoreRef.current
+    if (prependRestore) {
+      const frame = requestAnimationFrame(() => {
+        const el = messagesContainerRef.current
+        if (!el) return
+        el.scrollTop = el.scrollHeight - prependRestore.scrollHeight + prependRestore.scrollTop
+        shouldStickToBottomRef.current = isNearScrollBottom(el)
+        userReviewingHistoryRef.current = !shouldStickToBottomRef.current
+        forceScrollToBottomRef.current = false
+        prependScrollRestoreRef.current = null
+      })
+
+      return () => cancelAnimationFrame(frame)
+    }
+
+    if (!shouldScroll) {
+      forceScrollToBottomRef.current = false
+      return
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const el = messagesContainerRef.current
+      if (!el) return
+      el.scrollTop = el.scrollHeight
+      shouldStickToBottomRef.current = true
+      userReviewingHistoryRef.current = false
+      forceScrollToBottomRef.current = false
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [chatDetail?.id, chatDetail?.messages])
 
   // Polling: auto-refresh chat list every 5 seconds
   useEffect(() => {
@@ -688,7 +887,17 @@ export default function ChatsPage() {
               )}
 
               {/* Messages — LINE-style chat bubbles */}
-              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundColor: '#7494C0' }}>
+              <div
+                ref={messagesContainerRef}
+                onScroll={handleMessagesScroll}
+                className="flex-1 overflow-y-auto p-4 space-y-2"
+                style={{ backgroundColor: '#7494C0' }}
+              >
+                {loadingOlderMessages && (
+                  <div className="text-center py-2">
+                    <span className="text-xs text-white/70">過去のメッセージを読み込み中...</span>
+                  </div>
+                )}
                 {(!chatDetail.messages || chatDetail.messages.length === 0) ? (
                   <div className="text-center py-8">
                     <p className="text-white/60 text-sm">メッセージはまだありません。</p>
@@ -742,6 +951,8 @@ export default function ChatsPage() {
                   channelType={selectedAccount?.channelType}
                   onSent={() => {
                     if (selectedChatId) {
+                      shouldStickToBottomRef.current = true
+                      forceScrollToBottomRef.current = true
                       void loadChatDetail(selectedChatId)
                     }
                     void loadChats()

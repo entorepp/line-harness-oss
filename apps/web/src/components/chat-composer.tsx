@@ -18,6 +18,8 @@ type EmojiPreset = {
 }
 
 const EMOJI_STORAGE_KEY = 'line-crm-chat-emoji-presets'
+const JST_OFFSET_MS = 9 * 60 * 60_000
+const DATETIME_LOCAL_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/
 
 const DEFAULT_EMOJI_PRESETS: EmojiPreset[] = [
   { key: 'plane', label: '飛行機', value: '✈️', aliases: ['airplane', 'plane', 'flight', 'travel_plane', 'fly', '飛行機'] },
@@ -30,41 +32,69 @@ const DEFAULT_EMOJI_PRESETS: EmojiPreset[] = [
   { key: 'check', label: '確認', value: '✅', aliases: ['check', 'done', 'ok', '確認'] },
 ]
 
+function jstParts(date: Date) {
+  const jst = new Date(date.getTime() + JST_OFFSET_MS)
+  return {
+    year: jst.getUTCFullYear(),
+    month: String(jst.getUTCMonth() + 1).padStart(2, '0'),
+    day: String(jst.getUTCDate()).padStart(2, '0'),
+    hour: String(jst.getUTCHours()).padStart(2, '0'),
+    minute: String(jst.getUTCMinutes()).padStart(2, '0'),
+  }
+}
+
+function toJstDatetimeLocalValue(date: Date): string {
+  const { year, month, day, hour, minute } = jstParts(date)
+  return `${year}-${month}-${day}T${hour}:${minute}`
+}
+
 function formatDatetime(iso: string): string {
-  return new Date(iso).toLocaleString('ja-JP', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '-'
+
+  const { month, day, hour, minute } = jstParts(date)
+  return `${month}/${day} ${hour}:${minute} 日本時間`
 }
 
 function defaultScheduleValue(): string {
   const date = new Date(Date.now() + 10 * 60 * 1000)
   date.setSeconds(0, 0)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hour}:${minute}`
+  return toJstDatetimeLocalValue(date)
+}
+
+function minScheduleValue(): string {
+  const date = new Date(Date.now() + 60 * 1000)
+  date.setSeconds(0, 0)
+  return toJstDatetimeLocalValue(date)
 }
 
 function toJstScheduleValue(value: string): string | null {
-  if (!value) return null
+  if (!DATETIME_LOCAL_PATTERN.test(value)) return null
   return `${value}:00.000+09:00`
+}
+
+function validateFutureJstSchedule(value: string): string {
+  const scheduledAt = toJstScheduleValue(value)
+  if (!scheduledAt) {
+    throw new Error('予約日時を指定してください。')
+  }
+
+  const scheduledTime = new Date(scheduledAt).getTime()
+  if (Number.isNaN(scheduledTime)) {
+    throw new Error('予約日時の形式が正しくありません。')
+  }
+  if (scheduledTime <= Date.now()) {
+    throw new Error('予約日時は現在時刻より後の日本時間を指定してください。')
+  }
+
+  return scheduledAt
 }
 
 function toDatetimeLocalValue(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
 
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hour}:${minute}`
+  return toJstDatetimeLocalValue(date)
 }
 
 function formatFileSize(bytes: number): string {
@@ -415,10 +445,7 @@ export default function ChatComposer({
   async function sendPayloads(schedule: boolean) {
     onError?.('')
 
-    const scheduledAtValue = schedule ? toJstScheduleValue(scheduledAt) : null
-    if (schedule && !scheduledAtValue) {
-      throw new Error('予約日時を指定してください。')
-    }
+    const scheduledAtValue = schedule ? validateFutureJstSchedule(scheduledAt) : null
 
     const payloads: Record<string, string | null | undefined>[] = []
 
@@ -443,7 +470,7 @@ export default function ChatComposer({
         | { success?: boolean; error?: string }
         | undefined
 
-      if (schedule) {
+      if (scheduledAtValue) {
         payload.scheduledAt = scheduledAtValue
       }
 
@@ -508,9 +535,11 @@ export default function ChatComposer({
   }
 
   async function handleUpdateScheduledMessage(id: string) {
-    const nextScheduledAt = toJstScheduleValue(editingScheduledAt)
-    if (!nextScheduledAt) {
-      onError?.('予約日時を指定してください。')
+    let nextScheduledAt: string
+    try {
+      nextScheduledAt = validateFutureJstSchedule(editingScheduledAt)
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : '予約日時を指定してください。')
       return
     }
 
@@ -754,9 +783,11 @@ export default function ChatComposer({
                 <input
                   type="datetime-local"
                   value={scheduledAt}
+                  min={minScheduleValue()}
                   onChange={(event) => setScheduledAt(event.target.value)}
                   className="min-w-[180px] rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs text-gray-900 focus:border-[#06C755] focus:outline-none"
                 />
+                <span className="text-[11px] font-medium text-gray-500">日本時間</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -888,9 +919,11 @@ export default function ChatComposer({
                     <input
                       type="datetime-local"
                       value={editingScheduledAt}
+                      min={minScheduleValue()}
                       onChange={(event) => setEditingScheduledAt(event.target.value)}
                       className="min-w-[190px] rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs text-gray-900 focus:border-[#06C755] focus:outline-none"
                     />
+                    <span className="text-[11px] font-medium text-gray-500">日本時間</span>
                     <button
                       type="button"
                       onClick={() => void handleUpdateScheduledMessage(item.id)}

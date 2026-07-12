@@ -1,5 +1,6 @@
 import { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
 
 export interface MessagingFriendContext {
@@ -189,7 +190,7 @@ export function buildLineMessage(input: OutboundMessageInput): Message {
   const messageType = input.messageType ?? 'text';
 
   if (messageType === 'text') {
-    return { type: 'text', text: input.content };
+    return { type: 'text', text: replaceEmojiShortcodes(input.content) };
   }
 
   if (messageType === 'image') {
@@ -206,7 +207,7 @@ export function buildLineMessage(input: OutboundMessageInput): Message {
       const contents = JSON.parse(input.content);
       return { type: 'flex', altText: 'Message', contents };
     } catch {
-      return { type: 'text', text: input.content };
+      return { type: 'text', text: replaceEmojiShortcodes(input.content) };
     }
   }
 
@@ -223,7 +224,7 @@ export function buildLineMessage(input: OutboundMessageInput): Message {
     return buildFileMessage(normalizeFileContent(input));
   }
 
-  return { type: 'text', text: input.content };
+  return { type: 'text', text: replaceEmojiShortcodes(input.content) };
 }
 
 export function serializeOutboundContent(input: OutboundMessageInput): string {
@@ -239,6 +240,10 @@ export function serializeOutboundContent(input: OutboundMessageInput): string {
 
   if (messageType === 'sticker') {
     return JSON.stringify(normalizeStickerContent(input.content));
+  }
+
+  if (messageType === 'text') {
+    return replaceEmojiShortcodes(input.content);
   }
 
   return input.content;

@@ -19,6 +19,8 @@ interface LocaleCopy {
   formSubmittedLabel: string;
   formLabel: string;
   accountLabel: string;
+  submissionIdLabel: string;
+  slackChannelLabel: string;
   submittedAtLabel: string;
   noAnswersLabel: string;
 }
@@ -30,9 +32,11 @@ const LOCALE_COPY: Record<SupportedLocale, LocaleCopy> = {
     incomingLabel: 'からのメッセージ',
     outgoingLabel: '担当者',
     translationLabel: '和訳',
-    formSubmittedLabel: 'フォーム回答',
+    formSubmittedLabel: '回答が来ました',
     formLabel: 'フォーム',
     accountLabel: 'アカウント',
+    submissionIdLabel: 'submissionId',
+    slackChannelLabel: 'slackChannelId',
     submittedAtLabel: '回答日時',
     noAnswersLabel: '回答内容はありません',
   },
@@ -40,9 +44,11 @@ const LOCALE_COPY: Record<SupportedLocale, LocaleCopy> = {
     incomingLabel: '傳送的訊息',
     outgoingLabel: '客服',
     translationLabel: '翻譯',
-    formSubmittedLabel: '表單回覆',
+    formSubmittedLabel: '收到表單回覆',
     formLabel: '表單',
     accountLabel: '帳號',
+    submissionIdLabel: 'submissionId',
+    slackChannelLabel: 'slackChannelId',
     submittedAtLabel: '回覆時間',
     noAnswersLabel: '沒有回覆內容',
   },
@@ -347,6 +353,8 @@ export async function notifySlackFormSubmission(opts: {
   answers: SlackFormAnswer[];
   accountName?: string;
   locale?: string | null;
+  submissionId?: string;
+  submissionSlackChannelId?: string;
   submittedAt?: string;
   googleTranslateApiKey?: string;
 }): Promise<void> {
@@ -392,7 +400,7 @@ export async function notifySlackFormSubmission(opts: {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*${opts.friendName}*${accountLabel} ${copy.formSubmittedLabel}`,
+        text: `*${copy.formSubmittedLabel}*${accountLabel}`,
       },
       ...(opts.friendPictureUrl ? {
         accessory: {
@@ -409,6 +417,8 @@ export async function notifySlackFormSubmission(opts: {
         text: [
           `*${copy.formLabel}:* ${opts.formName}`,
           opts.accountName ? `*${copy.accountLabel}:* ${opts.accountName}` : null,
+          opts.submissionId ? `*${copy.submissionIdLabel}:* ${opts.submissionId}` : null,
+          opts.submissionSlackChannelId ? `*${copy.slackChannelLabel}:* ${opts.submissionSlackChannelId}` : null,
           opts.submittedAt ? `*${copy.submittedAtLabel}:* ${opts.submittedAt}` : null,
         ].filter(Boolean).join('\n'),
       },
@@ -426,8 +436,8 @@ export async function notifySlackFormSubmission(opts: {
   await postToSlack({
     token: opts.slackToken,
     channel: opts.slackChannelId,
-    text: `📝 ${opts.friendName}${accountLabel} ${copy.formSubmittedLabel}: ${opts.formName}`,
-    username: opts.friendName,
+    text: `📝 ${copy.formSubmittedLabel}: ${opts.formName}`,
+    username: opts.formName,
     iconUrl: opts.friendPictureUrl || undefined,
     blocks,
   });

@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type {
-  Form as HarnessForm,
-  FormField as HarnessFormField,
-  FormIssue,
-  Scenario,
-  Tag,
+import {
+  normalizeFormFieldVisibilityCondition,
+  type Form as HarnessForm,
+  type FormField as HarnessFormField,
+  type FormFieldVisibilityOperator,
+  type FormIssue,
+  type Scenario,
+  type Tag,
 } from '@line-crm/shared'
 import { api } from '@/lib/api'
 
@@ -39,7 +41,6 @@ type SavedIssue = FormIssue & {
 type IssueDraft = {
   name: string
   slackChannelId: string
-  sharedByFriendId: string
   locale: string
 }
 
@@ -58,6 +59,19 @@ const fieldTypeOptions: Array<{ value: HarnessFormField['type']; label: string }
 
 const selectableTypes = new Set<HarnessFormField['type']>(['select', 'radio', 'checkbox'])
 
+const visibilityOperatorOptions: Array<{ value: FormFieldVisibilityOperator; label: string }> = [
+  { value: 'equals', label: '値が一致する' },
+  { value: 'not_equals', label: '値が一致しない' },
+  { value: 'includes', label: '選択に含まれる' },
+  { value: 'not_includes', label: '選択に含まれない' },
+  { value: 'greater_than', label: '数値がより大きい' },
+  { value: 'less_than', label: '数値がより小さい' },
+  { value: 'answered', label: '回答済み' },
+  { value: 'not_answered', label: '未回答' },
+]
+
+const visibilityOperatorsWithoutValue = new Set<FormFieldVisibilityOperator>(['answered', 'not_answered'])
+
 const importExample = `{
   "name": "海外旅行ヒアリングフォーム",
   "description": "Google Form のように公開URLを発行できる基本フォーム",
@@ -73,6 +87,15 @@ const importExample = `{
       "required": true,
       "options": ["日本語", "English", "中文"],
       "allowOtherOption": true
+    },
+    {
+      "label": "車椅子の寸法",
+      "type": "text",
+      "visibleWhen": {
+        "field": "wheelchair_usage",
+        "operator": "not_equals",
+        "value": "使用しない"
+      }
     }
   ]
 }`
@@ -81,6 +104,7 @@ const localeOptions = [
   { value: '', label: '既定' },
   { value: 'ja', label: '日本語' },
   { value: 'en', label: 'English' },
+  { value: 'nl', label: 'Nederlands' },
   { value: 'ko', label: '한국어' },
   { value: 'zh-TW', label: '繁體中文' },
 ]
@@ -99,6 +123,11 @@ const localizedTextDefaults: Record<string, {
     submitButtonLabel: 'Submit',
     successTitle: 'Your response has been submitted',
     successDescription: 'Thank you for your response. We will review it and get back to you.',
+  },
+  nl: {
+    submitButtonLabel: 'Verzenden',
+    successTitle: 'Uw antwoord is verzonden',
+    successDescription: 'Dank u voor uw antwoord. We bekijken de informatie en nemen contact met u op.',
   },
   ko: {
     submitButtonLabel: '제출',
@@ -119,6 +148,7 @@ function normalizeLocale(value: string | null | undefined): string {
   const lowered = locale.toLowerCase()
   if (lowered === 'ja' || lowered === 'ja-jp') return 'ja'
   if (lowered === 'en' || lowered === 'en-us' || lowered === 'en-gb') return 'en'
+  if (lowered === 'nl' || lowered === 'nl-nl') return 'nl'
   if (lowered === 'ko' || lowered === 'ko-kr') return 'ko'
   if (lowered === 'zh-tw' || lowered === 'zh_tw') return 'zh-TW'
   return locale
@@ -143,6 +173,7 @@ function createEmptyField(): HarnessFormField {
     helperText: '',
     allowOtherOption: false,
     otherOptionLabel: 'その他',
+    visibleWhen: undefined,
   }
 }
 
@@ -168,7 +199,6 @@ function createEmptyIssueDraft(): IssueDraft {
   return {
     name: '',
     slackChannelId: '',
-    sharedByFriendId: '',
     locale: '',
   }
 }
@@ -187,6 +217,7 @@ function formToDraft(form: HarnessForm): FormDraft {
         helperText: field.helperText ?? '',
         allowOtherOption: Boolean(field.allowOtherOption),
         otherOptionLabel: field.otherOptionLabel ?? 'その他',
+        visibleWhen: normalizeFormFieldVisibilityCondition(field.visibleWhen),
       }))
       : [createEmptyField()],
     locale,
@@ -283,6 +314,56 @@ function normalizeFieldType(value: unknown): HarnessFormField['type'] {
   }
 }
 
+function normalizeVisibilityOperator(value: unknown): FormFieldVisibilityOperator {
+  const normalized = stringifyValue(value)
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+
+  switch (normalized) {
+    case 'not_equals':
+      return 'not_equals'
+    case 'includes':
+      return 'includes'
+    case 'not_includes':
+      return 'not_includes'
+    case 'greater_than':
+      return 'greater_than'
+    case 'less_than':
+      return 'less_than'
+    case 'answered':
+      return 'answered'
+    case 'not_answered':
+      return 'not_answered'
+    case 'equals':
+    default:
+      return 'equals'
+  }
+}
+
+function resolveDraftFieldName(field: HarnessFormField, index: number): string {
+  return slugifyFieldName(field.name.trim())
+    || slugifyFieldName(field.label)
+    || `field_${index + 1}`
+}
+
+function resolveDraftFieldNames(fields: HarnessFormField[]): string[] {
+  const usedNames = new Set<string>()
+
+  return fields.map((field, index) => {
+    const baseName = resolveDraftFieldName(field, index)
+    let nextName = baseName
+    let suffix = 2
+
+    while (usedNames.has(nextName)) {
+      nextName = `${baseName}_${suffix}`
+      suffix += 1
+    }
+
+    usedNames.add(nextName)
+    return nextName
+  })
+}
+
 function normalizeOptions(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -370,6 +451,10 @@ function normalizeImportedField(value: unknown, index: number): HarnessFormField
     pickValue(value, ['allowOtherOption', 'allow_other_option', 'allowOther', 'other']),
   )
 
+  const visibleWhen = normalizeFormFieldVisibilityCondition(
+    pickValue(value, ['visibleWhen', 'visible_when', 'showWhen', 'show_when', 'condition']),
+  )
+
   return {
     name: stringifyValue(pickValue(value, ['name', 'key', 'id'])) || slugifyFieldName(label) || `field_${index + 1}`,
     label,
@@ -382,6 +467,12 @@ function normalizeImportedField(value: unknown, index: number): HarnessFormField
     otherOptionLabel: stringifyValue(
       pickValue(value, ['otherOptionLabel', 'other_option_label', 'otherLabel']),
     ) || 'その他',
+    visibleWhen: visibleWhen
+      ? {
+        ...visibleWhen,
+        operator: normalizeVisibilityOperator(visibleWhen.operator),
+      }
+      : undefined,
   }
 }
 
@@ -473,30 +564,30 @@ function sanitizeDraft(draft: FormDraft) {
     throw new Error('設問を1つ以上追加してください')
   }
 
-  const usedNames = new Set<string>()
-  const fields = draft.fields.map((field, index) => {
+  const sanitizedNames = resolveDraftFieldNames(draft.fields)
+
+  draft.fields.forEach((field, index) => {
     const label = field.label.trim()
     if (!label) throw new Error(`${index + 1} 番目の設問ラベルは必須です`)
+  })
 
+  const currentNameToSanitized = new Map<string, string>()
+  draft.fields.forEach((field, index) => {
+    if (field.name.trim()) {
+      currentNameToSanitized.set(field.name.trim(), sanitizedNames[index])
+    }
+    currentNameToSanitized.set(resolveDraftFieldName(field, index), sanitizedNames[index])
+  })
+
+  const fields = draft.fields.map((field, index) => {
+    const label = field.label.trim()
     const type = normalizeFieldType(field.type)
     const placeholder = field.placeholder?.trim() ?? ''
     const helperText = field.helperText?.trim() ?? ''
     const allowOtherOption = selectableTypes.has(type) ? Boolean(field.allowOtherOption) : false
 
-    const baseName = slugifyFieldName(field.name.trim())
-      || slugifyFieldName(label)
-      || `field_${index + 1}`
-
-    let nextName = baseName
-    let suffix = 2
-    while (usedNames.has(nextName)) {
-      nextName = `${baseName}_${suffix}`
-      suffix += 1
-    }
-    usedNames.add(nextName)
-
     const nextField: HarnessFormField = {
-      name: nextName,
+      name: sanitizedNames[index],
       label,
       type,
       required: Boolean(field.required),
@@ -514,6 +605,22 @@ function sanitizeDraft(draft: FormDraft) {
       if (allowOtherOption) {
         nextField.allowOtherOption = true
         nextField.otherOptionLabel = field.otherOptionLabel?.trim() || 'その他'
+      }
+    }
+
+    const rawVisibility = normalizeFormFieldVisibilityCondition(field.visibleWhen)
+    if (rawVisibility) {
+      const sourceName = currentNameToSanitized.get(rawVisibility.field)
+      if (sourceName && sourceName !== nextField.name) {
+        const operator = normalizeVisibilityOperator(rawVisibility.operator)
+        nextField.visibleWhen = {
+          field: sourceName,
+          operator,
+        }
+
+        if (!visibilityOperatorsWithoutValue.has(operator) && rawVisibility.value !== undefined) {
+          nextField.visibleWhen.value = rawVisibility.value
+        }
       }
     }
 
@@ -713,6 +820,10 @@ export default function FormBuilder({ formId }: { formId?: string }) {
   const isDirty = useMemo(
     () => JSON.stringify(draft) !== savedSnapshot,
     [draft, savedSnapshot],
+  )
+  const draftFieldNames = useMemo(
+    () => resolveDraftFieldNames(draft.fields),
+    [draft.fields],
   )
   const saveButtonLabel = saving ? '保存中...' : formId ? '変更を保存' : 'フォームを作成'
 
@@ -999,7 +1110,6 @@ export default function FormBuilder({ formId }: { formId?: string }) {
         name: issueDraft.name || undefined,
         lineAccountId: null,
         slackChannelId: issueDraft.slackChannelId || null,
-        sharedByFriendId: issueDraft.sharedByFriendId || null,
         locale: issueDraft.locale || null,
       })
       if (!res.success) throw new Error('チャンネル用フォームの発行に失敗しました')
@@ -1171,6 +1281,21 @@ export default function FormBuilder({ formId }: { formId?: string }) {
           {draft.fields.map((field, index) => {
             const selected = index === selectedFieldIndex
             const isSelectable = selectableTypes.has(field.type)
+            const visibilityCandidates = draft.fields
+              .slice(0, index)
+              .map((candidate, candidateIndex) => ({
+                value: draftFieldNames[candidateIndex],
+                label: candidate.label.trim() || `質問 ${candidateIndex + 1}`,
+                type: candidate.type,
+                options: candidate.options ?? [],
+              }))
+            const visibilityCondition = field.visibleWhen
+            const visibilitySource = visibilityCandidates.find((candidate) => candidate.value === visibilityCondition?.field) ?? null
+            const visibilityOperator = normalizeVisibilityOperator(visibilityCondition?.operator)
+            const showVisibilityValueInput = !visibilityOperatorsWithoutValue.has(visibilityOperator)
+            const visibilityValueOptions = visibilitySource && selectableTypes.has(visibilitySource.type)
+              ? visibilitySource.options
+              : []
 
             return (
               <section
@@ -1301,10 +1426,134 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                     </div>
                   )}
 
+                  <div className="mt-5 rounded-[20px] border border-[#e9e2f7] bg-[#fcfbff] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">表示条件</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          前の質問の答えに応じて、この質問を出し分けます。
+                        </p>
+                      </div>
+                      <label className="flex items-center gap-3 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(visibilityCondition)}
+                          disabled={visibilityCandidates.length === 0}
+                          onChange={(event) => updateField(index, {
+                            visibleWhen: event.target.checked
+                              ? {
+                                field: visibilityCandidates[0]?.value ?? '',
+                                operator: 'equals',
+                                value: '',
+                              }
+                              : undefined,
+                          })}
+                          className="h-4 w-4 rounded border-[#cbbbe9] text-[#673ab7] focus:ring-[#673ab7]"
+                        />
+                        条件付きで表示
+                      </label>
+                    </div>
+
+                    {visibilityCandidates.length === 0 ? (
+                      <p className="mt-3 text-xs text-slate-400">
+                        先頭の質問には条件を付けられません。
+                      </p>
+                    ) : visibilityCondition ? (
+                      <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                        <select
+                          value={visibilityCondition.field}
+                          onChange={(event) => updateField(index, {
+                            visibleWhen: {
+                              field: event.target.value,
+                              operator: visibilityOperator,
+                              value: visibilityCondition.value ?? '',
+                            },
+                          })}
+                          className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                        >
+                          {visibilityCandidates.map((candidate) => (
+                            <option key={candidate.value} value={candidate.value}>
+                              {candidate.label}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          value={visibilityOperator}
+                          onChange={(event) => {
+                            const nextOperator = normalizeVisibilityOperator(event.target.value)
+                            updateField(index, {
+                              visibleWhen: {
+                                field: visibilityCondition.field,
+                                operator: nextOperator,
+                                value: visibilityOperatorsWithoutValue.has(nextOperator)
+                                  ? undefined
+                                  : (visibilityCondition.value ?? ''),
+                              },
+                            })
+                          }}
+                          className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                        >
+                          {visibilityOperatorOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+
+                        {showVisibilityValueInput ? (
+                          visibilityValueOptions.length > 0 ? (
+                            <select
+                              value={String(visibilityCondition.value ?? '')}
+                              onChange={(event) => updateField(index, {
+                                visibleWhen: {
+                                  field: visibilityCondition.field,
+                                  operator: visibilityOperator,
+                                  value: event.target.value,
+                                },
+                              })}
+                              className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                            >
+                              <option value="">値を選択</option>
+                              {visibilityValueOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              value={String(visibilityCondition.value ?? '')}
+                              onChange={(event) => updateField(index, {
+                                visibleWhen: {
+                                  field: visibilityCondition.field,
+                                  operator: visibilityOperator,
+                                  value: event.target.value,
+                                },
+                              })}
+                              placeholder={visibilityOperator === 'greater_than' || visibilityOperator === 'less_than' ? '比較する数値' : '比較する値'}
+                              className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                            />
+                          )
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-[#ddd6f0] bg-[#faf8fe] px-4 py-3 text-sm text-slate-400">
+                            値の指定は不要です
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {visibilityCondition && visibilitySource && (
+                      <p className="mt-3 text-xs text-slate-500">
+                        条件元: {visibilitySource.label}
+                      </p>
+                    )}
+                  </div>
+
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#eee8fb] pt-4">
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <span className="rounded-full bg-[#f5f1fd] px-3 py-1 font-medium text-[#5f43b2]">
-                        name: {field.name || slugifyFieldName(field.label) || `field_${index + 1}`}
+                        name: {draftFieldNames[index]}
                       </span>
                     </div>
 
@@ -1616,7 +1865,7 @@ export default function FormBuilder({ formId }: { formId?: string }) {
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">チャンネル用フォームを発行</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  発行した URL には `slackChannelId` と `sharedByFriendId` を保存しておけます。配布は公開 URL をそのまま使います。
+                  発行した URL には `slackChannelId` を保存しておけます。配布は公開 URL をそのまま使います。
                 </p>
               </div>
               <div className="rounded-full bg-[#f5f1fd] px-3 py-1 text-xs font-medium text-[#5f43b2]">
@@ -1641,12 +1890,6 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                     value={issueDraft.slackChannelId}
                     onChange={(event) => setIssueDraft((current) => ({ ...current, slackChannelId: event.target.value }))}
                     placeholder="Slack Channel ID"
-                    className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
-                  />
-                  <input
-                    value={issueDraft.sharedByFriendId}
-                    onChange={(event) => setIssueDraft((current) => ({ ...current, sharedByFriendId: event.target.value }))}
-                    placeholder="sharedBy Friend ID"
                     className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
                   />
                   <select
@@ -1700,11 +1943,6 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                               <span className="rounded-full bg-white px-3 py-1 ring-1 ring-[#ece5fb]">
                                 Channel: {issue.slackChannelId || 'C0AL6RG7V9Q'}
                               </span>
-                              {issue.sharedByFriendId && (
-                                <span className="rounded-full bg-white px-3 py-1 ring-1 ring-[#ece5fb]">
-                                  sharedBy: {issue.sharedByFriendId}
-                                </span>
-                              )}
                               {issue.locale && (
                                 <span className="rounded-full bg-white px-3 py-1 ring-1 ring-[#ece5fb]">
                                   locale: {issue.locale}

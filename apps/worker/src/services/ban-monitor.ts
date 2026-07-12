@@ -16,7 +16,7 @@ export async function checkAccountHealth(
   const accounts = await getLineAccounts(db);
 
   for (const account of accounts) {
-    if (!account.is_active) continue;
+    if (!account.is_active || account.channel_type !== 'line') continue;
 
     try {
       await checkSingleAccount(db, account);

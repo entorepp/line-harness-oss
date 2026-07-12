@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { replaceEmojiShortcodes } from '@line-crm/shared'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
@@ -100,6 +101,10 @@ export default function TemplatesPage() {
   )
 
   const handleCreate = async () => {
+    const messageContent = form.messageType === 'text'
+      ? replaceEmojiShortcodes(form.messageContent)
+      : form.messageContent
+
     if (!form.name.trim()) {
       setFormError('テンプレート名を入力してください')
       return
@@ -108,7 +113,7 @@ export default function TemplatesPage() {
       setFormError('カテゴリを入力してください')
       return
     }
-    if (!form.messageContent.trim()) {
+    if (!messageContent.trim()) {
       setFormError('メッセージ内容を入力してください')
       return
     }
@@ -119,7 +124,7 @@ export default function TemplatesPage() {
         name: form.name,
         category: form.category,
         messageType: form.messageType,
-        messageContent: form.messageContent,
+        messageContent,
       })
       if (res.success) {
         setShowCreate(false)
@@ -242,7 +247,12 @@ export default function TemplatesPage() {
                 rows={4}
                 placeholder="メッセージ内容を入力してください"
                 value={form.messageContent}
-                onChange={(e) => setForm({ ...form, messageContent: e.target.value })}
+                onChange={(e) => {
+                  const messageContent = form.messageType === 'text'
+                    ? replaceEmojiShortcodes(e.target.value)
+                    : e.target.value
+                  setForm({ ...form, messageContent })
+                }}
               />
             </div>
 

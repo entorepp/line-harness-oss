@@ -5,6 +5,7 @@ import {
 } from '@line-crm/db';
 import type { Broadcast } from '@line-crm/db';
 import type { LineClient, Message } from '@line-crm/line-sdk';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import { calculateStaggerDelay, sleep, addMessageVariation } from './stealth.js';
 import { buildSegmentQuery } from './segment-query.js';
 import type { SegmentCondition } from './segment-query.js';
@@ -99,7 +100,7 @@ export async function processSegmentSend(
 
 function buildMessage(messageType: string, messageContent: string): Message {
   if (messageType === 'text') {
-    return { type: 'text', text: messageContent };
+    return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
   }
 
   if (messageType === 'image') {
@@ -114,7 +115,7 @@ function buildMessage(messageType: string, messageContent: string): Message {
         previewImageUrl: parsed.previewImageUrl,
       };
     } catch {
-      return { type: 'text', text: messageContent };
+      return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
     }
   }
 
@@ -123,9 +124,9 @@ function buildMessage(messageType: string, messageContent: string): Message {
       const contents = JSON.parse(messageContent);
       return { type: 'flex', altText: 'Message', contents };
     } catch {
-      return { type: 'text', text: messageContent };
+      return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
     }
   }
 
-  return { type: 'text', text: messageContent };
+  return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
 }

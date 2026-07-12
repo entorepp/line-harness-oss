@@ -6,6 +6,7 @@ import {
   updateTemplate,
   deleteTemplate,
 } from '@line-crm/db';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
 
 const templates = new Hono<Env>();
@@ -52,7 +53,12 @@ templates.post('/api/templates', async (c) => {
     if (!body.name || !body.messageType || !body.messageContent) {
       return c.json({ success: false, error: 'name, messageType, messageContent are required' }, 400);
     }
-    const item = await createTemplate(c.env.DB, body);
+    const item = await createTemplate(c.env.DB, {
+      ...body,
+      messageContent: body.messageType === 'text'
+        ? replaceEmojiShortcodes(body.messageContent)
+        : body.messageContent,
+    });
     return c.json({ success: true, data: { id: item.id, name: item.name, category: item.category, messageType: item.message_type, createdAt: item.created_at } }, 201);
   } catch (err) {
     console.error('POST /api/templates error:', err);
@@ -63,8 +69,20 @@ templates.post('/api/templates', async (c) => {
 templates.put('/api/templates/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const body = await c.req.json();
-    await updateTemplate(c.env.DB, id, body);
+    const body = await c.req.json<Partial<{ name: string; category: string; messageType: string; messageContent: string }>>();
+    const existing = await getTemplateById(c.env.DB, id);
+    if (!existing) return c.json({ success: false, error: 'Not found' }, 404);
+
+    const messageContent = body.messageContent === undefined
+      ? undefined
+      : (body.messageType ?? existing.message_type) === 'text'
+        ? replaceEmojiShortcodes(body.messageContent)
+        : body.messageContent;
+
+    await updateTemplate(c.env.DB, id, {
+      ...body,
+      messageContent,
+    });
     const updated = await getTemplateById(c.env.DB, id);
     if (!updated) return c.json({ success: false, error: 'Not found' }, 404);
     return c.json({

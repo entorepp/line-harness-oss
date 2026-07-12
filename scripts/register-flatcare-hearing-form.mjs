@@ -1,5 +1,8 @@
+import dns from 'node:dns';
 import fs from 'node:fs';
 import path from 'node:path';
+
+dns.setDefaultResultOrder('ipv4first');
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 

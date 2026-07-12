@@ -8,6 +8,7 @@ import {
 } from '@line-crm/db';
 import type { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import { jitterDeliveryTime, addJitter, sleep } from './stealth.js';
 
 /**
@@ -282,7 +283,7 @@ function cleanEmptyNodes(obj: unknown): void {
 
 export function buildMessage(messageType: string, messageContent: string): Message {
   if (messageType === 'text') {
-    return { type: 'text', text: messageContent };
+    return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
   }
 
   if (messageType === 'image') {
@@ -299,7 +300,7 @@ export function buildMessage(messageType: string, messageContent: string): Messa
       };
     } catch {
       // Fallback: treat as text if parsing fails
-      return { type: 'text', text: messageContent };
+      return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
     }
   }
 
@@ -312,10 +313,10 @@ export function buildMessage(messageType: string, messageContent: string): Messa
       const altText = extractFlexAltText(contents) || 'お知らせ';
       return { type: 'flex', altText, contents };
     } catch {
-      return { type: 'text', text: messageContent };
+      return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
     }
   }
 
   // Fallback
-  return { type: 'text', text: messageContent };
+  return { type: 'text', text: replaceEmojiShortcodes(messageContent) };
 }

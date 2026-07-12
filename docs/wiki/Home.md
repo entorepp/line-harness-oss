@@ -4,7 +4,7 @@
 
 LINE Harness は、LINE公式アカウント向けのオープンソース CRM / マーケティングオートメーションツールです。L社 や U社 の代替として、無料（または低コスト）で運用できます。
 
-**コンセプト**: AIがLINEを安全に操作するための基盤。人間は監視し、AI（Claude Code等）がAPIを通じて操作します。全機能がREST APIとして公開されており、管理画面はデータの可視化専用です。
+**コンセプト**: API 経由で LINE を安全に操作するための基盤。人間は管理画面で監視し、外部ツールや SDK が REST API を通じて操作します。
 
 ## 主要機能
 
@@ -100,7 +100,6 @@ LINE Harness は、LINE公式アカウント向けのオープンソース CRM /
 19. **[API Reference](20-API-Reference.md)** — REST API 全エンドポイント一覧
 20. **[Deployment](21-Deployment.md)** — 本番デプロイ、スケーリング
 21. **[Operations](22-Operations.md)** — 運用、監視、トラブルシューティング
-22. **[Claude Code Integration](23-Claude-Code-Integration.md)** — AI連携、プロンプト例
 
 ## D1テーブル一覧（42テーブル）
 

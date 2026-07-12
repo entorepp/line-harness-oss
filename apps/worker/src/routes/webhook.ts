@@ -21,8 +21,13 @@ import {
 import { fireEvent } from '../services/event-bus.js';
 import { buildMessage, expandVariables } from '../services/step-delivery.js';
 import type { Env } from '../index.js';
+import {
+  buildLineContentProxyUrl,
+  getLineContentSigningSecret,
+} from '../services/line-content-proxy.js';
 
 const webhook = new Hono<Env>();
+const MAX_KV_VALUE_BYTES = 25 * 1024 * 1024;
 
 webhook.post('/webhook', async (c) => {
   const rawBody = await c.req.text();
@@ -70,7 +75,19 @@ webhook.post('/webhook', async (c) => {
   const processingPromise = (async () => {
     for (const event of body.events) {
       try {
-        await handleEvent(db, lineClient, event, channelAccessToken, matchedAccountId, c.env.WORKER_URL || new URL(c.req.url).origin, c.env.SLACK_BOT_TOKEN, c.env.GOOGLE_TRANSLATE_API_KEY, c.env.UPLOADS);
+        await handleEvent(
+          db,
+          lineClient,
+          event,
+          channelAccessToken,
+          matchedAccountId,
+          c.env.WORKER_URL || new URL(c.req.url).origin,
+          c.env.SLACK_BOT_TOKEN,
+          c.env.GOOGLE_TRANSLATE_API_KEY,
+          c.env.UPLOADS,
+          c.env.API_KEY,
+          c.env.LINE_CHANNEL_SECRET,
+        );
       } catch (err) {
         console.error('Error handling webhook event:', err);
       }
@@ -90,17 +107,78 @@ async function downloadAndStoreContent(
   contentType: string,
   kv: KVNamespace,
   workerUrl: string,
-  originalName?: string,
+  options: {
+    originalName?: string;
+    fallbackUrl?: string;
+    knownSize?: number;
+  } = {},
 ): Promise<string> {
-  const content = await lineClient.getMessageContent(messageId);
+  if (options.fallbackUrl && options.knownSize && options.knownSize > MAX_KV_VALUE_BYTES) {
+    console.warn('LINE content exceeds KV limit; using proxy URL:', {
+      messageId,
+      knownSize: options.knownSize,
+      originalName: options.originalName,
+    });
+    return options.fallbackUrl;
+  }
+
+  let response: Response;
+  try {
+    response = await lineClient.getMessageContentResponse(messageId);
+  } catch (err) {
+    if (options.fallbackUrl) {
+      console.error('Immediate LINE content download failed; using proxy URL:', {
+        messageId,
+        originalName: options.originalName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return options.fallbackUrl;
+    }
+    throw err;
+  }
+
+  const contentLength = Number(response.headers.get('content-length') || '0');
+  if (options.fallbackUrl && contentLength > MAX_KV_VALUE_BYTES) {
+    console.warn('LINE content length exceeds KV limit; using proxy URL:', {
+      messageId,
+      contentLength,
+      originalName: options.originalName,
+    });
+    return options.fallbackUrl;
+  }
+
+  const content = await response.arrayBuffer();
+  if (options.fallbackUrl && content.byteLength > MAX_KV_VALUE_BYTES) {
+    console.warn('LINE content body exceeds KV limit; using proxy URL:', {
+      messageId,
+      byteLength: content.byteLength,
+      originalName: options.originalName,
+    });
+    return options.fallbackUrl;
+  }
+
   const key = `${crypto.randomUUID()}.${ext}`;
-  await kv.put(key, content, {
-    metadata: {
-      contentType,
-      originalName: originalName || `${messageId}.${ext}`,
-      size: content.byteLength,
-    },
-  });
+  try {
+    await kv.put(key, content, {
+      metadata: {
+        contentType,
+        originalName: options.originalName || `${messageId}.${ext}`,
+        size: content.byteLength,
+      },
+    });
+  } catch (err) {
+    if (options.fallbackUrl) {
+      console.error('KV storage failed for LINE content; using proxy URL:', {
+        messageId,
+        byteLength: content.byteLength,
+        originalName: options.originalName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return options.fallbackUrl;
+    }
+    throw err;
+  }
+
   return `${workerUrl}/api/files/${key}`;
 }
 
@@ -184,6 +262,8 @@ async function handleEvent(
   slackBotToken?: string,
   googleTranslateApiKey?: string,
   uploadsKv?: KVNamespace,
+  apiKey?: string,
+  defaultLineChannelSecret?: string,
 ): Promise<void> {
   if (event.type === 'follow') {
     const userId =
@@ -665,6 +745,7 @@ async function handleEvent(
     const now = jstNow();
     const logId = crypto.randomUUID();
     const baseUrl = workerUrl || '';
+    const proxySigningSecret = getLineContentSigningSecret(apiKey, defaultLineChannelSecret);
 
     let messageType = msg.type;
     let content = '';
@@ -676,7 +757,24 @@ async function handleEvent(
         case 'image': {
           const imgMsg = msg as ImageEventMessage;
           if (uploadsKv && imgMsg.contentProvider.type === 'line') {
-            mediaUrl = await downloadAndStoreContent(lineClient, imgMsg.id, 'jpg', 'image/jpeg', uploadsKv, baseUrl);
+            const contentType = 'image/jpeg';
+            const fallbackUrl = await buildLineContentProxyUrl({
+              workerUrl: baseUrl,
+              accountId: lineAccountId,
+              messageId: imgMsg.id,
+              fileName: `${imgMsg.id}.jpg`,
+              contentType,
+              signingSecret: proxySigningSecret,
+            });
+            mediaUrl = await downloadAndStoreContent(
+              lineClient,
+              imgMsg.id,
+              'jpg',
+              contentType,
+              uploadsKv,
+              baseUrl,
+              { fallbackUrl },
+            );
           } else if (imgMsg.contentProvider.originalContentUrl) {
             mediaUrl = imgMsg.contentProvider.originalContentUrl;
           }
@@ -686,7 +784,24 @@ async function handleEvent(
         case 'video': {
           const vidMsg = msg as VideoEventMessage;
           if (uploadsKv && vidMsg.contentProvider.type === 'line') {
-            mediaUrl = await downloadAndStoreContent(lineClient, vidMsg.id, 'mp4', 'video/mp4', uploadsKv, baseUrl);
+            const contentType = 'video/mp4';
+            const fallbackUrl = await buildLineContentProxyUrl({
+              workerUrl: baseUrl,
+              accountId: lineAccountId,
+              messageId: vidMsg.id,
+              fileName: `${vidMsg.id}.mp4`,
+              contentType,
+              signingSecret: proxySigningSecret,
+            });
+            mediaUrl = await downloadAndStoreContent(
+              lineClient,
+              vidMsg.id,
+              'mp4',
+              contentType,
+              uploadsKv,
+              baseUrl,
+              { fallbackUrl },
+            );
           } else if (vidMsg.contentProvider.originalContentUrl) {
             mediaUrl = vidMsg.contentProvider.originalContentUrl;
           }
@@ -696,7 +811,24 @@ async function handleEvent(
         case 'audio': {
           const audMsg = msg as AudioEventMessage;
           if (uploadsKv && audMsg.contentProvider.type === 'line') {
-            mediaUrl = await downloadAndStoreContent(lineClient, audMsg.id, 'm4a', 'audio/mp4', uploadsKv, baseUrl);
+            const contentType = 'audio/mp4';
+            const fallbackUrl = await buildLineContentProxyUrl({
+              workerUrl: baseUrl,
+              accountId: lineAccountId,
+              messageId: audMsg.id,
+              fileName: `${audMsg.id}.m4a`,
+              contentType,
+              signingSecret: proxySigningSecret,
+            });
+            mediaUrl = await downloadAndStoreContent(
+              lineClient,
+              audMsg.id,
+              'm4a',
+              contentType,
+              uploadsKv,
+              baseUrl,
+              { fallbackUrl },
+            );
           } else if (audMsg.contentProvider.originalContentUrl) {
             mediaUrl = audMsg.contentProvider.originalContentUrl;
           }
@@ -707,16 +839,31 @@ async function handleEvent(
           const fileMsg = msg as FileEventMessage;
           fileName = fileMsg.fileName;
           const ext = getFileExtension(fileName);
+          const contentType = inferContentTypeFromExtension(ext);
+          const fallbackUrl = await buildLineContentProxyUrl({
+            workerUrl: baseUrl,
+            accountId: lineAccountId,
+            messageId: fileMsg.id,
+            fileName,
+            contentType,
+            signingSecret: proxySigningSecret,
+          });
           if (uploadsKv) {
             mediaUrl = await downloadAndStoreContent(
               lineClient,
               fileMsg.id,
               ext,
-              inferContentTypeFromExtension(ext),
+              contentType,
               uploadsKv,
               baseUrl,
-              fileName,
+              {
+                originalName: fileName,
+                fallbackUrl,
+                knownSize: fileMsg.fileSize,
+              },
             );
+          } else {
+            mediaUrl = fallbackUrl;
           }
           content = JSON.stringify({
             url: mediaUrl || '',

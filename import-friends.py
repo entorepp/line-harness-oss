@@ -25,7 +25,7 @@ ACCOUNTS = [
 ]
 
 DB_NAME = "line-crm"
-WORKER_DIR = "/Users/maedahibiki/Claude/line-harness-oss/apps/worker"
+WORKER_DIR = "/Users/maedahibiki/Flatcare/line-harness-oss/apps/worker"
 
 
 def line_api_get(url: str, token: str):

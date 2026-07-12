@@ -17,6 +17,7 @@ import {
   updateChat,
 } from '@line-crm/db';
 import type { Friend as DbFriend, Tag as DbTag } from '@line-crm/db';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import { fireEvent } from '../services/event-bus.js';
 import type { Env } from '../index.js';
 import {
@@ -27,6 +28,7 @@ import {
   formatWhatsappPhoneForDisplay,
   presentWhatsappDisplayName,
 } from '../services/whatsapp-display.js';
+import { normalizeFutureScheduledAt } from '../services/schedule-validation.js';
 
 const friends = new Hono<Env>();
 
@@ -70,6 +72,7 @@ type FriendRowWithChannel = DbFriend & {
 /** Convert a D1 snake_case Friend row to the shared camelCase shape */
 function serializeFriend(row: FriendRowWithChannel) {
   const isWhatsApp = row.channel_type === 'whatsapp'
+  const metadata = JSON.parse(row.metadata || '{}') as Record<string, unknown>
   const lineUserId = isWhatsApp
     ? formatWhatsappPhoneForDisplay(row.line_user_id)
     : row.line_user_id
@@ -84,7 +87,7 @@ function serializeFriend(row: FriendRowWithChannel) {
     pictureUrl: row.picture_url,
     statusMessage: row.status_message,
     isFollowing: Boolean(row.is_following),
-    metadata: JSON.parse(row.metadata || '{}'),
+    metadata,
     refCode: (row as unknown as Record<string, unknown>).ref_code as string | null,
     slackChannelId: (row as unknown as Record<string, unknown>).slack_channel_id as string | null,
     userId: row.user_id,
@@ -395,16 +398,22 @@ friends.post('/api/friends/:id/messages', async (c) => {
     }
 
     const messageType = body.messageType ?? 'text';
+    const content = messageType === 'text' ? replaceEmojiShortcodes(body.content) : body.content;
     const existingChat = await getChatByFriendId(db, friendId);
 
     if (body.scheduledAt) {
+      const normalizedSchedule = normalizeFutureScheduledAt(body.scheduledAt);
+      if (!normalizedSchedule.ok) {
+        return c.json({ success: false, error: normalizedSchedule.error }, 400);
+      }
+
       const scheduled = await createScheduledMessage(db, {
         friendId,
         chatId: existingChat?.id ?? null,
         messageType,
-        content: body.content,
+        content,
         metadata: serializeScheduleMetadata(body),
-        scheduledAt: body.scheduledAt,
+        scheduledAt: normalizedSchedule.scheduledAt,
       });
 
       return c.json({
@@ -421,7 +430,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
       friend,
       input: {
         messageType,
-        content: body.content,
+        content,
         fileName: body.fileName,
         fileSize: body.fileSize,
         fileIcon: body.fileIcon,

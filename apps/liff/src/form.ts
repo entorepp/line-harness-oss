@@ -4,11 +4,14 @@
  * Flow:
  * 1. Fetch form definition from API using form ID from query params
  * 2. Render form fields dynamically (text, email, select, radio, etc.)
- * 3. On submit: POST to /api/forms/:id/submit with user's lineUserId
+ * 3. On submit: POST to /api/forms/:id/submit with form data
  * 4. Show success message (auto-close in LINE app)
  *
  * URL format: https://liff.line.me/{LIFF_ID}?page=form&id={FORM_ID}
  */
+
+import { getVisibleFormFields } from '@line-crm/shared';
+import type { FormFieldVisibilityCondition } from '@line-crm/shared';
 
 declare const liff: {
   init(config: { liffId: string }): Promise<void>;
@@ -22,14 +25,19 @@ declare const liff: {
 
 const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8787';
 const UUID_STORAGE_KEY = 'lh_uuid';
+const OTHER_SENTINEL = '__other__';
 
 interface FormField {
   name: string;
   label: string;
-  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date';
+  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date' | 'time';
   required?: boolean;
   options?: string[];
   placeholder?: string;
+  helperText?: string;
+  allowOtherOption?: boolean;
+  otherOptionLabel?: string;
+  visibleWhen?: FormFieldVisibilityCondition;
 }
 
 interface FormDef {
@@ -37,7 +45,11 @@ interface FormDef {
   name: string;
   description: string | null;
   fields: FormField[];
+  locale?: string | null;
   isActive: boolean;
+  submitButtonLabel?: string | null;
+  successTitle?: string | null;
+  successDescription?: string | null;
 }
 
 interface FormState {
@@ -46,6 +58,7 @@ interface FormState {
   friendId: string | null;
   sharedByFriendId: string | null;
   slackChannelId: string | null;
+  successRedirectUrl: string | null;
   submitting: boolean;
 }
 
@@ -55,13 +68,119 @@ const state: FormState = {
   friendId: null,
   sharedByFriendId: null,
   slackChannelId: null,
+  successRedirectUrl: null,
   submitting: false,
 };
+
+const localizedTextDefaults: Record<string, {
+  submitButtonLabel: string;
+  submittingLabel: string;
+  successTitle: string;
+  successDescription: string;
+  approximateDateHelper: string;
+  approximateStartDatePlaceholder: string;
+  approximateEndDatePlaceholder: string;
+}> = {
+  ja: {
+    submitButtonLabel: '送信する',
+    submittingLabel: '送信中...',
+    successTitle: '送信完了！',
+    successDescription: 'ご回答ありがとうございました。',
+    approximateDateHelper: '日付が未定の場合は「2月頃」「2026年春」「2月中旬〜下旬」などでも構いません。',
+    approximateStartDatePlaceholder: '例：2026/2/10、2月頃、2026年春',
+    approximateEndDatePlaceholder: '例：2026/2/17、2月下旬、未定',
+  },
+  en: {
+    submitButtonLabel: 'Submit',
+    submittingLabel: 'Submitting...',
+    successTitle: 'Your response has been submitted',
+    successDescription: 'Thank you for your response.',
+    approximateDateHelper: 'If exact dates are not decided yet, approximate timing such as "around February", "spring 2026", or "mid to late February" is fine.',
+    approximateStartDatePlaceholder: 'e.g. Feb 10, 2026 / around February / spring 2026',
+    approximateEndDatePlaceholder: 'e.g. Feb 17, 2026 / late February / undecided',
+  },
+  nl: {
+    submitButtonLabel: 'Verzenden',
+    submittingLabel: 'Verzenden...',
+    successTitle: 'Uw antwoord is verzonden',
+    successDescription: 'Dank u voor uw antwoord.',
+    approximateDateHelper: 'Als de exacte datum nog niet vaststaat, mag u ook iets invullen zoals "rond februari", "voorjaar 2026" of "midden tot eind februari".',
+    approximateStartDatePlaceholder: 'bijv. 10 februari 2026 / rond februari / voorjaar 2026',
+    approximateEndDatePlaceholder: 'bijv. 17 februari 2026 / eind februari / nog niet bekend',
+  },
+  ko: {
+    submitButtonLabel: '제출',
+    submittingLabel: '제출 중...',
+    successTitle: '제출이 완료되었습니다',
+    successDescription: '응답해 주셔서 감사합니다.',
+    approximateDateHelper: '정확한 날짜가 아직 정해지지 않았다면 “2월경”, “2026년 봄”, “2월 중순~하순”처럼 적어 주셔도 됩니다.',
+    approximateStartDatePlaceholder: '예: 2026/2/10, 2월경, 2026년 봄',
+    approximateEndDatePlaceholder: '예: 2026/2/17, 2월 하순, 미정',
+  },
+  'zh-TW': {
+    submitButtonLabel: '送出',
+    submittingLabel: '送出中...',
+    successTitle: '表單已送出',
+    successDescription: '感謝您的填寫。',
+    approximateDateHelper: '若確切日期尚未決定，也可以填寫「2月左右」、「2026年春季」、「2月中下旬」等大約時期。',
+    approximateStartDatePlaceholder: '例：2026/2/10、2月左右、2026年春季',
+    approximateEndDatePlaceholder: '例：2026/2/17、2月下旬、尚未決定',
+  },
+};
+
+function normalizeLocale(value: string | null | undefined): string {
+  const locale = value?.trim() || '';
+  if (!locale) return 'ja';
+
+  const lowered = locale.toLowerCase();
+  if (lowered === 'ja' || lowered === 'ja-jp') return 'ja';
+  if (lowered === 'en' || lowered === 'en-us' || lowered === 'en-gb') return 'en';
+  if (lowered === 'nl' || lowered === 'nl-nl') return 'nl';
+  if (lowered === 'ko' || lowered === 'ko-kr') return 'ko';
+  if (lowered === 'zh-tw' || lowered === 'zh_tw') return 'zh-TW';
+  return locale;
+}
+
+function getLocalizedTexts(locale: string | null | undefined) {
+  return localizedTextDefaults[normalizeLocale(locale)] || localizedTextDefaults.ja;
+}
+
+function getCurrentLocalizedTexts() {
+  return getLocalizedTexts(state.formDef?.locale);
+}
+
+function normalizeRedirectUrl(value: string | null): string | null {
+  if (!value?.trim()) return null;
+
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSuccessRedirectUrl(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return normalizeRedirectUrl(
+    params.get('successRedirect')
+    || params.get('redirectUrl')
+    || params.get('redirect'),
+  );
+}
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function escapeAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function apiCall(path: string, options?: RequestInit): Promise<Response> {
@@ -80,18 +199,57 @@ function getApp(): HTMLElement {
 
 // ========== Field Rendering ==========
 
-function renderField(field: FormField): string {
+function getOtherFieldName(field: FormField): string {
+  return `${field.name}__other`;
+}
+
+function renderOtherInput(field: FormField, index: number): string {
+  if (!field.allowOtherOption) return '';
+
+  const otherLabel = field.otherOptionLabel || 'その他';
+  return `<input
+    type="text"
+    name="${escapeAttr(getOtherFieldName(field))}"
+    id="field-${index}-other"
+    class="form-input other-input"
+    placeholder="${escapeAttr(`${otherLabel}の内容`)}"
+    data-other-for="${escapeAttr(field.name)}"
+    hidden
+  />`;
+}
+
+function isFlexibleTravelDateField(field: FormField): boolean {
+  if (field.type !== 'date') return false;
+  return field.name === 'travel_start_date' || field.name === 'travel_end_date';
+}
+
+function getFlexibleDatePlaceholder(field: FormField): string {
+  const texts = getCurrentLocalizedTexts();
+  return field.name === 'travel_end_date'
+    ? texts.approximateEndDatePlaceholder
+    : texts.approximateStartDatePlaceholder;
+}
+
+function renderField(field: FormField, index: number): string {
   const required = field.required ? ' required' : '';
-  const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
+  const flexibleTravelDate = isFlexibleTravelDateField(field);
+  const effectivePlaceholder = field.placeholder || (flexibleTravelDate ? getFlexibleDatePlaceholder(field) : '');
+  const placeholder = effectivePlaceholder ? ` placeholder="${escapeAttr(effectivePlaceholder)}"` : '';
   const requiredMark = field.required ? '<span class="required-mark">*</span>' : '';
+  const fieldId = `field-${index}`;
+  const fieldName = escapeAttr(field.name);
+  const helperText = field.helperText?.trim() || (flexibleTravelDate ? getCurrentLocalizedTexts().approximateDateHelper : '');
+  const helper = helperText
+    ? `<p class="field-helper">${escapeHtml(helperText)}</p>`
+    : '';
 
   let inputHtml = '';
 
   switch (field.type) {
     case 'textarea':
       inputHtml = `<textarea
-        name="${escapeHtml(field.name)}"
-        id="field-${escapeHtml(field.name)}"
+        name="${fieldName}"
+        id="${fieldId}"
         class="form-textarea"
         rows="4"
         ${placeholder}${required}></textarea>`;
@@ -99,15 +257,20 @@ function renderField(field: FormField): string {
 
     case 'select': {
       const opts = (field.options ?? [])
-        .map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`)
+        .map((o) => `<option value="${escapeAttr(o)}">${escapeHtml(o)}</option>`)
         .join('');
+      const otherOption = field.allowOtherOption
+        ? `<option value="${OTHER_SENTINEL}">${escapeHtml(field.otherOptionLabel || 'その他')}</option>`
+        : '';
       inputHtml = `<select
-        name="${escapeHtml(field.name)}"
-        id="field-${escapeHtml(field.name)}"
+        name="${fieldName}"
+        id="${fieldId}"
         class="form-select"${required}>
         <option value="">選択してください</option>
         ${opts}
-      </select>`;
+        ${otherOption}
+      </select>
+      ${renderOtherInput(field, index)}`;
       break;
     }
 
@@ -116,12 +279,19 @@ function renderField(field: FormField): string {
         .map(
           (o) =>
             `<label class="radio-label">
-              <input type="radio" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}"${required} />
+              <input type="radio" name="${fieldName}" value="${escapeAttr(o)}"${required} />
               ${escapeHtml(o)}
             </label>`,
         )
         .join('');
-      inputHtml = `<div class="radio-group">${radios}</div>`;
+      const otherRadio = field.allowOtherOption
+        ? `<label class="radio-label">
+            <input type="radio" name="${fieldName}" value="${OTHER_SENTINEL}"${required} />
+            ${escapeHtml(field.otherOptionLabel || 'その他')}
+          </label>
+          ${renderOtherInput(field, index)}`
+        : '';
+      inputHtml = `<div class="radio-group">${radios}${otherRadio}</div>`;
       break;
     }
 
@@ -130,30 +300,38 @@ function renderField(field: FormField): string {
         .map(
           (o) =>
             `<label class="checkbox-label">
-              <input type="checkbox" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}" />
+              <input type="checkbox" name="${fieldName}" value="${escapeAttr(o)}" />
               ${escapeHtml(o)}
             </label>`,
         )
         .join('');
-      inputHtml = `<div class="checkbox-group">${boxes}</div>`;
+      const otherCheckbox = field.allowOtherOption
+        ? `<label class="checkbox-label">
+            <input type="checkbox" name="${fieldName}" value="${OTHER_SENTINEL}" />
+            ${escapeHtml(field.otherOptionLabel || 'その他')}
+          </label>
+          ${renderOtherInput(field, index)}`
+        : '';
+      inputHtml = `<div class="checkbox-group">${boxes}${otherCheckbox}</div>`;
       break;
     }
 
     default:
       inputHtml = `<input
-        type="${escapeHtml(field.type)}"
-        name="${escapeHtml(field.name)}"
-        id="field-${escapeHtml(field.name)}"
+        type="${flexibleTravelDate ? 'text' : escapeHtml(field.type)}"
+        name="${fieldName}"
+        id="${fieldId}"
         class="form-input"
         ${placeholder}${required} />`;
       break;
   }
 
   return `
-    <div class="form-field">
-      <label class="form-label" for="field-${escapeHtml(field.name)}">
+    <div class="form-field" id="field-wrap-${index}" data-field-name="${fieldName}">
+      <label class="form-label" for="${fieldId}">
         ${escapeHtml(field.label)}${requiredMark}
       </label>
+      ${helper}
       ${inputHtml}
     </div>
   `;
@@ -175,7 +353,9 @@ function injectStyles(): void {
     .form-profile span { font-size: 14px; font-weight: 600; }
     .form-body { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .form-field { margin-bottom: 20px; }
+    .form-field[hidden], .other-input[hidden] { display: none !important; }
     .form-label { display: block; font-size: 14px; font-weight: 600; color: #333; margin-bottom: 6px; }
+    .field-helper { margin: -2px 0 8px; color: #666; font-size: 13px; line-height: 1.5; }
     .required-mark { color: #e53e3e; margin-left: 2px; }
     .form-input, .form-textarea, .form-select {
       width: 100%; padding: 12px; border: 1.5px solid #e0e0e0; border-radius: 8px;
@@ -221,6 +401,7 @@ function injectStyles(): void {
 function render(): void {
   const { formDef, profile } = state;
   if (!formDef) return;
+  const localizedTexts = getCurrentLocalizedTexts();
 
   injectStyles();
   const app = getApp();
@@ -231,7 +412,7 @@ function render(): void {
       </div>`
     : '';
 
-  const fieldsHtml = formDef.fields.map(renderField).join('');
+  const fieldsHtml = formDef.fields.map((field, index) => renderField(field, index)).join('');
 
   app.innerHTML = `
     <div class="form-page">
@@ -242,22 +423,26 @@ function render(): void {
       </div>
       <form id="liff-form" class="form-body" novalidate>
         ${fieldsHtml}
-        <button type="submit" class="submit-btn" id="submitBtn">送信する</button>
+        <button type="submit" class="submit-btn" id="submitBtn">${escapeHtml(formDef.submitButtonLabel || localizedTexts.submitButtonLabel)}</button>
       </form>
     </div>
   `;
 
   attachFormEvents();
+  updateFieldVisibility();
 }
 
 function renderSuccess(): void {
   const app = getApp();
+  const localizedTexts = getCurrentLocalizedTexts();
+  const title = state.formDef?.successTitle || localizedTexts.successTitle;
+  const description = state.formDef?.successDescription || localizedTexts.successDescription;
   app.innerHTML = `
     <div class="form-page">
       <div class="success-card">
         <div class="success-icon">✓</div>
-        <h2>送信完了！</h2>
-        <p class="success-message">ご回答ありがとうございました。</p>
+        <h2>${escapeHtml(title)}</h2>
+        <p class="success-message">${escapeHtml(description)}</p>
         <button class="close-btn" id="closeBtn">閉じる</button>
       </div>
     </div>
@@ -305,58 +490,138 @@ function renderLoading(): void {
 
 // ========== Form Submission ==========
 
-function collectFormData(): Record<string, unknown> {
-  const { formDef } = state;
-  if (!formDef) return {};
+type NamedFormControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
+function getNamedControls(name: string): NamedFormControl[] {
+  return Array.from(document.getElementsByName(name))
+    .filter((el): el is NamedFormControl => (
+      el instanceof HTMLInputElement
+      || el instanceof HTMLSelectElement
+      || el instanceof HTMLTextAreaElement
+    ));
+}
+
+function getRawFieldValue(field: FormField): unknown {
+  const controls = getNamedControls(field.name);
+
+  if (field.type === 'checkbox') {
+    return controls
+      .filter((control): control is HTMLInputElement => control instanceof HTMLInputElement)
+      .filter((control) => control.checked)
+      .map((control) => control.value);
+  }
+
+  if (field.type === 'radio') {
+    const checked = controls
+      .filter((control): control is HTMLInputElement => control instanceof HTMLInputElement)
+      .find((control) => control.checked);
+    return checked?.value ?? '';
+  }
+
+  return controls[0]?.value ?? '';
+}
+
+function getOtherInputValue(field: FormField): string {
+  return String(getNamedControls(getOtherFieldName(field))[0]?.value ?? '').trim();
+}
+
+function isOtherSelected(field: FormField, value: unknown): boolean {
+  if (!field.allowOtherOption) return false;
+  if (Array.isArray(value)) return value.includes(OTHER_SENTINEL);
+  return value === OTHER_SENTINEL;
+}
+
+function collectRawFormData(fields: FormField[]): Record<string, unknown> {
+  return Object.fromEntries(fields.map((field) => [field.name, getRawFieldValue(field)]));
+}
+
+function getCurrentVisibleFields(rawData = state.formDef ? collectRawFormData(state.formDef.fields) : {}): FormField[] {
+  if (!state.formDef) return [];
+  return getVisibleFormFields(state.formDef.fields, rawData);
+}
+
+function buildSubmissionData(
+  visibleFields: FormField[],
+  rawData: Record<string, unknown>,
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
-  for (const field of formDef.fields) {
+  for (const field of visibleFields) {
+    const value = rawData[field.name];
+    const otherValue = getOtherInputValue(field);
+    const otherLabel = field.otherOptionLabel || 'その他';
+
     if (field.type === 'checkbox') {
-      const checked = Array.from(
-        document.querySelectorAll<HTMLInputElement>(
-          `input[name="${field.name}"]:checked`,
-        ),
-      ).map((el) => el.value);
-      result[field.name] = checked;
-    } else if (field.type === 'radio') {
-      const checked = document.querySelector<HTMLInputElement>(
-        `input[name="${field.name}"]:checked`,
-      );
-      result[field.name] = checked?.value ?? '';
-    } else {
-      const el = document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-        `[name="${field.name}"]`,
-      );
-      result[field.name] = el?.value ?? '';
+      const selected = Array.isArray(value)
+        ? value.filter((item) => item !== OTHER_SENTINEL)
+        : [];
+      result[field.name] = isOtherSelected(field, value) && otherValue
+        ? [...selected, `${otherLabel}: ${otherValue}`]
+        : selected;
+      continue;
     }
+
+    result[field.name] = value === OTHER_SENTINEL
+      ? (otherValue ? `${otherLabel}: ${otherValue}` : '')
+      : (value ?? '');
   }
 
   return result;
+}
+
+function updateFieldVisibility(): void {
+  const { formDef } = state;
+  if (!formDef) return;
+
+  const rawData = collectRawFormData(formDef.fields);
+  const visibleNames = new Set(getCurrentVisibleFields(rawData).map((field) => field.name));
+
+  formDef.fields.forEach((field, index) => {
+    const visible = visibleNames.has(field.name);
+    const wrapper = document.getElementById(`field-wrap-${index}`);
+    if (wrapper) wrapper.hidden = !visible;
+
+    const fieldControls = getNamedControls(field.name);
+    const otherControls = getNamedControls(getOtherFieldName(field));
+    const otherVisible = visible && isOtherSelected(field, rawData[field.name]);
+
+    for (const control of [...fieldControls, ...otherControls]) {
+      control.disabled = !visible;
+      control.required = false;
+    }
+
+    for (const control of fieldControls) {
+      control.required = visible && Boolean(field.required) && field.type !== 'checkbox';
+    }
+
+    for (const control of otherControls) {
+      control.hidden = !otherVisible;
+      control.disabled = !otherVisible;
+      control.required = otherVisible;
+    }
+  });
 }
 
 function validateForm(): string | null {
   const { formDef } = state;
   if (!formDef) return null;
 
-  for (const field of formDef.fields) {
-    if (!field.required) continue;
+  const rawData = collectRawFormData(formDef.fields);
+  const visibleFields = getCurrentVisibleFields(rawData);
 
-    if (field.type === 'checkbox') {
-      const checked = document.querySelectorAll<HTMLInputElement>(
-        `input[name="${field.name}"]:checked`,
-      );
-      if (checked.length === 0) return `${field.label} は必須項目です`;
-    } else if (field.type === 'radio') {
-      const checked = document.querySelector<HTMLInputElement>(
-        `input[name="${field.name}"]:checked`,
-      );
-      if (!checked) return `${field.label} は必須項目です`;
-    } else {
-      const el = document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-        `[name="${field.name}"]`,
-      );
-      if (!el || !el.value.trim()) return `${field.label} は必須項目です`;
+  for (const field of visibleFields) {
+    const value = rawData[field.name];
+
+    if (field.required) {
+      if (field.type === 'checkbox') {
+        if (!Array.isArray(value) || value.length === 0) return `${field.label} は必須項目です`;
+      } else if (value === undefined || value === null || String(value).trim() === '') {
+        return `${field.label} は必須項目です`;
+      }
+    }
+
+    if (isOtherSelected(field, value) && !getOtherInputValue(field)) {
+      return `${field.otherOptionLabel || 'その他'}の内容を入力してください`;
     }
   }
 
@@ -383,19 +648,18 @@ async function submitForm(): Promise<void> {
   const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement | null;
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = '送信中...';
+    submitBtn.textContent = getCurrentLocalizedTexts().submittingLabel;
   }
 
   try {
-    const data = collectFormData();
+    const rawData = collectRawFormData(state.formDef.fields);
+    const visibleFields = getCurrentVisibleFields(rawData);
+    const data = buildSubmissionData(visibleFields, rawData);
     console.log('Form data collected:', JSON.stringify(data));
     const body: Record<string, unknown> = { data };
-    if (state.profile?.userId) body.lineUserId = state.profile.userId;
     if (state.profile?.displayName) body.responderDisplayName = state.profile.displayName;
     if (state.profile?.pictureUrl) body.responderPictureUrl = state.profile.pictureUrl;
-    if (state.sharedByFriendId) body.sharedByFriendId = state.sharedByFriendId;
     if (state.slackChannelId) body.slackChannelId = state.slackChannelId;
-    // Note: state.friendId is users.id (UUID), not friends.id — don't send as friendId
     console.log('Submitting to:', `${API_URL}/api/forms/${state.formDef.id}/submit`);
 
     const res = await apiCall(`/api/forms/${state.formDef.id}/submit`, {
@@ -411,12 +675,17 @@ async function submitForm(): Promise<void> {
       throw new Error(`${res.status}: ${errMsg}`);
     }
 
+    if (state.successRedirectUrl) {
+      window.location.assign(state.successRedirectUrl);
+      return;
+    }
+
     renderSuccess();
   } catch (err) {
     state.submitting = false;
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = '送信する';
+      submitBtn.textContent = state.formDef.submitButtonLabel || getCurrentLocalizedTexts().submitButtonLabel;
     }
     const existing = getApp().querySelector('.form-error-msg');
     if (existing) existing.remove();
@@ -435,6 +704,8 @@ function attachFormEvents(): void {
     e.preventDefault();
     void submitForm();
   });
+  form?.addEventListener('input', updateFieldVisibility);
+  form?.addEventListener('change', updateFieldVisibility);
 }
 
 // ========== Init ==========
@@ -451,6 +722,7 @@ export async function initForm(formId: string | null): Promise<void> {
     const params = new URLSearchParams(window.location.search);
     state.sharedByFriendId = params.get('sharedBy');
     state.slackChannelId = params.get('slackChannelId');
+    state.successRedirectUrl = getSuccessRedirectUrl();
 
     // Fetch profile and form definition in parallel
     const [profile, res] = await Promise.all([

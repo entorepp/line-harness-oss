@@ -45,6 +45,13 @@ export type ApiScheduledMessage = {
   updatedAt: string
 }
 
+export type ApiSendMessageResult = {
+  sent?: boolean
+  messageId?: string
+  scheduled?: boolean
+  scheduledMessage?: ApiScheduledMessage
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
 /**
@@ -116,7 +123,7 @@ export const api = {
         method: 'DELETE',
       }),
     sendMessage: (friendId: string, data: Record<string, string | null | undefined>) =>
-      fetchApi<ApiResponse<unknown>>(`/api/friends/${friendId}/messages`, {
+      fetchApi<ApiResponse<ApiSendMessageResult>>(`/api/friends/${friendId}/messages`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -421,10 +428,23 @@ export const api = {
         '/api/chats?' + new URLSearchParams(query),
       )
     },
-    get: (id: string) =>
-      fetchApi<ApiResponse<Chat & { messages?: { id: string; content: string; senderType: string; createdAt: string }[] }>>(
-        `/api/chats/${id}`,
-      ),
+    get: (id: string, params?: { beforeMessageId?: string; limit?: number }) => {
+      const query = new URLSearchParams()
+      if (params?.beforeMessageId) query.set('beforeMessageId', params.beforeMessageId)
+      if (params?.limit) query.set('limit', String(params.limit))
+      const suffix = query.toString() ? `?${query.toString()}` : ''
+      return fetchApi<ApiResponse<Chat & {
+        messages?: {
+          id: string
+          direction: 'incoming' | 'outgoing'
+          messageType: string
+          content: string
+          createdAt: string
+        }[]
+        hasMoreMessages?: boolean
+        oldestMessageId?: string | null
+      }>>(`/api/chats/${id}${suffix}`)
+    },
     create: (data: { friendId: string; operatorId?: string | null }) =>
       fetchApi<ApiResponse<Chat>>('/api/chats', {
         method: 'POST',
@@ -436,7 +456,7 @@ export const api = {
         body: JSON.stringify(data),
       }),
     send: (id: string, data: Record<string, string | null | undefined>) =>
-      fetchApi<ApiResponse<unknown>>(`/api/chats/${id}/send`, {
+      fetchApi<ApiResponse<ApiSendMessageResult>>(`/api/chats/${id}/send`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),

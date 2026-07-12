@@ -3,7 +3,7 @@
 # Usage: bash scripts/sync-oss.sh
 
 OSS_DIR="/tmp/line-harness-public"
-PRIVATE_DIR="/Users/axpr/claudecode/tools/line-harness"
+PRIVATE_DIR="${PRIVATE_DIR:-$(pwd)}"
 
 echo "=== Syncing to OSS ==="
 
@@ -15,7 +15,6 @@ rsync -av \
   --exclude='.env.production' \
   --exclude='.env.local' \
   --exclude='.env' \
-  --exclude='.claude' \
   --exclude='apps/web/out' \
   --exclude='apps/liff/dist' \
   --exclude='docs/superpowers' \

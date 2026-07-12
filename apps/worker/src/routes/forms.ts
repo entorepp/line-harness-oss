@@ -18,6 +18,8 @@ import {
 } from '@line-crm/db';
 import { getFriendByLineUserId, getFriendById } from '@line-crm/db';
 import { addTagToFriend, enrollFriendInScenario } from '@line-crm/db';
+import { getVisibleFormFields } from '@line-crm/shared';
+import type { FormField as SharedFormField } from '@line-crm/shared';
 import type {
   Form as DbForm,
   FormIssue as DbFormIssue,
@@ -28,12 +30,7 @@ import { fireEvent } from '../services/event-bus.js';
 
 const forms = new Hono<Env>();
 
-type FormField = {
-  name: string;
-  label: string;
-  type: string;
-  required?: boolean;
-};
+type FormField = SharedFormField;
 
 type LocalizedFormDefaults = {
   submitButtonLabel: string;
@@ -51,6 +48,11 @@ const FORM_LOCALE_DEFAULTS: Record<string, LocalizedFormDefaults> = {
     submitButtonLabel: 'Submit',
     successTitle: 'Your response has been submitted',
     successDescription: 'Thank you for your response. We will review it and get back to you.',
+  },
+  nl: {
+    submitButtonLabel: 'Verzenden',
+    successTitle: 'Uw antwoord is verzonden',
+    successDescription: 'Dank u voor uw antwoord. We bekijken de informatie en nemen contact met u op.',
   },
   ko: {
     submitButtonLabel: '제출',
@@ -72,6 +74,7 @@ function normalizeLocale(value?: string | null): string | null {
   if (lowered === 'zh_tw' || lowered === 'zh-tw') return 'zh-TW';
   if (lowered === 'ja-jp' || lowered === 'ja') return 'ja';
   if (lowered === 'en-us' || lowered === 'en-gb' || lowered === 'en') return 'en';
+  if (lowered === 'nl-nl' || lowered === 'nl') return 'nl';
   if (lowered === 'ko-kr' || lowered === 'ko') return 'ko';
   return locale;
 }
@@ -85,6 +88,8 @@ function getLocaleLabel(locale?: string | null): string {
   switch (normalizeLocale(locale)) {
     case 'en':
       return 'English';
+    case 'nl':
+      return 'Nederlands';
     case 'ko':
       return '한국어';
     case 'zh-TW':
@@ -117,8 +122,9 @@ function formatSubmissionValue(value: unknown): string {
 function buildAnswerEntries(
   fields: FormField[],
   submissionData: Record<string, unknown>,
+  allFields: FormField[] = fields,
 ): FormAnswerEntry[] {
-  const knownFieldNames = new Set(fields.map((field) => field.name));
+  const knownFieldNames = new Set(allFields.map((field) => field.name));
 
   const orderedEntries = fields
     .map((field) => ({
@@ -138,6 +144,21 @@ function buildAnswerEntries(
     .filter((entry) => entry.value);
 
   return [...orderedEntries, ...extraEntries];
+}
+
+function filterVisibleSubmissionData(
+  fields: FormField[],
+  visibleFields: FormField[],
+  submissionData: Record<string, unknown>,
+): Record<string, unknown> {
+  const knownFieldNames = new Set(fields.map((field) => field.name));
+  const visibleFieldNames = new Set(visibleFields.map((field) => field.name));
+
+  return Object.fromEntries(
+    Object.entries(submissionData).filter(([key]) => (
+      visibleFieldNames.has(key) || !knownFieldNames.has(key)
+    )),
+  );
 }
 
 const RESPONDENT_NAME_PATTERNS = [
@@ -161,16 +182,27 @@ const RESPONDENT_NAME_PATTERNS = [
   /이름/,
 ];
 
+const PRIMARY_RESPONDENT_NAME_PATTERNS = [
+  /client.*name/i,
+  /customer.*name/i,
+  /お客様.*(氏名|名前|お名前)/,
+  /客戶.*姓名/,
+  /고객.*(성명|성함|이름)/,
+];
+
 function resolveRespondentName(
   fields: FormField[],
   submissionData: Record<string, unknown>,
 ): string | null {
   const orderedEntries = buildAnswerEntries(fields, submissionData);
 
-  const matchedEntry = orderedEntries.find((entry) => {
+  const findEntryByPatterns = (patterns: RegExp[]) => orderedEntries.find((entry) => {
     const haystack = `${entry.name} ${entry.label}`;
-    return RESPONDENT_NAME_PATTERNS.some((pattern) => pattern.test(haystack));
+    return patterns.some((pattern) => pattern.test(haystack));
   });
+
+  const matchedEntry = findEntryByPatterns(PRIMARY_RESPONDENT_NAME_PATTERNS)
+    || findEntryByPatterns(RESPONDENT_NAME_PATTERNS);
   if (matchedEntry?.value) {
     return matchedEntry.value;
   }
@@ -606,26 +638,20 @@ forms.get('/api/form-issues/:issueId', async (c) => {
   }
 });
 
-// GET /api/forms/:id/share-url — build a LIFF share URL for the form
+// GET /api/forms/:id/share-url — build a public URL for the form
 forms.get('/api/forms/:id/share-url', async (c) => {
   try {
     const id = c.req.param('id');
-    const lineAccountId = c.req.query('lineAccountId');
-    const sharedByFriendId = c.req.query('sharedByFriendId');
     const slackChannelId = c.req.query('slackChannelId');
     const form = await getFormById(c.env.DB, id);
     if (!form) {
       return c.json({ success: false, error: 'Form not found' }, 404);
     }
 
-    const shareUrl = await buildLiffShareUrl(c.env, c.env.DB, id, {
-      lineAccountId,
-      sharedByFriendId,
-      slackChannelId,
+    const shareUrl = buildPublicFormUrl(c.env, {
+      id,
+      slackChannelId: slackChannelId ?? '',
     });
-    if (!shareUrl) {
-      return c.json({ success: false, error: 'LIFF URL not configured' }, 500);
-    }
 
     return c.json({
       success: true,
@@ -662,22 +688,28 @@ forms.post('/api/forms/:id/submit', async (c) => {
       data?: Record<string, unknown>;
     }>();
 
-    const submissionData = body.data ?? {};
+    const rawSubmissionData = body.data ?? {};
     const issueId = body.issueId?.trim() || null;
     const issue = issueId ? await getFormIssueById(c.env.DB, issueId) : null;
     if (issueId && (!issue || !issue.is_active || issue.form_id !== formId)) {
       return c.json({ success: false, error: 'Issued form not found' }, 404);
     }
 
-    const sharedByFriendId = body.sharedByFriendId?.trim() || issue?.shared_by_friend_id || null;
+    const db = c.env.DB;
+    const enableLineFollowup = c.env.FORMS_ENABLE_LINE_FOLLOWUP === 'true';
+    const sharedByFriendId = enableLineFollowup
+      ? body.sharedByFriendId?.trim() || issue?.shared_by_friend_id || null
+      : null;
     const slackChannelId = body.slackChannelId?.trim() || issue?.slack_channel_id || null;
     const responderDisplayName = body.responderDisplayName?.trim() || null;
     const responderPictureUrl = body.responderPictureUrl?.trim() || null;
 
     // Validate required fields
     const fields = JSON.parse(form.fields || '[]') as FormField[];
+    const visibleFields = getVisibleFormFields(fields, rawSubmissionData);
+    const submissionData = filterVisibleSubmissionData(fields, visibleFields, rawSubmissionData);
 
-    for (const field of fields) {
+    for (const field of visibleFields) {
       if (field.required) {
         const val = submissionData[field.name];
         if (
@@ -694,33 +726,31 @@ forms.post('/api/forms/:id/submit', async (c) => {
       }
     }
 
-    const answerEntries = buildAnswerEntries(fields, submissionData);
+    const answerEntries = buildAnswerEntries(visibleFields, submissionData, fields);
 
-    // Resolve friend by lineUserId or friendId
-    let friendId: string | null = body.friendId ?? null;
-    if (!friendId && body.lineUserId) {
+    // URL-shared forms are the default. LINE/friend resolution is only used when explicitly enabled.
+    let friendId: string | null = enableLineFollowup ? body.friendId ?? null : null;
+    if (enableLineFollowup && !friendId && body.lineUserId) {
       const friend = await getFriendByLineUserId(c.env.DB, body.lineUserId);
       if (friend) {
         friendId = friend.id;
       }
     }
 
-    const db = c.env.DB;
-    const friend = friendId ? await getFriendById(db, friendId) : null;
+    const friend = enableLineFollowup && friendId ? await getFriendById(db, friendId) : null;
     const resolvedSubmissionSlackChannelId = slackChannelId || friend?.slack_channel_id || null;
 
     // Save submission (friendId null if not resolved — avoids FK constraint)
     const submission = await createFormSubmission(c.env.DB, {
       formId,
       formIssueId: issue?.id || null,
-      friendId: friendId || null,
+      friendId: enableLineFollowup ? friendId || null : null,
       slackChannelId: resolvedSubmissionSlackChannelId,
       data: JSON.stringify(submissionData),
     });
 
     const now = jstNow();
     const notificationFriendId = sharedByFriendId || friendId || null;
-    const enableLineFollowup = c.env.FORMS_ENABLE_LINE_FOLLOWUP === 'true';
     const lineAccessToken = enableLineFollowup && friend?.line_account_id
       ? (await getLineAccountById(db, friend.line_account_id))?.channel_access_token || c.env.LINE_CHANNEL_ACCESS_TOKEN
       : undefined;
@@ -741,28 +771,23 @@ forms.post('/api/forms/:id/submit', async (c) => {
       notificationSlackChannelId: resolvedSubmissionSlackChannelId || undefined,
       slackChannelId: resolvedSubmissionSlackChannelId || undefined,
       submissionData,
-      formFields: fields,
+      formFields: visibleFields,
       form: serializeForm(form),
       submission: {
-        ...serializeSubmission(submission),
+        id: submission.id,
+        formId: submission.form_id,
+        formIssueId: submission.form_issue_id,
         slackChannelId: resolvedSubmissionSlackChannelId || undefined,
+        data: submissionData,
+        createdAt: submission.created_at,
       },
       issue: issue ? await serializeFormIssue(c.env, db, issue) : undefined,
-      friend: friend
-        ? {
-            id: friend.id,
-            lineUserId: friend.line_user_id,
-            displayName: friend.display_name,
-            pictureUrl: friend.picture_url,
-            slackChannelId: friend.slack_channel_id,
-          }
-        : undefined,
     };
 
     // Side effects (best-effort, don't fail the request)
     const sideEffects: Promise<unknown>[] = [];
 
-    if (friendId) {
+    if (enableLineFollowup && friendId) {
       // Save response data to friend's metadata
       if (form.save_to_metadata && friend) {
         sideEffects.push(
@@ -793,14 +818,14 @@ forms.post('/api/forms/:id/submit', async (c) => {
         db,
         'form_submit',
         {
-          friendId: friendId || undefined,
-          notificationFriendId: notificationFriendId || undefined,
+          friendId: enableLineFollowup ? friendId || undefined : undefined,
+          notificationFriendId: enableLineFollowup ? notificationFriendId || undefined : undefined,
           notificationSlackChannelId: resolvedSubmissionSlackChannelId || undefined,
           suppressLineActions: !enableLineFollowup,
           eventData,
         },
         lineAccessToken,
-        friend?.line_account_id,
+        enableLineFollowup ? friend?.line_account_id : undefined,
         {
           token: c.env.SLACK_BOT_TOKEN,
           googleTranslateApiKey: c.env.GOOGLE_TRANSLATE_API_KEY,

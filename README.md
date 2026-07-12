@@ -4,7 +4,7 @@
 
 LINE公式アカウントの完全オープンソース CRM。L社 / U社 の無料代替。
 
-Cloudflare 無料枠で動く。サーバー代 0 円。Claude Code から全操作可能。
+Cloudflare 無料枠で動く。サーバー代 0 円。REST API / SDK から全操作可能。
 
 ---
 
@@ -20,7 +20,7 @@ Cloudflare 無料枠で動く。サーバー代 0 円。Claude Code から全操
 | スコアリング | ✅ | ❌ | ✅ |
 | IF-THEN 自動化 | 一部 | 一部 | ✅ |
 | API 公開 | ❌ | ❌ | **全機能** |
-| AI (Claude Code) 対応 | ❌ | ❌ | **✅** |
+| API / SDK 操作 | ❌ | ❌ | **✅** |
 | BAN 検知 & 自動移行 | ❌ | ❌ | **✅** |
 | マルチアカウント | 別契約 | 別契約 | **標準搭載** |
 | ソースコード | 非公開 | 非公開 | **MIT** |
@@ -86,7 +86,6 @@ LINE Platform ──→ Cloudflare Workers (Hono) ──→ D1 (SQLite)
 Next.js 15 (管理画面) ──→ Workers API ──→ D1
 LIFF (Vite) ──→ Workers API ──→ D1
 TypeScript SDK ──→ Workers API ──→ D1
-Claude Code ──→ Workers API ──→ D1
 ```
 
 | レイヤー | 技術 |
@@ -225,7 +224,7 @@ POST /api/automations
 
 ## ドキュメント
 
-**[📖 Wiki（全23ページ）](https://github.com/Shudesu/line-harness-oss/wiki)**
+**[📖 Wiki](https://github.com/Shudesu/line-harness-oss/wiki)**
 
 | カテゴリ | ページ |
 |---------|--------|
@@ -235,7 +234,7 @@ POST /api/automations
 | マーケ | [Rich Menus](https://github.com/Shudesu/line-harness-oss/wiki/09-Rich-Menus) · [Tracked Links](https://github.com/Shudesu/line-harness-oss/wiki/10-Tracked-Links) · [Forms & LIFF](https://github.com/Shudesu/line-harness-oss/wiki/11-Forms-and-LIFF) · [CV & Affiliates](https://github.com/Shudesu/line-harness-oss/wiki/17-CV-Tracking-and-Affiliates) |
 | 自動化 | [Automation](https://github.com/Shudesu/line-harness-oss/wiki/14-Automation) · [Webhooks](https://github.com/Shudesu/line-harness-oss/wiki/15-Webhooks-and-Notifications) |
 | 安全性 | [Multi-Account & BAN](https://github.com/Shudesu/line-harness-oss/wiki/18-Multi-Account-and-BAN) |
-| 開発 | [SDK Reference](https://github.com/Shudesu/line-harness-oss/wiki/19-SDK-Reference) · [API Reference](https://github.com/Shudesu/line-harness-oss/wiki/20-API-Reference) · [Deployment](https://github.com/Shudesu/line-harness-oss/wiki/21-Deployment) · [Operations](https://github.com/Shudesu/line-harness-oss/wiki/22-Operations) · [Claude Code](https://github.com/Shudesu/line-harness-oss/wiki/23-Claude-Code-Integration) |
+| 開発 | [SDK Reference](https://github.com/Shudesu/line-harness-oss/wiki/19-SDK-Reference) · [API Reference](https://github.com/Shudesu/line-harness-oss/wiki/20-API-Reference) · [Deployment](https://github.com/Shudesu/line-harness-oss/wiki/21-Deployment) · [Operations](https://github.com/Shudesu/line-harness-oss/wiki/22-Operations) |
 
 ---
 

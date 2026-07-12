@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@line-crm/shared": "workspace:*",
     "@liff/liff-types": "^2.24.0"
   },
   "devDependencies": {

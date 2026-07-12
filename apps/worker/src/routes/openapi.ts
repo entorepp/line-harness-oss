@@ -8,7 +8,7 @@ const spec = {
   info: {
     title: 'LINE OSS CRM API',
     version: '0.2.0',
-    description: 'Open-source LINE Official Account CRM/marketing automation API. API-first design for Claude Code / AI agent integration.',
+    description: 'Open-source LINE Official Account CRM/marketing automation API. API-first design for external tools and SDK integrations.',
     license: { name: 'MIT' },
   },
   servers: [{ url: '/', description: 'Current server' }],
