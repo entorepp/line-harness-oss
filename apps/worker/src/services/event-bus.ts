@@ -21,6 +21,7 @@ import {
   jstNow,
 } from '@line-crm/db';
 import { LineClient } from '@line-crm/line-sdk';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import { notifySlackFormSubmission, notifySlackIncoming, resolveSlackChannelId } from './slack.js';
 
 interface EventPayload {
@@ -180,6 +181,10 @@ async function processSlackNotification(
       answers,
       accountName,
       locale,
+      submissionId: typeof payload.eventData?.submissionId === 'string'
+        ? payload.eventData.submissionId
+        : undefined,
+      submissionSlackChannelId: slackChannelId,
       submittedAt: typeof payload.eventData?.submittedAt === 'string'
         ? payload.eventData.submittedAt
         : undefined,
@@ -378,7 +383,7 @@ async function executeAction(
       } else {
         // Default: text message
         await lineClient.pushMessage(friend.line_user_id, [
-          { type: 'text', text: action.params.content },
+          { type: 'text', text: replaceEmojiShortcodes(action.params.content) },
         ]);
       }
       break;

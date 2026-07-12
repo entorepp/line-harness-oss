@@ -23,7 +23,12 @@ export default function FriendTable({ friends, allTags, onRefresh }: FriendTable
   const [editingSlack, setEditingSlack] = useState<string | null>(null)
   const [slackInput, setSlackInput] = useState('')
   const [slackSaving, setSlackSaving] = useState(false)
-  const lineUserIdLabel = selectedAccount?.channelType === 'whatsapp' ? 'WhatsApp番号' : 'LINE ユーザーID'
+  const lineUserIdLabel =
+    selectedAccount?.channelType === 'whatsapp'
+      ? 'WhatsApp番号'
+      : selectedAccount?.channelType === 'kakao'
+        ? 'Kakao ID'
+        : 'LINE ユーザーID'
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id)

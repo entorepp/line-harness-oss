@@ -45,6 +45,47 @@ export type ApiScheduledMessage = {
   updatedAt: string
 }
 
+export type WhatsAppBusinessProfile = {
+  about?: string
+  address?: string
+  description?: string
+  email?: string
+  profile_picture_url?: string
+  websites?: string[]
+  vertical?: string
+}
+
+export type WhatsAppPhoneStatus = {
+  id?: string
+  display_phone_number?: string
+  verified_name?: string
+  name_status?: string
+  code_verification_status?: string
+  quality_rating?: string
+  messaging_limit_tier?: string
+}
+
+export type KakaoStatus = {
+  channelPublicId: string
+  customerFilesAvailable: boolean
+  emptySlot: number | null
+  usingSlot: number | null
+  files: Array<{
+    file_id?: number
+    file_name?: string
+    status?: string
+    update_at?: string
+    schema?: string
+  }>
+}
+
+export type ApiSendMessageResult = {
+  sent?: boolean
+  messageId?: string
+  scheduled?: boolean
+  scheduledMessage?: ApiScheduledMessage
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
 /**
@@ -116,7 +157,7 @@ export const api = {
         method: 'DELETE',
       }),
     sendMessage: (friendId: string, data: Record<string, string | null | undefined>) =>
-      fetchApi<ApiResponse<unknown>>(`/api/friends/${friendId}/messages`, {
+      fetchApi<ApiResponse<ApiSendMessageResult>>(`/api/friends/${friendId}/messages`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -251,7 +292,7 @@ export const api = {
       name: string
       channelAccessToken: string
       channelSecret?: string
-      channelType?: 'line' | 'whatsapp'
+      channelType?: 'line' | 'whatsapp' | 'kakao'
       locale?: string
       defaultSlackChannel?: string | null
     }) =>
@@ -261,6 +302,17 @@ export const api = {
       }),
     update: (id: string, data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'channelType' | 'locale' | 'defaultSlackChannel' | 'isActive'>>) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    getWhatsAppProfile: (id: string) =>
+      fetchApi<ApiResponse<WhatsAppBusinessProfile>>(`/api/line-accounts/${id}/whatsapp-profile`),
+    getWhatsAppStatus: (id: string) =>
+      fetchApi<ApiResponse<WhatsAppPhoneStatus>>(`/api/line-accounts/${id}/whatsapp-status`),
+    getKakaoStatus: (id: string) =>
+      fetchApi<ApiResponse<KakaoStatus>>(`/api/line-accounts/${id}/kakao-status`),
+    updateWhatsAppProfile: (id: string, data: WhatsAppBusinessProfile) =>
+      fetchApi<ApiResponse<WhatsAppBusinessProfile>>(`/api/line-accounts/${id}/whatsapp-profile`, {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
@@ -421,10 +473,23 @@ export const api = {
         '/api/chats?' + new URLSearchParams(query),
       )
     },
-    get: (id: string) =>
-      fetchApi<ApiResponse<Chat & { messages?: { id: string; content: string; senderType: string; createdAt: string }[] }>>(
-        `/api/chats/${id}`,
-      ),
+    get: (id: string, params?: { beforeMessageId?: string; limit?: number }) => {
+      const query = new URLSearchParams()
+      if (params?.beforeMessageId) query.set('beforeMessageId', params.beforeMessageId)
+      if (params?.limit) query.set('limit', String(params.limit))
+      const suffix = query.toString() ? `?${query.toString()}` : ''
+      return fetchApi<ApiResponse<Chat & {
+        messages?: {
+          id: string
+          direction: 'incoming' | 'outgoing'
+          messageType: string
+          content: string
+          createdAt: string
+        }[]
+        hasMoreMessages?: boolean
+        oldestMessageId?: string | null
+      }>>(`/api/chats/${id}${suffix}`)
+    },
     create: (data: { friendId: string; operatorId?: string | null }) =>
       fetchApi<ApiResponse<Chat>>('/api/chats', {
         method: 'POST',
@@ -436,7 +501,7 @@ export const api = {
         body: JSON.stringify(data),
       }),
     send: (id: string, data: Record<string, string | null | undefined>) =>
-      fetchApi<ApiResponse<unknown>>(`/api/chats/${id}/send`, {
+      fetchApi<ApiResponse<ApiSendMessageResult>>(`/api/chats/${id}/send`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),

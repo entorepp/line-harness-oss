@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ClipboardEvent, KeyboardEvent } from 'react'
+import { replaceEmojiShortcodes } from '@line-crm/shared'
 import { api, fetchApi, type ApiScheduledMessage } from '@/lib/api'
 
 type AttachmentDraft = {
@@ -17,7 +18,15 @@ type EmojiPreset = {
   aliases: string[]
 }
 
+type UndoSendToast = {
+  scheduledMessageId: string
+  summary: string
+  expiresAt: number
+}
+
 const EMOJI_STORAGE_KEY = 'line-crm-chat-emoji-presets'
+const JST_OFFSET_MS = 9 * 60 * 60_000
+const DATETIME_LOCAL_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/
 
 const DEFAULT_EMOJI_PRESETS: EmojiPreset[] = [
   { key: 'plane', label: '飛行機', value: '✈️', aliases: ['airplane', 'plane', 'flight', 'travel_plane', 'fly', '飛行機'] },
@@ -30,41 +39,76 @@ const DEFAULT_EMOJI_PRESETS: EmojiPreset[] = [
   { key: 'check', label: '確認', value: '✅', aliases: ['check', 'done', 'ok', '確認'] },
 ]
 
+function jstParts(date: Date) {
+  const jst = new Date(date.getTime() + JST_OFFSET_MS)
+  return {
+    year: jst.getUTCFullYear(),
+    month: String(jst.getUTCMonth() + 1).padStart(2, '0'),
+    day: String(jst.getUTCDate()).padStart(2, '0'),
+    hour: String(jst.getUTCHours()).padStart(2, '0'),
+    minute: String(jst.getUTCMinutes()).padStart(2, '0'),
+    second: String(jst.getUTCSeconds()).padStart(2, '0'),
+    millis: String(jst.getUTCMilliseconds()).padStart(3, '0'),
+  }
+}
+
+function toJstDatetimeLocalValue(date: Date): string {
+  const { year, month, day, hour, minute } = jstParts(date)
+  return `${year}-${month}-${day}T${hour}:${minute}`
+}
+
 function formatDatetime(iso: string): string {
-  return new Date(iso).toLocaleString('ja-JP', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '-'
+
+  const { month, day, hour, minute } = jstParts(date)
+  return `${month}/${day} ${hour}:${minute} 日本時間`
 }
 
 function defaultScheduleValue(): string {
   const date = new Date(Date.now() + 10 * 60 * 1000)
   date.setSeconds(0, 0)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hour}:${minute}`
+  return toJstDatetimeLocalValue(date)
+}
+
+function minScheduleValue(): string {
+  const date = new Date(Date.now() + 60 * 1000)
+  date.setSeconds(0, 0)
+  return toJstDatetimeLocalValue(date)
 }
 
 function toJstScheduleValue(value: string): string | null {
-  if (!value) return null
+  if (!DATETIME_LOCAL_PATTERN.test(value)) return null
   return `${value}:00.000+09:00`
+}
+
+function validateFutureJstSchedule(value: string): string {
+  const scheduledAt = toJstScheduleValue(value)
+  if (!scheduledAt) {
+    throw new Error('予約日時を指定してください。')
+  }
+
+  const scheduledTime = new Date(scheduledAt).getTime()
+  if (Number.isNaN(scheduledTime)) {
+    throw new Error('予約日時の形式が正しくありません。')
+  }
+  if (scheduledTime <= Date.now()) {
+    throw new Error('予約日時は現在時刻より後の日本時間を指定してください。')
+  }
+
+  return scheduledAt
+}
+
+function toJstIsoString(date: Date): string {
+  const { year, month, day, hour, minute, second, millis } = jstParts(date)
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}.${millis}+09:00`
 }
 
 function toDatetimeLocalValue(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
 
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hour}:${minute}`
+  return toJstDatetimeLocalValue(date)
 }
 
 function formatFileSize(bytes: number): string {
@@ -107,17 +151,86 @@ function normalizeEmojiPresets(raw: unknown): EmojiPreset[] {
   })
 }
 
-function replaceEmojiShortcodes(value: string, presets: EmojiPreset[]): string {
-  if (!value.includes(':')) return value
+function containsUnicodeEmoji(value: string): boolean {
+  return /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u2600-\u27BF]/u.test(value)
+}
 
-  const aliasMap = new Map<string, string>()
-  for (const preset of presets) {
-    for (const alias of preset.aliases) {
-      aliasMap.set(alias.toLowerCase(), preset.value)
+function hasEmojiShortcode(value: string): boolean {
+  return /:([A-Za-z0-9_+\-]+):/.test(value)
+}
+
+function extractTextFromClipboardHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const parts: string[] = []
+
+  const appendNewline = () => {
+    if (parts.length > 0 && !parts[parts.length - 1].endsWith('\n')) {
+      parts.push('\n')
     }
   }
 
-  return value.replace(/:([^:\s]+):/g, (match, alias) => aliasMap.get(String(alias).toLowerCase()) ?? match)
+  const appendEmojiAttribute = (element: Element): boolean => {
+    const value =
+      element.getAttribute('data-stringify-emoji') ||
+      element.getAttribute('data-emoji-char') ||
+      element.getAttribute('data-emoji') ||
+      element.getAttribute('aria-label') ||
+      element.getAttribute('alt') ||
+      ''
+
+    if (!value) return false
+    if (!containsUnicodeEmoji(value) && !hasEmojiShortcode(value)) return false
+
+    parts.push(value)
+    return true
+  }
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(node.textContent ?? '')
+      return
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+
+    const element = node as Element
+    const tagName = element.tagName.toLowerCase()
+    if (tagName === 'br') {
+      appendNewline()
+      return
+    }
+
+    if (appendEmojiAttribute(element)) return
+
+    for (const child of Array.from(element.childNodes)) {
+      walk(child)
+    }
+
+    if (['div', 'p', 'li', 'tr'].includes(tagName)) {
+      appendNewline()
+    }
+  }
+
+  for (const child of Array.from(doc.body.childNodes)) {
+    walk(child)
+  }
+
+  return parts.join('').replace(/\n{3,}/g, '\n\n').trimEnd()
+}
+
+function getClipboardTextPreservingEmoji(data: DataTransfer): string {
+  const plainText = data.getData('text/plain')
+  const html = data.getData('text/html')
+  if (!html) return plainText
+
+  const htmlText = extractTextFromClipboardHtml(html)
+  if (!htmlText) return plainText
+
+  if (htmlText !== plainText && (hasEmojiShortcode(plainText) || containsUnicodeEmoji(htmlText))) {
+    return htmlText
+  }
+
+  return plainText
 }
 
 function parseJsonObject(value: string | null | undefined): Record<string, unknown> | null {
@@ -198,7 +311,7 @@ export default function ChatComposer({
 }: {
   friendId: string
   chatId?: string | null
-  channelType?: 'line' | 'whatsapp'
+  channelType?: 'line' | 'whatsapp' | 'kakao'
   onSent?: () => void | Promise<void>
   onError?: (message: string) => void
 }) {
@@ -220,7 +333,12 @@ export default function ChatComposer({
   const [editingScheduledId, setEditingScheduledId] = useState<string | null>(null)
   const [editingScheduledAt, setEditingScheduledAt] = useState('')
   const [savingScheduledId, setSavingScheduledId] = useState<string | null>(null)
+  const [undoToast, setUndoToast] = useState<UndoSendToast | null>(null)
+  const [undoRemaining, setUndoRemaining] = useState(0)
   const isWhatsApp = channelType === 'whatsapp'
+  const isKakao = channelType === 'kakao'
+  const textOnlyChannel = isWhatsApp || isKakao
+  const textOnlyChannelLabel = isKakao ? 'Kakao' : 'WhatsApp'
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
 
   useEffect(() => {
@@ -256,9 +374,23 @@ export default function ChatComposer({
   }, [customEmojiPresets])
 
   useEffect(() => {
-    if (!isWhatsApp) return
+    if (!textOnlyChannel) return
     clearAttachment()
-  }, [isWhatsApp])
+  }, [textOnlyChannel])
+
+  useEffect(() => {
+    if (!undoToast) return
+
+    const updateRemaining = () => {
+      const remaining = Math.max(0, Math.ceil((undoToast.expiresAt - Date.now()) / 1000))
+      setUndoRemaining(remaining)
+      if (remaining <= 0) setUndoToast(null)
+    }
+
+    updateRemaining()
+    const interval = window.setInterval(updateRemaining, 250)
+    return () => window.clearInterval(interval)
+  }, [undoToast])
 
   const loadScheduledMessages = useCallback(async (silent = false) => {
     try {
@@ -346,8 +478,8 @@ export default function ChatComposer({
   }
 
   function setAttachmentFromFile(file: File) {
-    if (isWhatsApp) {
-      onError?.('WhatsApp では現在ファイル・画像送信に未対応です。')
+    if (textOnlyChannel) {
+      onError?.(`${textOnlyChannelLabel} では現在ファイル・画像送信に未対応です。`)
       return
     }
 
@@ -412,13 +544,15 @@ export default function ChatComposer({
     }
   }
 
-  async function sendPayloads(schedule: boolean) {
+  async function sendPayloads(schedule: boolean): Promise<ApiScheduledMessage[]> {
     onError?.('')
 
-    const scheduledAtValue = schedule ? toJstScheduleValue(scheduledAt) : null
-    if (schedule && !scheduledAtValue) {
-      throw new Error('予約日時を指定してください。')
-    }
+    const usesUndoWindow = isWhatsApp && !schedule
+    const scheduledAtValue = schedule
+      ? validateFutureJstSchedule(scheduledAt)
+      : usesUndoWindow
+        ? toJstIsoString(new Date(Date.now() + 30_000))
+        : null
 
     const payloads: Record<string, string | null | undefined>[] = []
 
@@ -438,12 +572,14 @@ export default function ChatComposer({
       throw new Error('送信内容がありません。')
     }
 
+    const scheduledItems: ApiScheduledMessage[] = []
+
     for (const payload of payloads) {
       let response:
-        | { success?: boolean; error?: string }
+        | Awaited<ReturnType<typeof api.chats.send>>
         | undefined
 
-      if (schedule) {
+      if (scheduledAtValue) {
         payload.scheduledAt = scheduledAtValue
       }
 
@@ -454,21 +590,35 @@ export default function ChatComposer({
       }
 
       if (!response?.success) {
-        throw new Error(response?.error || (schedule ? '予約登録に失敗しました。' : '送信に失敗しました。'))
+        throw new Error(response?.error || (scheduledAtValue ? '予約登録に失敗しました。' : '送信に失敗しました。'))
+      }
+
+      if (response.data?.scheduledMessage) {
+        scheduledItems.push(response.data.scheduledMessage)
       }
     }
+
+    return scheduledItems
   }
 
   async function handleSubmit(schedule: boolean) {
     setSending(true)
 
     try {
-      await sendPayloads(schedule)
+      const scheduledItems = await sendPayloads(schedule)
 
       setMessageContent('')
       clearAttachment()
       setReserveMode(false)
       setScheduledAt('')
+
+      if (isWhatsApp && !schedule && scheduledItems[0]) {
+        setUndoToast({
+          scheduledMessageId: scheduledItems[0].id,
+          summary: summarizeScheduledMessage(scheduledItems[0]),
+          expiresAt: Date.now() + 30_000,
+        })
+      }
 
       await loadScheduledMessages(true)
 
@@ -497,6 +647,14 @@ export default function ChatComposer({
     }
   }
 
+  async function handleUndoSend() {
+    if (!undoToast) return
+
+    const target = undoToast
+    setUndoToast(null)
+    await handleCancelScheduledMessage(target.scheduledMessageId)
+  }
+
   function beginEditScheduledMessage(item: ApiScheduledMessage) {
     setEditingScheduledId(item.id)
     setEditingScheduledAt(toDatetimeLocalValue(item.scheduledAt))
@@ -508,9 +666,11 @@ export default function ChatComposer({
   }
 
   async function handleUpdateScheduledMessage(id: string) {
-    const nextScheduledAt = toJstScheduleValue(editingScheduledAt)
-    if (!nextScheduledAt) {
-      onError?.('予約日時を指定してください。')
+    let nextScheduledAt: string
+    try {
+      nextScheduledAt = validateFutureJstSchedule(editingScheduledAt)
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : '予約日時を指定してください。')
       return
     }
 
@@ -547,8 +707,8 @@ export default function ChatComposer({
       const file = fileItem.getAsFile()
       if (file) {
         event.preventDefault()
-        if (isWhatsApp) {
-          onError?.('WhatsApp では現在ファイル・画像送信に未対応です。')
+        if (textOnlyChannel) {
+          onError?.(`${textOnlyChannelLabel} では現在ファイル・画像送信に未対応です。`)
           return
         }
         setAttachmentFromFile(file)
@@ -556,11 +716,12 @@ export default function ChatComposer({
       }
     }
 
-    const pastedText = event.clipboardData.getData('text/plain')
+    const plainText = event.clipboardData.getData('text/plain')
+    const pastedText = getClipboardTextPreservingEmoji(event.clipboardData)
     if (!pastedText) return
 
     const normalized = replaceEmojiShortcodes(pastedText, allEmojiPresets)
-    if (normalized !== pastedText) {
+    if (normalized !== plainText) {
       event.preventDefault()
       insertTextAtCursor(normalized)
     }
@@ -723,9 +884,9 @@ export default function ChatComposer({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isWhatsApp}
+            disabled={textOnlyChannel}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-sm transition-colors hover:bg-[#F1F5F8] disabled:cursor-not-allowed disabled:opacity-50"
-            title={isWhatsApp ? 'WhatsApp では現在添付未対応' : '画像やファイルを追加'}
+            title={textOnlyChannel ? `${textOnlyChannelLabel} では現在添付未対応` : '画像やファイルを追加'}
           >
             ＋
           </button>
@@ -737,7 +898,7 @@ export default function ChatComposer({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={
-              isWhatsApp
+              textOnlyChannel
                 ? 'メッセージを入力。:hotel: や :taxi: を貼ると絵文字に変換します。'
                 : 'メッセージを入力。:hotel: や :taxi: を貼ると絵文字に変換します。画像貼り付けやPDF添付にも対応しています。'
             }
@@ -754,9 +915,11 @@ export default function ChatComposer({
                 <input
                   type="datetime-local"
                   value={scheduledAt}
+                  min={minScheduleValue()}
                   onChange={(event) => setScheduledAt(event.target.value)}
                   className="min-w-[180px] rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs text-gray-900 focus:border-[#06C755] focus:outline-none"
                 />
+                <span className="text-[11px] font-medium text-gray-500">日本時間</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -888,9 +1051,11 @@ export default function ChatComposer({
                     <input
                       type="datetime-local"
                       value={editingScheduledAt}
+                      min={minScheduleValue()}
                       onChange={(event) => setEditingScheduledAt(event.target.value)}
                       className="min-w-[190px] rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs text-gray-900 focus:border-[#06C755] focus:outline-none"
                     />
+                    <span className="text-[11px] font-medium text-gray-500">日本時間</span>
                     <button
                       type="button"
                       onClick={() => void handleUpdateScheduledMessage(item.id)}
@@ -912,6 +1077,27 @@ export default function ChatComposer({
               </div>
             )
           })}
+        </div>
+      )}
+
+      {undoToast && (
+        <div className="fixed bottom-5 left-5 z-50 max-w-[calc(100vw-2.5rem)] rounded bg-[#323232] px-4 py-3 text-sm text-white shadow-2xl">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="min-w-0">
+              送信予定にしました
+              <span className="ml-2 text-white/70">{undoRemaining}s</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleUndoSend()}
+              className="rounded px-1.5 py-0.5 text-sm font-semibold text-[#8ab4f8] transition-colors hover:bg-white/10"
+            >
+              取消
+            </button>
+            <span className="max-w-[260px] truncate text-xs text-white/55">
+              {undoToast.summary}
+            </span>
+          </div>
         </div>
       )}
     </div>

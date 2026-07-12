@@ -256,13 +256,36 @@ export interface CreateTrackedLinkInput {
 }
 
 // ─── Forms ──────────────────────────────────────────────
+export type FormFieldVisibilityOperator =
+  | 'equals'
+  | 'not_equals'
+  | 'includes'
+  | 'not_includes'
+  | 'greater_than'
+  | 'less_than'
+  | 'answered'
+  | 'not_answered'
+
+export interface FormFieldVisibilityCondition {
+  field: string
+  operator?: FormFieldVisibilityOperator
+  value?: string | number | boolean
+}
+
 export interface FormField {
   name: string
   label: string
-  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
+  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date' | 'time' | 'file'
   required?: boolean
   options?: string[]  // for select, radio, checkbox
   placeholder?: string
+  helperText?: string
+  allowOtherOption?: boolean
+  otherOptionLabel?: string
+  accept?: string
+  multiple?: boolean
+  maxFiles?: number
+  visibleWhen?: FormFieldVisibilityCondition
 }
 
 export interface Form {

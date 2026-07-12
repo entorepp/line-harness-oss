@@ -21,8 +21,8 @@
 └─────────────────┘      │    ↓ processReminderDeliveries() │
                           │    ↓ checkAccountHealth()        │
 ┌─────────────────┐      │                                   │
-│  SDK / Claude   │      │          ┌──────────┐            │
-│  Code / curl    ├─────►│          │ D1 (SQLite)│           │
+│  SDK / curl     │      │          ┌──────────┐            │
+│  automation     ├─────►│          │ D1 (SQLite)│           │
 │                  │ API  │          │ 42 tables  │           │
 └─────────────────┘      │          └──────────┘            │
                           │                                   │

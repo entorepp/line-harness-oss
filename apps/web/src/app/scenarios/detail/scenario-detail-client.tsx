@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 
 import Link from 'next/link'
 import type { Scenario, ScenarioStep, ScenarioTriggerType, MessageType } from '@line-crm/shared'
+import { replaceEmojiShortcodes } from '@line-crm/shared'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
 
@@ -195,7 +196,11 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
   }
 
   const handleSaveStep = async () => {
-    if (!stepForm.messageContent.trim()) {
+    const messageContent = stepForm.messageType === 'text'
+      ? replaceEmojiShortcodes(stepForm.messageContent)
+      : stepForm.messageContent
+
+    if (!messageContent.trim()) {
       setStepError('メッセージ内容を入力してください')
       return
     }
@@ -207,7 +212,7 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
           stepOrder: stepForm.stepOrder,
           delayMinutes: stepForm.delayMinutes,
           messageType: stepForm.messageType,
-          messageContent: stepForm.messageContent,
+          messageContent,
         })
         if (!res.success) {
           setStepError(res.error)
@@ -218,7 +223,7 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
           stepOrder: stepForm.stepOrder,
           delayMinutes: stepForm.delayMinutes,
           messageType: stepForm.messageType,
-          messageContent: stepForm.messageContent,
+          messageContent,
         })
         if (!res.success) {
           setStepError(res.error)
@@ -455,7 +460,12 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
                   rows={4}
                   placeholder="メッセージ内容を入力..."
                   value={stepForm.messageContent}
-                  onChange={(e) => setStepForm({ ...stepForm, messageContent: e.target.value })}
+                  onChange={(e) => {
+                    const messageContent = stepForm.messageType === 'text'
+                      ? replaceEmojiShortcodes(e.target.value)
+                      : e.target.value
+                    setStepForm({ ...stepForm, messageContent })
+                  }}
                 />
               </div>
 

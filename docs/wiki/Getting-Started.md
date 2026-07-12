@@ -183,7 +183,51 @@ pnpm dev:web
 3. 「Use webhook」を有効化
 4. 「Verify」ボタンで接続テスト → 成功すればOK
 5. 「Auto-reply messages」を **無効** に設定（LINE Harness側で制御するため）
-6. 「Greeting messages」を **無効** に設定（シナリオで制御するため）
+
+## WhatsApp Cloud API チャンネル追加
+
+LINE Harness の「チャネルアカウント管理」では WhatsApp も登録できます。
+
+Meta 側で取得する値:
+
+| 値 | 登録欄 |
+|---|---|
+| Phone Number ID | `Phone Number ID` |
+| System User / Long-lived Access Token | `Access Token` |
+| App Secret | `App Secret（任意）` |
+
+Flat Travel の 070 番号で登録する場合:
+
+| 値 | 内容 |
+|---|---|
+| Business portfolio ID | `3043410255677567` |
+| WABA ID | `2155814465254212` |
+| Phone Number ID | `1096652186863862` |
+| 電話番号 | `+81 70-3620-9459` |
+
+`+81 80-5707-1720` は既存 WhatsApp Business App の履歴保持用として触らないでください。
+
+登録後、WhatsApp カードの「プロフィール編集」から Business Profile を取得/保存できます。
+WhatsApp カードの「接続確認」では、Phone Number ID に対する Meta API 応答を確認できます。
+`表示名審査`, `番号認証`, `品質`, `送信上限` が取れれば、token と Phone Number ID の対応は正しく読めています。
+
+送信仕様:
+
+- WhatsApp の通常送信は即時送信せず、30秒後の予約送信として登録します
+- 送信直後に画面左下のトーストから `取消` できます
+- 30秒後に Worker の scheduled job が Cloud API に送信します
+- Cloud API 送信後の相手側取消はできないため、キャンセル可能なのは送信前の30秒だけです
+
+Meta App Dashboard の流れ:
+
+1. 既存 app `903660032650462` / WABA `2155814465254212` を使う
+2. `WhatsApp > API Setup` または WhatsApp Manager で 070 番号の status を確認
+3. Phone Number ID `1096652186863862` を控える
+4. Business Settings > System users で token を発行
+5. 権限は `whatsapp_business_messaging`, `whatsapp_business_management` を付与
+6. LINE Harness の WhatsApp チャンネルとして登録
+7. 070 番号の `Pending` が解除されたらプロフィール取得とテスト送信を確認
+8. 「Greeting messages」を **無効** に設定（シナリオで制御するため）
 
 ## 7. 管理画面デプロイ
 

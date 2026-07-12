@@ -1,6 +1,8 @@
 import { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
+import { dispatchKakaoBizMessage } from './kakao.js';
 
 export interface MessagingFriendContext {
   id: string;
@@ -9,6 +11,7 @@ export interface MessagingFriendContext {
   channel_access_token: string | null;
   channel_id: string | null;
   channel_type: string | null;
+  metadata: string | null;
 }
 
 export interface OutboundMessageInput {
@@ -189,7 +192,7 @@ export function buildLineMessage(input: OutboundMessageInput): Message {
   const messageType = input.messageType ?? 'text';
 
   if (messageType === 'text') {
-    return { type: 'text', text: input.content };
+    return { type: 'text', text: replaceEmojiShortcodes(input.content) };
   }
 
   if (messageType === 'image') {
@@ -206,7 +209,7 @@ export function buildLineMessage(input: OutboundMessageInput): Message {
       const contents = JSON.parse(input.content);
       return { type: 'flex', altText: 'Message', contents };
     } catch {
-      return { type: 'text', text: input.content };
+      return { type: 'text', text: replaceEmojiShortcodes(input.content) };
     }
   }
 
@@ -223,7 +226,7 @@ export function buildLineMessage(input: OutboundMessageInput): Message {
     return buildFileMessage(normalizeFileContent(input));
   }
 
-  return { type: 'text', text: input.content };
+  return { type: 'text', text: replaceEmojiShortcodes(input.content) };
 }
 
 export function serializeOutboundContent(input: OutboundMessageInput): string {
@@ -239,6 +242,10 @@ export function serializeOutboundContent(input: OutboundMessageInput): string {
 
   if (messageType === 'sticker') {
     return JSON.stringify(normalizeStickerContent(input.content));
+  }
+
+  if (messageType === 'text') {
+    return replaceEmojiShortcodes(input.content);
   }
 
   return input.content;
@@ -282,13 +289,29 @@ export async function getMessagingFriendContext(
 ): Promise<MessagingFriendContext | null> {
   return db
     .prepare(
-      `SELECT f.id, f.line_user_id, f.line_account_id, la.channel_access_token, la.channel_id, la.channel_type
+      `SELECT f.id, f.line_user_id, f.line_account_id, f.metadata, la.channel_access_token, la.channel_id, la.channel_type
          FROM friends f
          LEFT JOIN line_accounts la ON la.id = f.line_account_id
         WHERE f.id = ?`,
     )
     .bind(friendId)
     .first<MessagingFriendContext>();
+}
+
+function resolveKakaoRecipient(friend: MessagingFriendContext): string {
+  if (friend.metadata) {
+    try {
+      const parsed = JSON.parse(friend.metadata) as Record<string, unknown>;
+      if (typeof parsed.kakaoId === 'string' && parsed.kakaoId.trim()) {
+        return parsed.kakaoId.trim();
+      }
+    } catch {
+      // fall back to stored identifier
+    }
+  }
+
+  const parts = friend.line_user_id.split(':');
+  return parts.length >= 4 ? parts.slice(3).join(':') : friend.line_user_id;
 }
 
 export async function dispatchOutboundMessage(opts: {
@@ -303,6 +326,7 @@ export async function dispatchOutboundMessage(opts: {
       throw new Error('WhatsApp account currently supports only text for manual or scheduled sends');
     }
 
+    const content = serializeOutboundContent(opts.input);
     const waToken = opts.friend.channel_access_token;
     const waPhoneNumberId = opts.friend.channel_id;
     if (!waToken || !waPhoneNumberId) {
@@ -320,7 +344,7 @@ export async function dispatchOutboundMessage(opts: {
         messaging_product: 'whatsapp',
         to: opts.friend.line_user_id,
         type: 'text',
-        text: { body: opts.input.content },
+        text: { body: content },
       }),
     });
 
@@ -331,7 +355,33 @@ export async function dispatchOutboundMessage(opts: {
 
     return {
       messageType,
-      storedContent: serializeOutboundContent(opts.input),
+      storedContent: content,
+    };
+  }
+
+  if (opts.friend.channel_type === 'kakao') {
+    if (messageType !== 'text') {
+      throw new Error('Kakao account currently supports only text for manual or scheduled sends');
+    }
+
+    const content = serializeOutboundContent(opts.input);
+    if (!opts.friend.line_account_id || !opts.friend.channel_id) {
+      throw new Error('No Kakao account configured for this friend');
+    }
+
+    await dispatchKakaoBizMessage({
+      env: opts.env,
+      account: {
+        id: opts.friend.line_account_id,
+        channel_id: opts.friend.channel_id,
+      },
+      to: resolveKakaoRecipient(opts.friend),
+      text: content,
+    });
+
+    return {
+      messageType,
+      storedContent: content,
     };
   }
 

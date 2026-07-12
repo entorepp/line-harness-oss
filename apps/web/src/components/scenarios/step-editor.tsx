@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { ScenarioStep, MessageType } from '@line-crm/shared'
+import { replaceEmojiShortcodes } from '@line-crm/shared'
 
 interface StepEditorProps {
   step?: ScenarioStep
@@ -39,13 +40,17 @@ export default function StepEditor({ step, stepOrder, onSave, onCancel }: StepEd
   const [error, setError] = useState('')
 
   const handleSave = async () => {
-    if (!messageContent.trim()) {
+    const normalizedMessageContent = messageType === 'text'
+      ? replaceEmojiShortcodes(messageContent)
+      : messageContent
+
+    if (!normalizedMessageContent.trim()) {
       setError('メッセージ内容を入力してください')
       return
     }
     if (messageType === 'flex') {
       try {
-        JSON.parse(messageContent)
+        JSON.parse(normalizedMessageContent)
       } catch {
         setError('FlexメッセージのJSONが無効です')
         return
@@ -58,7 +63,7 @@ export default function StepEditor({ step, stepOrder, onSave, onCancel }: StepEd
         stepOrder,
         delayMinutes: displayToMinutes(days, hours, mins),
         messageType,
-        messageContent,
+        messageContent: normalizedMessageContent,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存に失敗しました')
@@ -195,7 +200,11 @@ export default function StepEditor({ step, stepOrder, onSave, onCancel }: StepEd
               : '{"type":"bubble","body":{...}}'
           }
           value={messageContent}
-          onChange={(e) => setMessageContent(e.target.value)}
+          onChange={(e) => {
+            setMessageContent(messageType === 'text'
+              ? replaceEmojiShortcodes(e.target.value)
+              : e.target.value)
+          }}
           style={{ fontFamily: messageType !== 'text' ? 'monospace' : 'inherit' }}
         />
         {messageType === 'image' && (

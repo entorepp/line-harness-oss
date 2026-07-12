@@ -25,8 +25,70 @@ import {
 import {
   presentWhatsappDisplayName,
 } from '../services/whatsapp-display.js';
+import { normalizeFutureScheduledAt } from '../services/schedule-validation.js';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 
 const chats = new Hono<Env>();
+const DEFAULT_MESSAGE_PAGE_SIZE = 200;
+const MAX_MESSAGE_PAGE_SIZE = 200;
+
+type MessageLogRow = {
+  id: string;
+  friend_id: string;
+  direction: string;
+  message_type: string;
+  content: string;
+  created_at: string;
+};
+
+function parseMessagePageSize(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_MESSAGE_PAGE_SIZE;
+  return Math.min(Math.max(parsed, 1), MAX_MESSAGE_PAGE_SIZE);
+}
+
+async function getMessagePage(
+  db: D1Database,
+  friendId: string,
+  opts: { beforeMessageId?: string; limit?: number } = {},
+) {
+  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, 1), MAX_MESSAGE_PAGE_SIZE);
+  const bindings: unknown[] = [friendId];
+  let beforeClause = '';
+
+  if (opts.beforeMessageId) {
+    const cursor = await db
+      .prepare(`SELECT id, created_at FROM messages_log WHERE friend_id = ? AND id = ?`)
+      .bind(friendId, opts.beforeMessageId)
+      .first<{ id: string; created_at: string }>();
+
+    if (!cursor) {
+      return { rows: [] as MessageLogRow[], hasMore: false, oldestMessageId: null as string | null };
+    }
+
+    beforeClause = ' AND (created_at < ? OR (created_at = ? AND id < ?))';
+    bindings.push(cursor.created_at, cursor.created_at, cursor.id);
+  }
+
+  const result = await db
+    .prepare(
+      `SELECT id, friend_id, direction, message_type, content, created_at
+         FROM messages_log
+        WHERE friend_id = ?${beforeClause}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?`,
+    )
+    .bind(...bindings, limit + 1)
+    .all<MessageLogRow>();
+
+  const rows = result.results.slice(0, limit).reverse();
+
+  return {
+    rows,
+    hasMore: result.results.length > limit,
+    oldestMessageId: rows[0]?.id ?? null,
+  };
+}
 
 function serializeScheduledMessage(row: ScheduledMessageRow) {
   return {
@@ -209,6 +271,8 @@ chats.get('/api/chats/:id', async (c) => {
   try {
     const item = await getChatById(c.env.DB, c.req.param('id'));
     if (!item) return c.json({ success: false, error: 'Chat not found' }, 404);
+    const limit = parseMessagePageSize(c.req.query('limit'));
+    const beforeMessageId = c.req.query('beforeMessageId') ?? undefined;
 
     // 友だち情報を取得
     const friend = await c.env.DB
@@ -227,11 +291,10 @@ chats.get('/api/chats/:id', async (c) => {
         channel_type: string | null;
       }>();
 
-    // チャットに関連するメッセージログも取得
-    const messages = await c.env.DB
-      .prepare(`SELECT id, friend_id, direction, message_type, content, created_at FROM messages_log WHERE friend_id = ? ORDER BY created_at ASC LIMIT 200`)
-      .bind(item.friend_id)
-      .all();
+    const messagePage = await getMessagePage(c.env.DB, item.friend_id, {
+      beforeMessageId,
+      limit,
+    });
 
     return c.json({
       success: true,
@@ -249,13 +312,15 @@ chats.get('/api/chats/:id', async (c) => {
         notes: item.notes,
         lastMessageAt: item.last_message_at,
         createdAt: item.created_at,
-        messages: (messages.results as Record<string, unknown>[]).map((m) => ({
+        messages: messagePage.rows.map((m) => ({
           id: m.id,
           direction: m.direction,
           messageType: m.message_type,
           content: m.content,
           createdAt: m.created_at,
         })),
+        hasMoreMessages: messagePage.hasMore,
+        oldestMessageId: messagePage.oldestMessageId,
       },
     });
   } catch (err) {
@@ -320,15 +385,21 @@ chats.post('/api/chats/:id/send', async (c) => {
     if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
 
     const messageType = body.messageType ?? 'text';
+    const content = messageType === 'text' ? replaceEmojiShortcodes(body.content) : body.content;
 
     if (body.scheduledAt) {
+      const normalizedSchedule = normalizeFutureScheduledAt(body.scheduledAt);
+      if (!normalizedSchedule.ok) {
+        return c.json({ success: false, error: normalizedSchedule.error }, 400);
+      }
+
       const scheduled = await createScheduledMessage(c.env.DB, {
         friendId: friend.id,
         chatId,
         messageType,
-        content: body.content,
+        content,
         metadata: serializeScheduleMetadata(body),
-        scheduledAt: body.scheduledAt,
+        scheduledAt: normalizedSchedule.scheduledAt,
       });
 
       return c.json({
@@ -346,7 +417,7 @@ chats.post('/api/chats/:id/send', async (c) => {
       friend,
       input: {
         messageType,
-        content: body.content,
+        content,
         fileName: body.fileName,
         fileSize: body.fileSize,
         fileIcon: body.fileIcon,
@@ -433,13 +504,13 @@ chats.put('/api/scheduled-messages/:id', async (c) => {
       return c.json({ success: false, error: 'scheduledAt is required' }, 400);
     }
 
-    const scheduledAt = new Date(body.scheduledAt);
-    if (Number.isNaN(scheduledAt.getTime())) {
-      return c.json({ success: false, error: 'scheduledAt must be a valid datetime' }, 400);
+    const normalizedSchedule = normalizeFutureScheduledAt(body.scheduledAt);
+    if (!normalizedSchedule.ok) {
+      return c.json({ success: false, error: normalizedSchedule.error }, 400);
     }
 
     const updated = await updateScheduledMessage(c.env.DB, id, {
-      scheduledAt: body.scheduledAt,
+      scheduledAt: normalizedSchedule.scheduledAt,
     });
     if (!updated) {
       return c.json({ success: false, error: 'Scheduled message not found' }, 404);

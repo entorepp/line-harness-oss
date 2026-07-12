@@ -54,6 +54,9 @@ importers:
       '@liff/liff-types':
         specifier: ^2.24.0
         version: 2.27.3(tslib@2.8.1)
+      '@line-crm/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       typescript:
         specifier: ^5.7.0

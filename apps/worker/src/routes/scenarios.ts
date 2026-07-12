@@ -19,6 +19,7 @@ import type {
   ScenarioTriggerType,
   MessageType,
 } from '@line-crm/db';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
 
 const scenarios = new Hono<Env>();
@@ -249,12 +250,16 @@ scenarios.post('/api/scenarios/:id/steps', async (c) => {
       );
     }
 
+    const messageContent = body.messageType === 'text'
+      ? replaceEmojiShortcodes(body.messageContent)
+      : body.messageContent;
+
     const step = await createScenarioStep(c.env.DB, {
       scenarioId,
       stepOrder: body.stepOrder,
       delayMinutes: body.delayMinutes ?? 0,
       messageType: body.messageType,
-      messageContent: body.messageContent,
+      messageContent,
       conditionType: body.conditionType ?? null,
       conditionValue: body.conditionValue ?? null,
       nextStepOnFalse: body.nextStepOnFalse ?? null,
@@ -281,11 +286,25 @@ scenarios.put('/api/scenarios/:id/steps/:stepId', async (c) => {
       nextStepOnFalse?: number | null;
     }>();
 
+    const existingStep = await c.env.DB
+      .prepare(`SELECT message_type FROM scenario_steps WHERE id = ?`)
+      .bind(stepId)
+      .first<{ message_type: MessageType }>();
+    if (!existingStep) {
+      return c.json({ success: false, error: 'Step not found' }, 404);
+    }
+
+    const messageContent = body.messageContent === undefined
+      ? undefined
+      : (body.messageType ?? existingStep.message_type) === 'text'
+        ? replaceEmojiShortcodes(body.messageContent)
+        : body.messageContent;
+
     const updated = await updateScenarioStep(c.env.DB, stepId, {
       step_order: body.stepOrder,
       delay_minutes: body.delayMinutes,
       message_type: body.messageType,
-      message_content: body.messageContent,
+      message_content: messageContent,
       condition_type: body.conditionType,
       condition_value: body.conditionValue,
       next_step_on_false: body.nextStepOnFalse,

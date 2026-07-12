@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { replaceEmojiShortcodes } from '@line-crm/shared'
 import { api } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
@@ -213,7 +214,11 @@ export default function RemindersPage() {
 
   const handleAddStep = async () => {
     if (!expandedId) return
-    if (!stepForm.messageContent.trim()) {
+    const messageContent = stepForm.messageType === 'text'
+      ? replaceEmojiShortcodes(stepForm.messageContent)
+      : stepForm.messageContent
+
+    if (!messageContent.trim()) {
       setStepFormError('メッセージ内容を入力してください')
       return
     }
@@ -223,7 +228,7 @@ export default function RemindersPage() {
       const res = await api.reminders.addStep(expandedId, {
         offsetMinutes: stepForm.offsetMinutes,
         messageType: stepForm.messageType,
-        messageContent: stepForm.messageContent,
+        messageContent,
       })
       if (res.success) {
         setShowStepForm(false)
@@ -496,7 +501,12 @@ export default function RemindersPage() {
                                   rows={3}
                                   placeholder="メッセージ内容を入力"
                                   value={stepForm.messageContent}
-                                  onChange={(e) => setStepForm({ ...stepForm, messageContent: e.target.value })}
+                                  onChange={(e) => {
+                                    const messageContent = stepForm.messageType === 'text'
+                                      ? replaceEmojiShortcodes(e.target.value)
+                                      : e.target.value
+                                    setStepForm({ ...stepForm, messageContent })
+                                  }}
                                 />
                               </div>
 

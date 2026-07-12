@@ -19,20 +19,25 @@ interface LocaleCopy {
   formSubmittedLabel: string;
   formLabel: string;
   accountLabel: string;
+  submissionIdLabel: string;
+  slackChannelLabel: string;
   submittedAtLabel: string;
   noAnswersLabel: string;
 }
 
 const DEFAULT_NOTIFICATION_CHANNEL = 'C0AL6RG7V9Q';
+const INTERNAL_SLACK_TRANSLATION_TARGET: SupportedLocale = 'ja';
 
 const LOCALE_COPY: Record<SupportedLocale, LocaleCopy> = {
   ja: {
     incomingLabel: 'からのメッセージ',
     outgoingLabel: '担当者',
     translationLabel: '和訳',
-    formSubmittedLabel: 'フォーム回答',
+    formSubmittedLabel: '回答が来ました',
     formLabel: 'フォーム',
     accountLabel: 'アカウント',
+    submissionIdLabel: 'submissionId',
+    slackChannelLabel: 'slackChannelId',
     submittedAtLabel: '回答日時',
     noAnswersLabel: '回答内容はありません',
   },
@@ -40,9 +45,11 @@ const LOCALE_COPY: Record<SupportedLocale, LocaleCopy> = {
     incomingLabel: '傳送的訊息',
     outgoingLabel: '客服',
     translationLabel: '翻譯',
-    formSubmittedLabel: '表單回覆',
+    formSubmittedLabel: '收到表單回覆',
     formLabel: '表單',
     accountLabel: '帳號',
+    submissionIdLabel: 'submissionId',
+    slackChannelLabel: 'slackChannelId',
     submittedAtLabel: '回覆時間',
     noAnswersLabel: '沒有回覆內容',
   },
@@ -65,6 +72,16 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&#39;/g, "'");
 }
 
+function countMatches(text: string, pattern: RegExp): number {
+  return text.match(pattern)?.length ?? 0;
+}
+
+function hasTranslatableLetters(text: string): boolean {
+  return /[A-Za-z\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]/.test(
+    text,
+  );
+}
+
 function hasJapaneseKana(text: string): boolean {
   return /[\u3040-\u30FF]/.test(text);
 }
@@ -77,17 +94,19 @@ function isMostlyHan(text: string): boolean {
   return ratio > 0.5;
 }
 
-/**
- * Detect if text is primarily Japanese (hiragana, katakana, kanji).
- * Returns true if >50% of non-whitespace characters are Japanese.
- */
-function isJapanese(text: string): boolean {
-  const cleaned = text.replace(/\s+/g, '');
-  if (cleaned.length === 0) return true;
-  // Match hiragana, katakana, CJK unified ideographs, and CJK punctuation
-  const japaneseChars = cleaned.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3000-\u303F\uFF00-\uFFEF]/g);
-  const ratio = (japaneseChars?.length ?? 0) / cleaned.length;
-  return ratio > 0.5;
+function isLikelyJapanese(text: string): boolean {
+  const meaningful = text.replace(/\s+/g, '');
+  if (!meaningful || !hasTranslatableLetters(meaningful)) return true;
+
+  const hiraganaCount = countMatches(meaningful, /[\u3040-\u309F]/g);
+  if (hiraganaCount > 0) return true;
+
+  const katakanaCount = countMatches(meaningful, /[\u30A0-\u30FF]/g);
+  const letterCount = countMatches(
+    meaningful,
+    /[A-Za-z\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]/g,
+  );
+  return letterCount > 0 && katakanaCount >= 2 && katakanaCount / letterCount >= 0.2;
 }
 
 /**
@@ -135,9 +154,10 @@ async function translateText(
 function shouldTranslate(text: string, target: SupportedLocale): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
+  if (!hasTranslatableLetters(trimmed)) return false;
 
   if (target === 'ja') {
-    return !isJapanese(trimmed);
+    return !isLikelyJapanese(trimmed);
   }
 
   return hasJapaneseKana(trimmed) || !isMostlyHan(trimmed);
@@ -245,17 +265,26 @@ export async function notifySlackIncoming(opts: {
 }): Promise<void> {
   const locale = normalizeLocale(opts.locale);
   const copy = getLocaleCopy(locale);
+  const translationCopy = getLocaleCopy(INTERNAL_SLACK_TRANSLATION_TARGET);
   const accountLabel = opts.accountName ? ` (${opts.accountName})` : '';
   const contentPreview = opts.messageType === 'text'
     ? opts.messageText
     : opts.messageText; // Already formatted (e.g. "📷 画像を送信")
 
-  // Translate non-Japanese text messages
+  // Slack is an internal staff surface, so translate customer text to Japanese.
   let translationLine = '';
-  if (opts.messageType === 'text' && opts.googleTranslateApiKey && shouldTranslate(opts.messageText, locale)) {
-    const translated = await translateText(opts.messageText, opts.googleTranslateApiKey, locale);
+  if (
+    opts.messageType === 'text'
+    && opts.googleTranslateApiKey
+    && shouldTranslate(opts.messageText, INTERNAL_SLACK_TRANSLATION_TARGET)
+  ) {
+    const translated = await translateText(
+      opts.messageText,
+      opts.googleTranslateApiKey,
+      INTERNAL_SLACK_TRANSLATION_TARGET,
+    );
     if (translated) {
-      translationLine = `\n*${copy.translationLabel}:* ${translated}`;
+      translationLine = `\n*${translationCopy.translationLabel}:* ${translated}`;
     }
   }
 
@@ -347,11 +376,14 @@ export async function notifySlackFormSubmission(opts: {
   answers: SlackFormAnswer[];
   accountName?: string;
   locale?: string | null;
+  submissionId?: string;
+  submissionSlackChannelId?: string;
   submittedAt?: string;
   googleTranslateApiKey?: string;
 }): Promise<void> {
   const locale = normalizeLocale(opts.locale);
   const copy = getLocaleCopy(locale);
+  const translationCopy = getLocaleCopy(INTERNAL_SLACK_TRANSLATION_TARGET);
   const accountLabel = opts.accountName ? ` (${opts.accountName})` : '';
 
   const translationIndexes = opts.answers
@@ -359,13 +391,16 @@ export async function notifySlackFormSubmission(opts: {
       index,
       value: trimSlackText(answer.value),
     }))
-    .filter((item) => opts.googleTranslateApiKey && shouldTranslate(item.value, locale));
+    .filter(
+      (item) => opts.googleTranslateApiKey
+        && shouldTranslate(item.value, INTERNAL_SLACK_TRANSLATION_TARGET),
+    );
 
   const translatedValues = opts.googleTranslateApiKey && translationIndexes.length > 0
     ? await translateTexts(
       translationIndexes.map((item) => item.value),
       opts.googleTranslateApiKey,
-      locale,
+      INTERNAL_SLACK_TRANSLATION_TARGET,
     )
     : [];
 
@@ -382,7 +417,7 @@ export async function notifySlackFormSubmission(opts: {
       const base = `*${answer.label}*\n${quoteForSlack(trimSlackText(answer.value))}`;
       const translated = translatedByIndex.get(index);
       return translated
-        ? `${base}\n_${copy.translationLabel}: ${translated}_`
+        ? `${base}\n_${translationCopy.translationLabel}: ${translated}_`
         : base;
     })
     : [`_${copy.noAnswersLabel}_`];
@@ -392,7 +427,7 @@ export async function notifySlackFormSubmission(opts: {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*${opts.friendName}*${accountLabel} ${copy.formSubmittedLabel}`,
+        text: `*${copy.formSubmittedLabel}*${accountLabel}`,
       },
       ...(opts.friendPictureUrl ? {
         accessory: {
@@ -409,6 +444,8 @@ export async function notifySlackFormSubmission(opts: {
         text: [
           `*${copy.formLabel}:* ${opts.formName}`,
           opts.accountName ? `*${copy.accountLabel}:* ${opts.accountName}` : null,
+          opts.submissionId ? `*${copy.submissionIdLabel}:* ${opts.submissionId}` : null,
+          opts.submissionSlackChannelId ? `*${copy.slackChannelLabel}:* ${opts.submissionSlackChannelId}` : null,
           opts.submittedAt ? `*${copy.submittedAtLabel}:* ${opts.submittedAt}` : null,
         ].filter(Boolean).join('\n'),
       },
@@ -426,9 +463,16 @@ export async function notifySlackFormSubmission(opts: {
   await postToSlack({
     token: opts.slackToken,
     channel: opts.slackChannelId,
-    text: `📝 ${opts.friendName}${accountLabel} ${copy.formSubmittedLabel}: ${opts.formName}`,
-    username: opts.friendName,
+    text: `📝 ${copy.formSubmittedLabel}: ${opts.formName}`,
+    username: opts.formName,
     iconUrl: opts.friendPictureUrl || undefined,
     blocks,
   });
 }
+
+export const __slackTranslationInternals = {
+  shouldTranslate,
+  isLikelyJapanese,
+  hasTranslatableLetters,
+  INTERNAL_SLACK_TRANSLATION_TARGET,
+};

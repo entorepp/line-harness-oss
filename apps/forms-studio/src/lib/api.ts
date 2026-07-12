@@ -7,15 +7,61 @@ import type {
   Tag,
 } from '@line-crm/shared'
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL
+export const API_URL = configuredApiUrl !== undefined
+  ? configuredApiUrl
+  : process.env.NODE_ENV === 'development'
+    ? 'http://localhost:8787'
+    : ''
 export const AUTH_STORAGE_KEY = 'forms_studio_api_key'
 export const ACCOUNT_STORAGE_KEY = 'forms_studio_line_account_id'
 
+let hasRedirectedForUnauthorized = false
+
+export function normalizeApiKey(value: string): string {
+  return value.trim().replace(/^Bearer\s+/i, '')
+}
+
+export class ApiError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 function getApiKey(): string {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem(AUTH_STORAGE_KEY) || ''
+    return normalizeApiKey(localStorage.getItem(AUTH_STORAGE_KEY) || '')
   }
-  return process.env.NEXT_PUBLIC_API_KEY || ''
+  return normalizeApiKey(process.env.NEXT_PUBLIC_API_KEY || '')
+}
+
+function handleUnauthorized() {
+  if (typeof window === 'undefined' || hasRedirectedForUnauthorized) return
+
+  hasRedirectedForUnauthorized = true
+  localStorage.removeItem(AUTH_STORAGE_KEY)
+  localStorage.removeItem(ACCOUNT_STORAGE_KEY)
+
+  if (window.location.pathname !== '/login') {
+    window.location.assign('/login')
+  }
+}
+
+async function resolveErrorMessage(res: Response): Promise<string> {
+  try {
+    const body = await res.json() as { error?: unknown }
+    if (typeof body.error === 'string' && body.error.trim()) {
+      return body.error
+    }
+  } catch {
+    // Ignore non-JSON error responses and fall back to the status.
+  }
+
+  return `API error: ${res.status}`
 }
 
 export async function fetchApi<T>(
@@ -40,7 +86,11 @@ export async function fetchApi<T>(
   })
 
   if (!res.ok) {
-    throw new Error(`API error: ${res.status}`)
+    const message = await resolveErrorMessage(res)
+    if (res.status === 401) {
+      handleUnauthorized()
+    }
+    throw new ApiError(res.status, message)
   }
 
   return res.json() as Promise<T>

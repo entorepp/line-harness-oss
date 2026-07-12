@@ -1,5 +1,11 @@
 import { Hono } from 'hono';
 import type { Env } from '../index.js';
+import {
+  getLineContentSigningSecret,
+  normalizeLineContentFileName,
+  normalizeLineContentType,
+  verifyLineContentProxySignature,
+} from '../services/line-content-proxy.js';
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
@@ -51,6 +57,11 @@ function getFileIcon(ext: string): string {
   if (['mp3', 'wav', 'm4a'].includes(ext)) return '\u{1F3B5}';
   if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '\u{1F4E6}';
   return '\u{1F4CE}';
+}
+
+function buildContentDisposition(disposition: 'inline' | 'attachment', fileName: string): string {
+  const fallback = fileName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_') || 'file';
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
 const uploads = new Hono<Env>();
@@ -106,6 +117,68 @@ uploads.post('/api/upload', async (c) => {
   }
 });
 
+// GET /api/files/line/:accountId/:messageId — proxy LINE-hosted content with a signed URL.
+// This keeps large inbound files downloadable when they exceed Cloudflare KV's per-value limit.
+uploads.get('/api/files/line/:accountId/:messageId', async (c) => {
+  const accountId = c.req.param('accountId');
+  const messageId = c.req.param('messageId');
+  const fileName = normalizeLineContentFileName(c.req.query('name'));
+  const contentType = normalizeLineContentType(c.req.query('type'));
+  const signature = c.req.query('sig') || '';
+
+  if (!accountId || !messageId || !signature) {
+    return c.json({ error: 'Invalid file URL' }, 400);
+  }
+
+  const signingSecret = getLineContentSigningSecret(c.env.API_KEY, c.env.LINE_CHANNEL_SECRET);
+  const valid = await verifyLineContentProxySignature({
+    secret: signingSecret,
+    accountId,
+    messageId,
+    fileName,
+    contentType,
+    signature,
+  });
+  if (!valid) {
+    return c.json({ error: 'Invalid file URL' }, 403);
+  }
+
+  let accessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (accountId !== 'default') {
+    const account = await c.env.DB
+      .prepare('SELECT channel_access_token FROM line_accounts WHERE id = ? AND is_active = 1')
+      .bind(accountId)
+      .first<{ channel_access_token: string | null }>();
+    if (!account?.channel_access_token) {
+      return c.json({ error: 'File account not found' }, 404);
+    }
+    accessToken = account.channel_access_token;
+  }
+
+  const lineRes = await fetch(
+    `https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!lineRes.ok) {
+    const text = await lineRes.text().catch(() => '');
+    console.error('LINE content proxy fetch failed:', lineRes.status, lineRes.statusText, text);
+    return c.json({ error: 'File is no longer available from LINE' }, 502);
+  }
+
+  const headers = new Headers();
+  headers.set('Content-Type', contentType);
+  headers.set('Cache-Control', 'public, max-age=3600');
+
+  const contentLength = lineRes.headers.get('content-length');
+  if (contentLength) headers.set('Content-Length', contentLength);
+
+  const inlineTypes = [...IMAGE_TYPES, 'application/pdf', 'video/mp4', 'audio/mp4', 'audio/mpeg'];
+  const disposition = inlineTypes.includes(contentType) ? 'inline' : 'attachment';
+  headers.set('Content-Disposition', buildContentDisposition(disposition, fileName));
+
+  return new Response(lineRes.body, { headers });
+});
+
 // GET /api/files/:key — serve file from KV (public, no auth)
 uploads.get('/api/files/:key', async (c) => {
   const key = c.req.param('key');
@@ -128,10 +201,10 @@ uploads.get('/api/files/:key', async (c) => {
   // PDFs and images display inline; other files download
   const inlineTypes = [...IMAGE_TYPES, 'application/pdf'];
   if (!inlineTypes.includes(contentType) && metadata?.originalName) {
-    headers['Content-Disposition'] = `attachment; filename="${encodeURIComponent(metadata.originalName)}"`;
+    headers['Content-Disposition'] = buildContentDisposition('attachment', metadata.originalName);
   } else if (contentType === 'application/pdf') {
     headers['Content-Disposition'] = metadata?.originalName
-      ? `inline; filename="${encodeURIComponent(metadata.originalName)}"`
+      ? buildContentDisposition('inline', metadata.originalName)
       : 'inline';
   }
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { API_URL, AUTH_STORAGE_KEY } from '@/lib/api'
+import { API_URL, AUTH_STORAGE_KEY, normalizeApiKey } from '@/lib/api'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,15 +16,16 @@ export default function LoginPage() {
     setError('')
 
     try {
+      const normalizedApiKey = normalizeApiKey(apiKey)
       const res = await fetch(`${API_URL}/api/forms`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers: { Authorization: `Bearer ${normalizedApiKey}` },
       })
 
       if (!res.ok) {
         throw new Error('APIキーが正しくありません')
       }
 
-      localStorage.setItem(AUTH_STORAGE_KEY, apiKey)
+      localStorage.setItem(AUTH_STORAGE_KEY, normalizedApiKey)
       router.replace('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : '接続に失敗しました')
@@ -85,7 +86,7 @@ export default function LoginPage() {
                   autoFocus
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}
-                  placeholder="Bearer key"
+                  placeholder="API key または Bearer key"
                   className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-emerald-600"
                 />
               </div>
@@ -98,7 +99,7 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading || !apiKey}
+                disabled={loading || !normalizeApiKey(apiKey)}
                 className="w-full rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? '認証中...' : 'Studio に入る'}

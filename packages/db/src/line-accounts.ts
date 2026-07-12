@@ -3,7 +3,7 @@ import { jstNow } from './utils.js';
 // LINE Accounts — Multi-Account Management
 // =============================================================================
 
-export type LineAccountChannelType = 'line' | 'whatsapp';
+export type LineAccountChannelType = 'line' | 'whatsapp' | 'kakao';
 
 export interface LineAccount {
   id: string;

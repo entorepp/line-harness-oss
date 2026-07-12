@@ -12,6 +12,7 @@ import {
   getFriendReminders,
   cancelFriendReminder,
 } from '@line-crm/db';
+import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
 
 const reminders = new Hono<Env>();
@@ -131,7 +132,13 @@ reminders.post('/api/reminders/:id/steps', async (c) => {
     if (body.offsetMinutes === undefined || !body.messageType || !body.messageContent) {
       return c.json({ success: false, error: 'offsetMinutes, messageType, messageContent are required' }, 400);
     }
-    const step = await createReminderStep(c.env.DB, { reminderId, ...body });
+    const step = await createReminderStep(c.env.DB, {
+      reminderId,
+      ...body,
+      messageContent: body.messageType === 'text'
+        ? replaceEmojiShortcodes(body.messageContent)
+        : body.messageContent,
+    });
     return c.json({
       success: true,
       data: { id: step.id, reminderId: step.reminder_id, offsetMinutes: step.offset_minutes, messageType: step.message_type, createdAt: step.created_at },

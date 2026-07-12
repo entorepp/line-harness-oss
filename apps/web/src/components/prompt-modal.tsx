@@ -50,7 +50,7 @@ export default function PromptModal({ isOpen, onClose, prompts }: PromptModalPro
       <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h2 className="text-base font-bold text-gray-900">CC プロンプトテンプレート</h2>
+          <h2 className="text-base font-bold text-gray-900">API プロンプトテンプレート</h2>
           <button
             onClick={onClose}
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
@@ -118,7 +118,7 @@ export default function PromptModal({ isOpen, onClose, prompts }: PromptModalPro
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-200">
-          <p className="text-xs text-gray-400">Claude Code にプロンプトを貼り付けて使用してください</p>
+          <p className="text-xs text-gray-400">外部ツールや API クライアントで使用してください</p>
         </div>
       </div>
     </div>

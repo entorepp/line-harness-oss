@@ -9,6 +9,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   if (
     path === '/webhook' ||
     path === '/webhook/whatsapp' ||
+    path === '/webhook/kakao' ||
+    path === '/webhook/kakao/messages' ||
     path === '/docs' ||
     path === '/openapi.json' ||
     path === '/api/affiliates/click' ||
@@ -18,6 +20,7 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path.startsWith('/auth/') ||
     path === '/api/integrations/stripe/webhook' ||
     path.match(/^\/api\/webhooks\/incoming\/[^/]+\/receive$/) ||
+    (method === 'POST' && path === '/api/upload') ||
     (method === 'POST' && path.match(/^\/api\/forms\/[^/]+\/submit$/)) ||
     (method === 'GET' && path.match(/^\/api\/forms\/[^/]+$/)) || // GET form definition (public for LIFF)
     (method === 'GET' && path.match(/^\/api\/form-issues\/[^/]+$/)) ||

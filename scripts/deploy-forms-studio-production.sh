@@ -1,7 +1,11 @@
-#!/bin/bash
+#!/bin/zsh
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_PATH="${(%):-%N}"
+SCRIPT_DIR="${SCRIPT_PATH:A:h}"
+ROOT_DIR="${SCRIPT_DIR:h}"
+source "$ROOT_DIR/scripts/cloudflare-env.sh"
+
 PRODUCTION_BRANCH="main"
 PRODUCTION_PROJECT="liffform-studio"
 PRODUCTION_URL="https://liffform-studio.pages.dev"
@@ -17,9 +21,14 @@ if [[ "${ALLOW_NON_MAIN_DEPLOY:-0}" != "1" && "$CURRENT_BRANCH" != "$PRODUCTION_
   exit 1
 fi
 
-echo "=== Building forms-studio app ==="
+cloudflare_require_token
+
+echo "=== Building shared package ==="
 cd "$ROOT_DIR"
-pnpm --filter forms-studio build
+pnpm --filter @line-crm/shared build
+
+echo "=== Building forms-studio app ==="
+NEXT_PUBLIC_API_URL="" pnpm --filter forms-studio build
 
 if [[ ! -d "$ROOT_DIR/apps/forms-studio/out" ]]; then
   echo "Build output not found: $ROOT_DIR/apps/forms-studio/out"
@@ -28,6 +37,6 @@ fi
 
 echo "=== Deploying forms-studio to ${PRODUCTION_URL} ==="
 cd "$ROOT_DIR"
-apps/worker/node_modules/.bin/wrangler pages deploy apps/forms-studio/out \
+cloudflare_wrangler pages deploy apps/forms-studio/out \
   --project-name="${PRODUCTION_PROJECT}" \
   --branch="${PRODUCTION_BRANCH}"

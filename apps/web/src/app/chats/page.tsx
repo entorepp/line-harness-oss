@@ -35,6 +35,8 @@ interface ChatDetail extends Chat {
   friendPictureUrl: string | null
   slackChannelId: string | null
   messages?: ChatMessage[]
+  hasMoreMessages?: boolean
+  oldestMessageId?: string | null
 }
 
 type StatusFilter = 'all' | 'unread' | 'in_progress' | 'resolved'
@@ -51,6 +53,30 @@ const statusFilters: { key: StatusFilter; label: string }[] = [
   { key: 'in_progress', label: '対応中' },
   { key: 'resolved', label: '解決済' },
 ]
+
+const MESSAGE_SCROLL_BOTTOM_THRESHOLD = 120
+const MESSAGE_SCROLL_TOP_LOAD_THRESHOLD = 80
+const MESSAGE_HISTORY_PAGE_SIZE = 200
+
+function isNearScrollBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= MESSAGE_SCROLL_BOTTOM_THRESHOLD
+}
+
+function mergeChatMessages(...groups: Array<ChatMessage[] | undefined>): ChatMessage[] {
+  const byId = new Map<string, ChatMessage>()
+  for (const group of groups) {
+    for (const message of group ?? []) {
+      byId.set(message.id, message)
+    }
+  }
+
+  return [...byId.values()].sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime()
+    const rightTime = new Date(right.createdAt).getTime()
+    if (leftTime !== rightTime) return leftTime - rightTime
+    return left.id.localeCompare(right.id)
+  })
+}
 
 function formatDatetime(iso: string | null): string {
   if (!iso) return '-'
@@ -81,7 +107,7 @@ interface MessageLog {
 function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onError }: {
   friendId: string
   friend: FriendItem | null
-  channelType?: 'line' | 'whatsapp'
+  channelType?: 'line' | 'whatsapp' | 'kakao'
   onBack: () => void
   onSent: () => void
   onError: (message: string) => void
@@ -170,7 +196,14 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
 }
 
 export default function ChatsPage() {
-  const { selectedAccountId, selectedAccount } = useAccount()
+  const {
+    accounts,
+    selectedAccountId,
+    selectedAccount,
+    setSelectedAccountId,
+    refreshAccounts,
+    loading: accountsLoading,
+  } = useAccount()
   const [chats, setChats] = useState<Chat[]>([])
   const [allFriends, setAllFriends] = useState<FriendItem[]>([])
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
@@ -181,12 +214,23 @@ export default function ChatsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const shouldStickToBottomRef = useRef(true)
+  const forceScrollToBottomRef = useRef(false)
+  const userReviewingHistoryRef = useRef(false)
+  const loadingOlderMessagesRef = useRef(false)
+  const prependScrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
+  const renderedMessagesRef = useRef<{
+    chatId: string | null
+    messageCount: number
+    lastMessageId: string | null
+  }>({ chatId: null, messageCount: 0, lastMessageId: null })
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingSlack, setEditingSlack] = useState(false)
   const [slackInput, setSlackInput] = useState('')
   const [savingSlack, setSavingSlack] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
 
   // Track previous chat state for notification
   const prevUnreadRef = useRef(0)
@@ -272,10 +316,39 @@ export default function ChatsPage() {
 
   const loadChatDetail = useCallback(async (chatId: string, silent = false) => {
     if (!silent) setDetailLoading(true)
+    if (silent) {
+      const el = messagesContainerRef.current
+      if (el) {
+        const nearBottom = isNearScrollBottom(el)
+        shouldStickToBottomRef.current = nearBottom
+        userReviewingHistoryRef.current = !nearBottom
+      }
+    }
     try {
       const res = await api.chats.get(chatId)
       if (res.success) {
-        setChatDetail(res.data as unknown as ChatDetail)
+        const nextDetail = res.data as unknown as ChatDetail
+        setChatDetail((current) => {
+          if (silent && current?.id === chatId) {
+            const currentMessages = current.messages ?? []
+            const nextMessages = nextDetail.messages ?? []
+            const mergedMessages = mergeChatMessages(currentMessages, nextMessages)
+            const currentOldestMessageId = currentMessages[0]?.id ?? current.oldestMessageId ?? null
+            const nextOldestMessageId = nextMessages[0]?.id ?? nextDetail.oldestMessageId ?? null
+            const hasLoadedOlderMessages =
+              Boolean(currentOldestMessageId && nextOldestMessageId && currentOldestMessageId !== nextOldestMessageId)
+
+            return {
+              ...nextDetail,
+              messages: mergedMessages,
+              hasMoreMessages: hasLoadedOlderMessages
+                ? current.hasMoreMessages
+                : nextDetail.hasMoreMessages,
+              oldestMessageId: mergedMessages[0]?.id ?? nextDetail.oldestMessageId ?? null,
+            }
+          }
+          return nextDetail
+        })
         if (!silent) setNotes((res.data as unknown as ChatDetail).notes || '')
       }
     } catch {
@@ -294,21 +367,154 @@ export default function ChatsPage() {
     if (selectedChatId) {
       setSettingsOpen(false)
       setEditingSlack(false)
+      shouldStickToBottomRef.current = true
+      forceScrollToBottomRef.current = true
+      userReviewingHistoryRef.current = false
+      loadingOlderMessagesRef.current = false
+      prependScrollRestoreRef.current = null
+      renderedMessagesRef.current = { chatId: null, messageCount: 0, lastMessageId: null }
+      setLoadingOlderMessages(false)
       loadChatDetail(selectedChatId)
     } else {
       setChatDetail(null)
+      shouldStickToBottomRef.current = true
+      forceScrollToBottomRef.current = false
+      userReviewingHistoryRef.current = false
+      loadingOlderMessagesRef.current = false
+      prependScrollRestoreRef.current = null
+      renderedMessagesRef.current = { chatId: null, messageCount: 0, lastMessageId: null }
+      setLoadingOlderMessages(false)
     }
   }, [selectedChatId, loadChatDetail])
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (messagesContainerRef.current && chatDetail?.messages?.length) {
-      requestAnimationFrame(() => {
-        const el = messagesContainerRef.current
-        if (el) el.scrollTop = el.scrollHeight
-      })
+  const loadOlderMessages = useCallback(async () => {
+    const currentMessages = chatDetail?.messages ?? []
+    const beforeMessageId = currentMessages[0]?.id ?? chatDetail?.oldestMessageId ?? null
+    if (
+      !selectedChatId ||
+      !chatDetail?.hasMoreMessages ||
+      !beforeMessageId ||
+      loadingOlderMessagesRef.current
+    ) {
+      return
     }
-  }, [chatDetail?.messages])
+
+    const el = messagesContainerRef.current
+    if (el) {
+      prependScrollRestoreRef.current = {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+      }
+    }
+
+    loadingOlderMessagesRef.current = true
+    setLoadingOlderMessages(true)
+    shouldStickToBottomRef.current = false
+    userReviewingHistoryRef.current = true
+
+    try {
+      const res = await api.chats.get(selectedChatId, {
+        beforeMessageId,
+        limit: MESSAGE_HISTORY_PAGE_SIZE,
+      })
+      if (!res.success) {
+        setError('過去のメッセージの読み込みに失敗しました。')
+        prependScrollRestoreRef.current = null
+        return
+      }
+
+      const olderDetail = res.data as unknown as ChatDetail
+      setChatDetail((current) => {
+        if (!current || current.id !== selectedChatId) return current
+        const mergedMessages = mergeChatMessages(olderDetail.messages, current.messages)
+        return {
+          ...current,
+          messages: mergedMessages,
+          hasMoreMessages: olderDetail.hasMoreMessages ?? false,
+          oldestMessageId: mergedMessages[0]?.id ?? null,
+        }
+      })
+    } catch {
+      setError('過去のメッセージの読み込みに失敗しました。')
+      prependScrollRestoreRef.current = null
+    } finally {
+      loadingOlderMessagesRef.current = false
+      setLoadingOlderMessages(false)
+    }
+  }, [
+    selectedChatId,
+    chatDetail?.hasMoreMessages,
+    chatDetail?.oldestMessageId,
+    chatDetail?.messages,
+  ])
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesContainerRef.current
+    if (!el) return
+    const nearBottom = isNearScrollBottom(el)
+    shouldStickToBottomRef.current = nearBottom
+    userReviewingHistoryRef.current = !nearBottom
+    if (el.scrollTop <= MESSAGE_SCROLL_TOP_LOAD_THRESHOLD) {
+      void loadOlderMessages()
+    }
+  }, [loadOlderMessages])
+
+  // Keep the chat pinned only while the operator is already reading the latest messages.
+  useEffect(() => {
+    const messages = chatDetail?.messages ?? []
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null
+    const current = {
+      chatId: chatDetail?.id ?? null,
+      messageCount: messages.length,
+      lastMessageId: lastMessage?.id ?? null,
+    }
+    const previous = renderedMessagesRef.current
+    const switchedChat = current.chatId !== previous.chatId
+    const messageListChanged =
+      current.messageCount !== previous.messageCount ||
+      current.lastMessageId !== previous.lastMessageId
+    const shouldScroll =
+      !!current.chatId &&
+      messages.length > 0 &&
+      (
+        switchedChat ||
+        forceScrollToBottomRef.current ||
+        (messageListChanged && shouldStickToBottomRef.current && !userReviewingHistoryRef.current)
+      )
+
+    renderedMessagesRef.current = current
+
+    const prependRestore = prependScrollRestoreRef.current
+    if (prependRestore) {
+      const frame = requestAnimationFrame(() => {
+        const el = messagesContainerRef.current
+        if (!el) return
+        el.scrollTop = el.scrollHeight - prependRestore.scrollHeight + prependRestore.scrollTop
+        shouldStickToBottomRef.current = isNearScrollBottom(el)
+        userReviewingHistoryRef.current = !shouldStickToBottomRef.current
+        forceScrollToBottomRef.current = false
+        prependScrollRestoreRef.current = null
+      })
+
+      return () => cancelAnimationFrame(frame)
+    }
+
+    if (!shouldScroll) {
+      forceScrollToBottomRef.current = false
+      return
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const el = messagesContainerRef.current
+      if (!el) return
+      el.scrollTop = el.scrollHeight
+      shouldStickToBottomRef.current = true
+      userReviewingHistoryRef.current = false
+      forceScrollToBottomRef.current = false
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [chatDetail?.id, chatDetail?.messages])
 
   // Polling: auto-refresh chat list every 5 seconds
   useEffect(() => {
@@ -383,19 +589,92 @@ export default function ChatsPage() {
   }
 
   const unreadCount = chats.filter((c) => c.status === 'unread').length
+  const friendsWithoutChats = statusFilter === 'all'
+    ? allFriends.filter((f) => f.isFollowing && !chats.some((c) => c.friendId === f.id))
+    : []
+  const fallbackAccount = accounts
+    .filter((account) => (
+      account.id !== selectedAccountId &&
+      ((account.stats?.friendCount ?? 0) > 0 || (account.stats?.messagesThisMonth ?? 0) > 0)
+    ))
+    .sort((left, right) => {
+      const rank = (account: typeof left) => {
+        const name = `${account.displayName || ''} ${account.name || ''}`.toLowerCase()
+        if (account.channelType === 'line' && (name.includes('フラット') || name.includes('flat travel'))) return 0
+        if (account.channelType === 'line') return 1
+        if (account.channelType === 'whatsapp') return 2
+        return 3
+      }
+      return rank(left) - rank(right)
+    })[0]
+  const selectedAccountName = selectedAccount?.displayName || selectedAccount?.name || '選択中のチャネル'
+  const fallbackAccountName = fallbackAccount?.displayName || fallbackAccount?.name
+  const listIsEmpty = !loading && chats.length === 0 && friendsWithoutChats.length === 0
+
+  const handleSwitchToFallbackAccount = () => {
+    if (!fallbackAccount) return
+    setSelectedAccountId(fallbackAccount.id)
+    setSelectedChatId(null)
+    setSelectedFriendId(null)
+    setChatDetail(null)
+  }
+
+  const handleSelectAccount = (accountId: string) => {
+    if (!accountId || accountId === selectedAccountId) return
+    setSelectedAccountId(accountId)
+    setSelectedChatId(null)
+    setSelectedFriendId(null)
+    setChatDetail(null)
+  }
 
   return (
     <div>
-      <Header title={
-        <span className="flex items-center gap-2">
-          オペレーターチャット
-          {unreadCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold text-white animate-pulse" style={{ backgroundColor: '#EF4444' }}>
-              {unreadCount}
-            </span>
-          )}
-        </span>
-      } />
+      <Header
+        title={
+          <span className="flex items-center gap-2">
+            オペレーターチャット
+            {unreadCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold text-white animate-pulse" style={{ backgroundColor: '#EF4444' }}>
+                {unreadCount}
+              </span>
+            )}
+          </span>
+        }
+        action={
+          accounts.length > 0 ? (
+            <select
+              value={selectedAccountId ?? ''}
+              onChange={(event) => handleSelectAccount(event.target.value)}
+              className="min-h-[44px] min-w-[220px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
+              aria-label="チャネル切替"
+            >
+              {accounts.map((account) => {
+                const name = account.displayName || account.name
+                const friendCount = account.stats?.friendCount ?? 0
+                const channelLabel = account.channelType === 'kakao'
+                  ? 'Kakao'
+                  : account.channelType === 'whatsapp'
+                    ? 'WhatsApp'
+                    : 'LINE'
+                return (
+                  <option key={account.id} value={account.id}>
+                    {name} / {channelLabel} / 友だち{friendCount}件
+                  </option>
+                )
+              })}
+            </select>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { void refreshAccounts() }}
+              disabled={accountsLoading}
+              className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+            >
+              {accountsLoading ? 'チャネル読込中...' : 'チャネル再読込'}
+            </button>
+          )
+        }
+      />
 
       {/* Error */}
       {error && (
@@ -474,8 +753,7 @@ export default function ChatsPage() {
                   )
                 })}
                 {/* Friends without chats — only show on "全て" tab */}
-                {statusFilter === 'all' && allFriends
-                  .filter((f) => f.isFollowing && !chats.some((c) => c.friendId === f.id))
+                {friendsWithoutChats
                   .map((friend) => {
                     const isSelected = selectedFriendId === friend.id
                     return (
@@ -505,6 +783,26 @@ export default function ChatsPage() {
                       </button>
                     )
                   })}
+                {listIsEmpty && (
+                  <div className="px-5 py-10 text-center">
+                    <p className="text-sm font-medium text-gray-700">
+                      {selectedAccountName}には表示できるチャットがありません
+                    </p>
+                    <p className="mt-2 text-xs leading-relaxed text-gray-400">
+                      既存のLINE会話を見るには、会話があるチャネルへ切り替えてください。
+                    </p>
+                    {fallbackAccount && (
+                      <button
+                        type="button"
+                        onClick={handleSwitchToFallbackAccount}
+                        className="mt-4 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90"
+                        style={{ backgroundColor: '#06C755' }}
+                      >
+                        {fallbackAccountName}に切替
+                      </button>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -524,7 +822,26 @@ export default function ChatsPage() {
             />
           ) : !selectedChatId ? (
             <div className="flex-1 flex items-center justify-center">
-              <p className="text-gray-400 text-sm">チャットを選択してください</p>
+              <div className="max-w-sm px-6 text-center">
+                <p className="text-gray-500 text-sm font-medium">
+                  {listIsEmpty ? `${selectedAccountName}にはまだチャットがありません` : 'チャットを選択してください'}
+                </p>
+                {listIsEmpty && fallbackAccount && (
+                  <>
+                    <p className="mt-2 text-xs leading-relaxed text-gray-400">
+                      会話履歴があるチャネルへ切り替えると、既存の個別チャットを表示できます。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSwitchToFallbackAccount}
+                      className="mt-4 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90"
+                      style={{ backgroundColor: '#06C755' }}
+                    >
+                      {fallbackAccountName}に切替
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ) : detailLoading ? (
             <div className="flex-1 flex items-center justify-center">
@@ -688,7 +1005,17 @@ export default function ChatsPage() {
               )}
 
               {/* Messages — LINE-style chat bubbles */}
-              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundColor: '#7494C0' }}>
+              <div
+                ref={messagesContainerRef}
+                onScroll={handleMessagesScroll}
+                className="flex-1 overflow-y-auto p-4 space-y-2"
+                style={{ backgroundColor: '#7494C0' }}
+              >
+                {loadingOlderMessages && (
+                  <div className="text-center py-2">
+                    <span className="text-xs text-white/70">過去のメッセージを読み込み中...</span>
+                  </div>
+                )}
                 {(!chatDetail.messages || chatDetail.messages.length === 0) ? (
                   <div className="text-center py-8">
                     <p className="text-white/60 text-sm">メッセージはまだありません。</p>
@@ -742,6 +1069,8 @@ export default function ChatsPage() {
                   channelType={selectedAccount?.channelType}
                   onSent={() => {
                     if (selectedChatId) {
+                      shouldStickToBottomRef.current = true
+                      forceScrollToBottomRef.current = true
                       void loadChatDetail(selectedChatId)
                     }
                     void loadChats()

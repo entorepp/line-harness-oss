@@ -142,8 +142,8 @@ export class LineClient {
 
   // ─── Content download ─────────────────────────────────────────────────────
 
-  /** Download message content (image, video, audio, file) as ArrayBuffer */
-  async getMessageContent(messageId: string): Promise<ArrayBuffer> {
+  /** Fetch message content (image, video, audio, file) from LINE. */
+  async getMessageContentResponse(messageId: string): Promise<Response> {
     const url = `https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${this.channelAccessToken}` },
@@ -152,6 +152,12 @@ export class LineClient {
       const text = await res.text().catch(() => '');
       throw new Error(`LINE Content API error: ${res.status} ${res.statusText} — ${text}`);
     }
+    return res;
+  }
+
+  /** Download message content (image, video, audio, file) as ArrayBuffer */
+  async getMessageContent(messageId: string): Promise<ArrayBuffer> {
+    const res = await this.getMessageContentResponse(messageId);
     return res.arrayBuffer();
   }
 

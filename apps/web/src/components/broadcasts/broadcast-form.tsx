@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { Tag } from '@line-crm/shared'
+import { replaceEmojiShortcodes } from '@line-crm/shared'
 import { api, type ApiBroadcast } from '@/lib/api'
 
 interface BroadcastFormProps {
@@ -14,6 +15,42 @@ const messageTypeLabels: Record<ApiBroadcast['messageType'], string> = {
   text: 'テキスト',
   image: '画像',
   flex: 'Flexメッセージ',
+}
+
+const JST_OFFSET_MS = 9 * 60 * 60_000
+const DATETIME_LOCAL_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/
+
+function toJstDatetimeLocalValue(date: Date): string {
+  const jst = new Date(date.getTime() + JST_OFFSET_MS)
+  const year = jst.getUTCFullYear()
+  const month = String(jst.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(jst.getUTCDate()).padStart(2, '0')
+  const hour = String(jst.getUTCHours()).padStart(2, '0')
+  const minute = String(jst.getUTCMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hour}:${minute}`
+}
+
+function minScheduleValue(): string {
+  const date = new Date(Date.now() + 60 * 1000)
+  date.setSeconds(0, 0)
+  return toJstDatetimeLocalValue(date)
+}
+
+function validateFutureJstSchedule(value: string): string {
+  if (!DATETIME_LOCAL_PATTERN.test(value)) {
+    throw new Error('予約配信の場合は配信日時を指定してください')
+  }
+
+  const scheduledAt = `${value}:00.000+09:00`
+  const scheduledTime = new Date(scheduledAt).getTime()
+  if (Number.isNaN(scheduledTime)) {
+    throw new Error('配信日時の形式が正しくありません')
+  }
+  if (scheduledTime <= Date.now()) {
+    throw new Error('配信日時は現在時刻より後の日本時間を指定してください')
+  }
+
+  return scheduledAt
 }
 
 interface FormState {
@@ -40,14 +77,27 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
   const [error, setError] = useState('')
 
   const handleSave = async () => {
+    const messageContent = form.messageType === 'text'
+      ? replaceEmojiShortcodes(form.messageContent)
+      : form.messageContent
+
     if (!form.title.trim()) { setError('配信タイトルを入力してください'); return }
-    if (!form.messageContent.trim()) { setError('メッセージ内容を入力してください'); return }
+    if (!messageContent.trim()) { setError('メッセージ内容を入力してください'); return }
     if (form.messageType === 'flex') {
-      try { JSON.parse(form.messageContent) } catch { setError('FlexメッセージのJSONが無効です'); return }
+      try { JSON.parse(messageContent) } catch { setError('FlexメッセージのJSONが無効です'); return }
     }
     if (!form.sendNow && !form.scheduledAt) {
       setError('予約配信の場合は配信日時を指定してください')
       return
+    }
+    let scheduledAt: string | null = null
+    if (!form.sendNow) {
+      try {
+        scheduledAt = validateFutureJstSchedule(form.scheduledAt)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '予約配信の場合は配信日時を指定してください')
+        return
+      }
     }
 
     setSaving(true)
@@ -56,15 +106,11 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
       const res = await api.broadcasts.create({
         title: form.title,
         messageType: form.messageType,
-        messageContent: form.messageContent,
+        messageContent,
         targetType: form.targetType,
         targetTagId: form.targetType === 'tag' ? form.targetTagId || null : null,
         status: 'draft',
-        // datetime-local returns YYYY-MM-DDTHH:mm in JST wall-clock time
-        // Append +09:00 so new Date() parses correctly for epoch comparisons
-        scheduledAt: form.sendNow || !form.scheduledAt
-          ? null
-          : form.scheduledAt + ':00.000+09:00',
+        scheduledAt,
       })
       if (res.success) {
         onSuccess()
@@ -175,7 +221,12 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
                 : '{"type":"bubble","body":{...}}'
             }
             value={form.messageContent}
-            onChange={(e) => setForm({ ...form, messageContent: e.target.value })}
+            onChange={(e) => {
+              const messageContent = form.messageType === 'text'
+                ? replaceEmojiShortcodes(e.target.value)
+                : e.target.value
+              setForm({ ...form, messageContent })
+            }}
             style={{ fontFamily: form.messageType !== 'text' ? 'monospace' : 'inherit' }}
           />
           {form.messageType === 'image' && (
@@ -252,12 +303,16 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
             </button>
           </div>
           {!form.sendNow && (
-            <input
-              type="datetime-local"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              value={form.scheduledAt}
-              onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
-            />
+            <div className="space-y-1">
+              <input
+                type="datetime-local"
+                min={minScheduleValue()}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                value={form.scheduledAt}
+                onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
+              />
+              <p className="text-xs text-gray-500">日本時間で指定</p>
+            </div>
           )}
         </div>
 

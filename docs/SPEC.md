@@ -110,7 +110,7 @@ line-oss-crm/
 - 50,000+ friends: Consider Queues for rate-limited sending
 - LINE rate limit: 100,000 messages/min (shouldn't be an issue)
 
-## IMPORTANT: API-First / CC-Native Design
+## IMPORTANT: API-First Design
 
 ### Philosophy
 This is NOT a traditional SaaS with a UI that happens to have an API.
@@ -119,7 +119,7 @@ This is an **API-first platform** where the admin UI is just one client.
 ### Requirements
 - **Every single feature must be exposed as a REST API endpoint**
 - API is the source of truth. UI is just a consumer.
-- Claude Code / AI agents must be able to fully operate the CRM via API
+- External tools and SDK clients must be able to fully operate the CRM via API
 - All endpoints return JSON, well-documented with OpenAPI spec
 - API key auth for programmatic access
 
@@ -184,7 +184,7 @@ This is an **API-first platform** where the admin UI is just one client.
 - Swagger UI at /docs
 - TypeScript SDK auto-generated
 
-### CC Integration Example
+### API Integration Example
 ```bash
 # Create a scenario
 curl -X POST https://api.example.com/scenarios \
