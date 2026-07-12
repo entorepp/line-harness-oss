@@ -200,8 +200,8 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
       if (!account) {
         return c.json({ success: false, error: 'Associated account not found' }, 404);
       }
-      if (account.channel_type === 'whatsapp') {
-        return c.json({ success: false, error: 'WhatsApp broadcasts are not supported' }, 400);
+      if (account.channel_type === 'whatsapp' || account.channel_type === 'kakao') {
+        return c.json({ success: false, error: `${account.channel_type === 'kakao' ? 'Kakao' : 'WhatsApp'} broadcasts are not supported` }, 400);
       }
       accessToken = account.channel_access_token;
     }

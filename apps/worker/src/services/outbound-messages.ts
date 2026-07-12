@@ -1,6 +1,7 @@
 import { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import type { Env } from '../index.js';
+import { dispatchKakaoBizMessage } from './kakao.js';
 
 export interface MessagingFriendContext {
   id: string;
@@ -133,6 +134,16 @@ function normalizeStickerContent(content: string): StickerPayload {
   }
 
   return parsed;
+}
+
+function extractKakaoRecipientId(lineUserId: string): string {
+  const providerMatch = lineUserId.match(/^kakao:[^:]+:provider:(.+)$/);
+  if (providerMatch?.[1]) return providerMatch[1];
+
+  const channelWebhookMatch = lineUserId.match(/^kakao:[^:]+:[^:]+:(.+)$/);
+  if (channelWebhookMatch?.[1]) return channelWebhookMatch[1];
+
+  return lineUserId;
 }
 
 function buildFileMessage(payload: FilePayload): Message {
@@ -328,6 +339,28 @@ export async function dispatchOutboundMessage(opts: {
       const text = await res.text().catch(() => '');
       throw new Error(`WhatsApp send failed: ${text}`);
     }
+
+    return {
+      messageType,
+      storedContent: serializeOutboundContent(opts.input),
+    };
+  }
+
+  if (opts.friend.channel_type === 'kakao') {
+    if (messageType !== 'text') {
+      throw new Error('Kakao account currently supports only text for manual or scheduled sends');
+    }
+
+    if (!opts.friend.line_account_id || !opts.friend.channel_id) {
+      throw new Error('No Kakao account configured for this recipient');
+    }
+
+    await dispatchKakaoBizMessage({
+      env: opts.env,
+      account: { id: opts.friend.line_account_id, channel_id: opts.friend.channel_id },
+      to: extractKakaoRecipientId(opts.friend.line_user_id),
+      text: opts.input.content,
+    });
 
     return {
       messageType,

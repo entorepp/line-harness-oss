@@ -66,12 +66,19 @@ function AccountAvatar({ account, size = 32 }: { account: AccountWithStats; size
     )
   }
   const isWhatsApp = account.channelType === 'whatsapp'
+  const isKakao = account.channelType === 'kakao'
   return (
     <div
       className="rounded-full flex items-center justify-center text-white font-bold shrink-0"
-      style={{ width: size, height: size, backgroundColor: isWhatsApp ? '#25D366' : '#06C755', fontSize: size * 0.4 }}
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: isWhatsApp ? '#25D366' : isKakao ? '#FEE500' : '#06C755',
+        color: isKakao ? '#111827' : '#ffffff',
+        fontSize: size * 0.4,
+      }}
     >
-      {isWhatsApp ? 'W' : displayName.charAt(0)}
+      {isWhatsApp ? 'W' : isKakao ? 'K' : displayName.charAt(0)}
     </div>
   )
 }
@@ -166,7 +173,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const { selectedAccount } = useAccount()
-  const isWhatsApp = selectedAccount?.channelType === 'whatsapp'
+  const isLimitedChannel = selectedAccount?.channelType === 'whatsapp' || selectedAccount?.channelType === 'kakao'
 
   useEffect(() => { setIsOpen(false) }, [pathname])
   useEffect(() => {
@@ -199,13 +206,13 @@ export default function Sidebar() {
       {/* ナビゲーション */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {menuSections.map((section, si) => {
-          const visibleItems = isWhatsApp
+          const visibleItems = isLimitedChannel
             ? section.items.filter((item) => whatsappVisiblePaths.has(item.href))
             : section.items
           if (visibleItems.length === 0) return null
           return (
           <div key={si}>
-            {section.label && !isWhatsApp && (
+            {section.label && !isLimitedChannel && (
               <div className="pt-5 pb-2 px-3">
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{section.label}</p>
               </div>

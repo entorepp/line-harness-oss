@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ClipboardEvent, KeyboardEvent } from 'react'
-import { api, fetchApi, type ApiScheduledMessage } from '@/lib/api'
+import { api, fetchApi, type ApiScheduledMessage, type ChannelType } from '@/lib/api'
 
 type AttachmentDraft = {
   file: File
@@ -198,7 +198,7 @@ export default function ChatComposer({
 }: {
   friendId: string
   chatId?: string | null
-  channelType?: 'line' | 'whatsapp'
+  channelType?: ChannelType
   onSent?: () => void | Promise<void>
   onError?: (message: string) => void
 }) {
@@ -221,6 +221,8 @@ export default function ChatComposer({
   const [editingScheduledAt, setEditingScheduledAt] = useState('')
   const [savingScheduledId, setSavingScheduledId] = useState<string | null>(null)
   const isWhatsApp = channelType === 'whatsapp'
+  const isKakao = channelType === 'kakao'
+  const isTextOnlyChannel = isWhatsApp || isKakao
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
 
   useEffect(() => {
@@ -256,9 +258,9 @@ export default function ChatComposer({
   }, [customEmojiPresets])
 
   useEffect(() => {
-    if (!isWhatsApp) return
+    if (!isTextOnlyChannel) return
     clearAttachment()
-  }, [isWhatsApp])
+  }, [isTextOnlyChannel])
 
   const loadScheduledMessages = useCallback(async (silent = false) => {
     try {
@@ -346,8 +348,8 @@ export default function ChatComposer({
   }
 
   function setAttachmentFromFile(file: File) {
-    if (isWhatsApp) {
-      onError?.('WhatsApp では現在ファイル・画像送信に未対応です。')
+    if (isTextOnlyChannel) {
+      onError?.(`${isKakao ? 'KakaoTalk' : 'WhatsApp'} では現在ファイル・画像送信に未対応です。`)
       return
     }
 
@@ -547,8 +549,8 @@ export default function ChatComposer({
       const file = fileItem.getAsFile()
       if (file) {
         event.preventDefault()
-        if (isWhatsApp) {
-          onError?.('WhatsApp では現在ファイル・画像送信に未対応です。')
+        if (isTextOnlyChannel) {
+          onError?.(`${isKakao ? 'KakaoTalk' : 'WhatsApp'} では現在ファイル・画像送信に未対応です。`)
           return
         }
         setAttachmentFromFile(file)
@@ -723,9 +725,9 @@ export default function ChatComposer({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isWhatsApp}
+            disabled={isTextOnlyChannel}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-sm transition-colors hover:bg-[#F1F5F8] disabled:cursor-not-allowed disabled:opacity-50"
-            title={isWhatsApp ? 'WhatsApp では現在添付未対応' : '画像やファイルを追加'}
+            title={isTextOnlyChannel ? `${isKakao ? 'KakaoTalk' : 'WhatsApp'} では現在添付未対応` : '画像やファイルを追加'}
           >
             ＋
           </button>
@@ -737,7 +739,7 @@ export default function ChatComposer({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={
-              isWhatsApp
+              isTextOnlyChannel
                 ? 'メッセージを入力。:hotel: や :taxi: を貼ると絵文字に変換します。'
                 : 'メッセージを入力。:hotel: や :taxi: を貼ると絵文字に変換します。画像貼り付けやPDF添付にも対応しています。'
             }

@@ -45,6 +45,22 @@ export type ApiScheduledMessage = {
   updatedAt: string
 }
 
+export type ChannelType = 'line' | 'whatsapp' | 'kakao'
+
+export type KakaoStatus = {
+  channelPublicId: string
+  customerFilesAvailable: boolean
+  emptySlot: number | null
+  usingSlot: number | null
+  files: Array<{
+    file_id?: number
+    file_name?: string
+    status?: string
+    update_at?: string
+    schema?: string
+  }>
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
 /**
@@ -251,7 +267,7 @@ export const api = {
       name: string
       channelAccessToken: string
       channelSecret?: string
-      channelType?: 'line' | 'whatsapp'
+      channelType?: ChannelType
       locale?: string
       defaultSlackChannel?: string | null
     }) =>
@@ -264,6 +280,8 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
+    getKakaoStatus: (id: string) =>
+      fetchApi<ApiResponse<KakaoStatus>>(`/api/line-accounts/${id}/kakao-status`),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/line-accounts/${id}`, { method: 'DELETE' }),
   },

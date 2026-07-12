@@ -274,15 +274,15 @@ export interface User {
 export interface LineAccount {
   /** 主キー (UUIDv4) */
   id: string;
-  /** LINE Channel ID */
+  /** Provider channel ID */
   channelId: string;
   /** アカウント名 */
   name: string;
   /** チャネル種別 */
-  channelType?: "line" | "whatsapp";
-  /** Channel Access Token */
+  channelType?: "line" | "whatsapp" | "kakao";
+  /** Provider access token or API key */
   channelAccessToken: string;
-  /** Channel Secret */
+  /** Provider secret used for webhook verification */
   channelSecret: string;
   /** このアカウント向けの通知・文言ロケール */
   locale?: string;

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, fetchApi } from '@/lib/api'
+import { api, fetchApi, type ChannelType } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
 import ChatComposer from '@/components/chat-composer'
@@ -81,7 +81,7 @@ interface MessageLog {
 function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onError }: {
   friendId: string
   friend: FriendItem | null
-  channelType?: 'line' | 'whatsapp'
+  channelType?: ChannelType
   onBack: () => void
   onSent: () => void
   onError: (message: string) => void
@@ -170,7 +170,14 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
 }
 
 export default function ChatsPage() {
-  const { selectedAccountId, selectedAccount } = useAccount()
+  const {
+    accounts,
+    selectedAccountId,
+    selectedAccount,
+    setSelectedAccountId,
+    refreshAccounts,
+    loading: accountsLoading,
+  } = useAccount()
   const [chats, setChats] = useState<Chat[]>([])
   const [allFriends, setAllFriends] = useState<FriendItem[]>([])
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
@@ -383,19 +390,92 @@ export default function ChatsPage() {
   }
 
   const unreadCount = chats.filter((c) => c.status === 'unread').length
+  const friendsWithoutChats = statusFilter === 'all'
+    ? allFriends.filter((f) => f.isFollowing && !chats.some((c) => c.friendId === f.id))
+    : []
+  const fallbackAccount = accounts
+    .filter((account) => (
+      account.id !== selectedAccountId &&
+      ((account.stats?.friendCount ?? 0) > 0 || (account.stats?.messagesThisMonth ?? 0) > 0)
+    ))
+    .sort((left, right) => {
+      const rank = (account: typeof left) => {
+        const name = `${account.displayName || ''} ${account.name || ''}`.toLowerCase()
+        if (account.channelType === 'line' && (name.includes('フラット') || name.includes('flat travel'))) return 0
+        if (account.channelType === 'line') return 1
+        if (account.channelType === 'whatsapp') return 2
+        return 3
+      }
+      return rank(left) - rank(right)
+    })[0]
+  const selectedAccountName = selectedAccount?.displayName || selectedAccount?.name || '選択中のチャネル'
+  const fallbackAccountName = fallbackAccount?.displayName || fallbackAccount?.name
+  const listIsEmpty = !loading && chats.length === 0 && friendsWithoutChats.length === 0
+
+  const handleSwitchToFallbackAccount = () => {
+    if (!fallbackAccount) return
+    setSelectedAccountId(fallbackAccount.id)
+    setSelectedChatId(null)
+    setSelectedFriendId(null)
+    setChatDetail(null)
+  }
+
+  const handleSelectAccount = (accountId: string) => {
+    if (!accountId || accountId === selectedAccountId) return
+    setSelectedAccountId(accountId)
+    setSelectedChatId(null)
+    setSelectedFriendId(null)
+    setChatDetail(null)
+  }
 
   return (
     <div>
-      <Header title={
-        <span className="flex items-center gap-2">
-          オペレーターチャット
-          {unreadCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold text-white animate-pulse" style={{ backgroundColor: '#EF4444' }}>
-              {unreadCount}
-            </span>
-          )}
-        </span>
-      } />
+      <Header
+        title={
+          <span className="flex items-center gap-2">
+            オペレーターチャット
+            {unreadCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold text-white animate-pulse" style={{ backgroundColor: '#EF4444' }}>
+                {unreadCount}
+              </span>
+            )}
+          </span>
+        }
+        action={
+          accounts.length > 0 ? (
+            <select
+              value={selectedAccountId ?? ''}
+              onChange={(event) => handleSelectAccount(event.target.value)}
+              className="min-h-[44px] min-w-[220px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
+              aria-label="チャネル切替"
+            >
+              {accounts.map((account) => {
+                const name = account.displayName || account.name
+                const friendCount = account.stats?.friendCount ?? 0
+                const channelLabel = account.channelType === 'kakao'
+                  ? 'Kakao'
+                  : account.channelType === 'whatsapp'
+                    ? 'WhatsApp'
+                    : 'LINE'
+                return (
+                  <option key={account.id} value={account.id}>
+                    {name} / {channelLabel} / 友だち{friendCount}件
+                  </option>
+                )
+              })}
+            </select>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { void refreshAccounts() }}
+              disabled={accountsLoading}
+              className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+            >
+              {accountsLoading ? 'チャネル読込中...' : 'チャネル再読込'}
+            </button>
+          )
+        }
+      />
 
       {/* Error */}
       {error && (
@@ -474,8 +554,7 @@ export default function ChatsPage() {
                   )
                 })}
                 {/* Friends without chats — only show on "全て" tab */}
-                {statusFilter === 'all' && allFriends
-                  .filter((f) => f.isFollowing && !chats.some((c) => c.friendId === f.id))
+                {friendsWithoutChats
                   .map((friend) => {
                     const isSelected = selectedFriendId === friend.id
                     return (
@@ -505,6 +584,26 @@ export default function ChatsPage() {
                       </button>
                     )
                   })}
+                {listIsEmpty && (
+                  <div className="px-5 py-10 text-center">
+                    <p className="text-sm font-medium text-gray-700">
+                      {selectedAccountName}には表示できるチャットがありません
+                    </p>
+                    <p className="mt-2 text-xs leading-relaxed text-gray-400">
+                      既存のLINE会話を見るには、会話があるチャネルへ切り替えてください。
+                    </p>
+                    {fallbackAccount && (
+                      <button
+                        type="button"
+                        onClick={handleSwitchToFallbackAccount}
+                        className="mt-4 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90"
+                        style={{ backgroundColor: '#06C755' }}
+                      >
+                        {fallbackAccountName}に切替
+                      </button>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -524,7 +623,26 @@ export default function ChatsPage() {
             />
           ) : !selectedChatId ? (
             <div className="flex-1 flex items-center justify-center">
-              <p className="text-gray-400 text-sm">チャットを選択してください</p>
+              <div className="max-w-sm px-6 text-center">
+                <p className="text-gray-500 text-sm font-medium">
+                  {listIsEmpty ? `${selectedAccountName}にはまだチャットがありません` : 'チャットを選択してください'}
+                </p>
+                {listIsEmpty && fallbackAccount && (
+                  <>
+                    <p className="mt-2 text-xs leading-relaxed text-gray-400">
+                      会話履歴があるチャネルへ切り替えると、既存の個別チャットを表示できます。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSwitchToFallbackAccount}
+                      className="mt-4 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90"
+                      style={{ backgroundColor: '#06C755' }}
+                    >
+                      {fallbackAccountName}に切替
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ) : detailLoading ? (
             <div className="flex-1 flex items-center justify-center">

@@ -8,8 +8,10 @@ import {
 } from '@line-crm/db';
 import type { LineAccount as DbLineAccount } from '@line-crm/db';
 import type { Env } from '../index.js';
+import { fetchKakaoStatus } from '../services/kakao.js';
 
 const lineAccounts = new Hono<Env>();
+type ChannelType = 'line' | 'whatsapp' | 'kakao';
 
 function serializeLineAccount(row: DbLineAccount) {
   return {
@@ -48,6 +50,13 @@ async function fetchBotProfile(accessToken: string): Promise<{ displayName?: str
   }
 }
 
+async function getKakaoAccountOrThrow(db: D1Database, id: string): Promise<DbLineAccount> {
+  const account = await getLineAccountById(db, id);
+  if (!account) throw new Response('Channel account not found', { status: 404 });
+  if (account.channel_type !== 'kakao') throw new Response('Account is not Kakao', { status: 400 });
+  return account;
+}
+
 // GET /api/line-accounts - list all (with LINE profile + stats)
 lineAccounts.get('/api/line-accounts', async (c) => {
   try {
@@ -58,10 +67,13 @@ lineAccounts.get('/api/line-accounts', async (c) => {
     const results = await Promise.all(
       items.map(async (item) => {
         const isWhatsApp = item.channel_type === 'whatsapp';
+        const isKakao = item.channel_type === 'kakao';
         const [profile, friendCount, scenarioCount, msgCount] = await Promise.all([
           isWhatsApp
             ? Promise.resolve<{ displayName?: string; pictureUrl?: string; basicId?: string }>({})
-            : fetchBotProfile(item.channel_access_token),
+            : isKakao
+              ? { displayName: item.name, pictureUrl: undefined, basicId: item.channel_id }
+              : fetchBotProfile(item.channel_access_token),
           db.prepare(`SELECT COUNT(*) as count FROM friends WHERE is_following = 1 AND line_account_id = ?`).bind(item.id).first<{ count: number }>(),
           db.prepare(
             `SELECT COUNT(*) as count FROM friend_scenarios fs
@@ -109,6 +121,19 @@ lineAccounts.get('/api/line-accounts/:id', async (c) => {
   }
 });
 
+lineAccounts.get('/api/line-accounts/:id/kakao-status', async (c) => {
+  try {
+    const account = await getKakaoAccountOrThrow(c.env.DB, c.req.param('id'));
+    return c.json({ success: true, data: await fetchKakaoStatus(account) });
+  } catch (err) {
+    if (err instanceof Response) {
+      return c.json({ success: false, error: await err.text() }, err.status as 400 | 404);
+    }
+    console.error('GET /api/line-accounts/:id/kakao-status error:', err);
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Internal server error' }, 500);
+  }
+});
+
 // POST /api/line-accounts - create
 lineAccounts.post('/api/line-accounts', async (c) => {
   try {
@@ -117,21 +142,29 @@ lineAccounts.post('/api/line-accounts', async (c) => {
       name: string;
       channelAccessToken: string;
       channelSecret?: string;
-      channelType?: 'line' | 'whatsapp';
+      channelType?: ChannelType;
       locale?: string;
       defaultSlackChannel?: string | null;
     }>();
 
-    const channelType = body.channelType === 'whatsapp' ? 'whatsapp' : 'line';
+    const channelType: ChannelType =
+      body.channelType === 'whatsapp'
+        ? 'whatsapp'
+        : body.channelType === 'kakao'
+          ? 'kakao'
+          : 'line';
 
-    if (!body.channelId || !body.name || !body.channelAccessToken || (channelType === 'line' && !body.channelSecret)) {
+    const secretRequired = channelType === 'line' || channelType === 'kakao';
+    if (!body.channelId || !body.name || !body.channelAccessToken || (secretRequired && !body.channelSecret)) {
       return c.json(
         {
           success: false,
           error:
             channelType === 'whatsapp'
               ? 'channelId, name, and channelAccessToken are required'
-              : 'channelId, name, channelAccessToken, and channelSecret are required',
+              : channelType === 'kakao'
+                ? 'channelId, name, channelAccessToken, and channelSecret are required for Kakao'
+                : 'channelId, name, channelAccessToken, and channelSecret are required',
         },
         400,
       );
@@ -157,7 +190,7 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       name?: string;
       channelAccessToken?: string;
       channelSecret?: string;
-      channelType?: 'line' | 'whatsapp';
+      channelType?: ChannelType;
       locale?: string;
       defaultSlackChannel?: string | null;
       isActive?: boolean;

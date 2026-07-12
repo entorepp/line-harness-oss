@@ -36,6 +36,7 @@ import { forms } from './routes/forms.js';
 import { entryRoutes } from './routes/entry-routes.js';
 import { uploads } from './routes/uploads.js';
 import { waWebhook } from './routes/wa-webhook.js';
+import { kakaoWebhook } from './routes/kakao-webhook.js';
 
 export type Env = {
   Bindings: {
@@ -56,6 +57,9 @@ export type Env = {
     GA4_MEASUREMENT_ID: string;
     UPLOADS: KVNamespace;
     WA_BRIDGE_SECRET: string;
+    KAKAO_BIZMESSAGE_ENDPOINT?: string;
+    KAKAO_BIZMESSAGE_API_KEY?: string;
+    KAKAO_MESSAGE_WEBHOOK_SECRET?: string;
   };
 };
 
@@ -117,6 +121,7 @@ app.route('/', forms);
 app.route('/', entryRoutes);
 app.route('/', uploads);
 app.route('/', waWebhook);
+app.route('/', kakaoWebhook);
 
 // Short link: /r/:ref → record click with referrer → redirect to LINE add-friend URL
 // Also supports /r/ (no ref) as a universal tracking redirect
@@ -202,7 +207,7 @@ app.get('/r/:ref?', async (c) => {
 app.notFound((c) => c.json({ success: false, error: 'Not found' }, 404));
 
 // Scheduled handler for cron triggers — runs per LINE account while leaving
-// WhatsApp delivery to the channel-aware scheduled message worker.
+// WhatsApp/Kakao delivery to the channel-aware scheduled message worker.
 async function scheduled(
   _event: ScheduledEvent,
   env: Env['Bindings'],
@@ -221,7 +226,7 @@ async function scheduled(
   }
 
   for (const account of dbAccounts) {
-    if (!account.is_active || account.channel_type === 'whatsapp') {
+    if (!account.is_active || account.channel_type !== 'line') {
       continue;
     }
 
