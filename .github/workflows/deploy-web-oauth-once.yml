@@ -1,0 +1,77 @@
+name: Deploy Web OAuth Once
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @line-crm/shared build
+
+      - name: Build and verify web
+        env:
+          NEXT_PUBLIC_API_URL: https://line-flattravel.flat-travel.workers.dev
+        run: |
+          set -euo pipefail
+          pnpm --filter web build
+          grep -R -l '⌘+Enterで送信' apps/web/out/_next/static/chunks/app/chats
+          if grep -R -q '入力中ローディング' apps/web/out/_next/static/chunks; then
+            exit 1
+          fi
+
+      - name: Exchange OAuth and deploy Pages
+        env:
+          OAUTH_CODE: ${{ secrets.CF_OAUTH_CODE }}
+          OAUTH_VERIFIER: ${{ secrets.CF_OAUTH_VERIFIER }}
+        run: |
+          set -euo pipefail
+          token_json="$(curl --fail-with-body --silent --show-error --retry 5 --retry-all-errors \
+            --request POST \
+            --header 'content-type: application/x-www-form-urlencoded' \
+            --data-urlencode 'grant_type=authorization_code' \
+            --data-urlencode "code=$OAUTH_CODE" \
+            --data-urlencode 'redirect_uri=http://localhost:8976/oauth/callback' \
+            --data-urlencode 'client_id=54d11594-84e4-41aa-b438-e81b8fa78ee7' \
+            --data-urlencode "code_verifier=$OAUTH_VERIFIER" \
+            'https://dash.cloudflare.com/oauth2/token')"
+          access_token="$(printf '%s' "$token_json" | jq -er '.access_token')"
+          echo "::add-mask::$access_token"
+          memberships="$(curl --fail-with-body --silent --show-error --retry 5 --retry-all-errors \
+            --header "authorization: Bearer $access_token" \
+            'https://api.cloudflare.com/client/v4/memberships')"
+          printf '%s' "$memberships" | jq -e '.success and any(.result[]; .account.id == "322a0c34972d981aa3dff5514306b1bc")'
+          CLOUDFLARE_API_TOKEN="$access_token" \
+          CLOUDFLARE_ACCOUNT_ID='322a0c34972d981aa3dff5514306b1bc' \
+            npx wrangler pages deploy apps/web/out --project-name=line-crm-web --branch=main
+
+      - name: Verify production
+        run: |
+          set -euo pipefail
+          base='https://line-crm-web-2ob.pages.dev'
+          for attempt in $(seq 1 12); do
+            html="$(curl --fail --silent --show-error "$base/chats" || true)"
+            chunk="$(printf '%s' "$html" | grep -o '/_next/static/chunks/app/chats/page-[^"]*\.js' | head -n 1 || true)"
+            if [ -n "$chunk" ]; then
+              js="$(curl --fail --silent --show-error "$base$chunk" || true)"
+              if printf '%s' "$js" | grep -q '⌘+Enterで送信' && ! printf '%s' "$js" | grep -q '入力中ローディング'; then
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          exit 1
