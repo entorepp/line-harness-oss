@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { api, fetchApi } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
@@ -48,10 +48,6 @@ const statusFilters: { key: StatusFilter; label: string }[] = [
   { key: 'in_progress', label: '対応中' },
   { key: 'resolved', label: '解決済' },
 ]
-
-const SHOW_LOADING_PREF_KEY = 'lh_chat_show_loading_indicator'
-const LOADING_SECONDS_PREF_KEY = 'lh_chat_loading_seconds'
-const LOADING_REFRESH_INTERVAL_MS = 4000
 
 function formatDatetime(iso: string | null): string {
   if (!iso) return '-'
@@ -213,24 +209,36 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
         )}
       </div>
       <div className="px-4 py-3 border-t border-gray-200">
-        <div className="flex gap-2">
-          <input
-            type="text"
+        <form
+          className="flex items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void handleSend()
+          }}
+        >
+          <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder="メッセージを入力..."
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            onKeyDown={(e) => {
+              const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter'
+              if (isEnter && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                e.currentTarget.form?.requestSubmit()
+              }
+            }}
+            rows={3}
+            placeholder="メッセージを入力...（⌘+Enterで送信）"
+            className="min-h-[72px] max-h-40 flex-1 resize-y border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
           />
           <button
-            onClick={handleSend}
+            type="submit"
             disabled={!message.trim() || sending}
             className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50"
             style={{ backgroundColor: '#06C755' }}
           >
             {sending ? '...' : '送信'}
           </button>
-        </div>
+        </form>
       </div>
     </div>
   )
@@ -251,33 +259,6 @@ export default function ChatsPage() {
   const [sending, setSending] = useState(false)
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
-  const [showLoadingIndicator, setShowLoadingIndicator] = useState(false)
-  const [loadingSeconds, setLoadingSeconds] = useState(5)
-  const lastLoadingTriggerAtRef = useRef<Record<string, number>>({})
-  const [isMessageInputFocused, setIsMessageInputFocused] = useState(false)
-
-  useEffect(() => {
-    try {
-      const rawEnabled = localStorage.getItem(SHOW_LOADING_PREF_KEY)
-      const rawSeconds = localStorage.getItem(LOADING_SECONDS_PREF_KEY)
-      if (rawEnabled !== null) setShowLoadingIndicator(rawEnabled === '1')
-      if (rawSeconds) {
-        const n = Number.parseInt(rawSeconds, 10)
-        if (Number.isFinite(n) && n >= 5 && n <= 60) setLoadingSeconds(n)
-      }
-    } catch {
-      // localStorage unavailable
-    }
-  }, [])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SHOW_LOADING_PREF_KEY, showLoadingIndicator ? '1' : '0')
-      localStorage.setItem(LOADING_SECONDS_PREF_KEY, String(loadingSeconds))
-    } catch {
-      // localStorage unavailable
-    }
-  }, [showLoadingIndicator, loadingSeconds])
 
   const loadChats = useCallback(async () => {
     setLoading(true)
@@ -335,25 +316,6 @@ export default function ChatsPage() {
     setMessageContent('')
   }
 
-  const triggerLoadingAnimation = useCallback(async (chatId: string) => {
-    if (!showLoadingIndicator) return
-
-    const now = Date.now()
-    const last = lastLoadingTriggerAtRef.current[chatId] ?? 0
-    if (now - last < LOADING_REFRESH_INTERVAL_MS) return
-    lastLoadingTriggerAtRef.current[chatId] = now
-
-    try {
-      await fetchApi<{ success: boolean }>(`/api/chats/${chatId}/loading`, {
-        method: 'POST',
-        body: JSON.stringify({ loadingSeconds }),
-      })
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : 'unknown'
-      setError(`ローディング表示の開始に失敗しました: ${detail}`)
-    }
-  }, [showLoadingIndicator, loadingSeconds])
-
   const handleSendMessage = async () => {
     if (!selectedChatId || !messageContent.trim()) return
     setSending(true)
@@ -395,10 +357,11 @@ export default function ChatsPage() {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter'
+    if (isEnter && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
-      handleSendMessage()
+      e.currentTarget.form?.requestSubmit()
     }
   }
 
@@ -651,58 +614,30 @@ export default function ChatsPage() {
 
               {/* Send Message Form */}
               <div className="px-4 py-3 border-t border-gray-200">
-                <div className="mb-2 flex items-center gap-3 text-xs text-gray-600">
-                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={showLoadingIndicator}
-                      onChange={(e) => setShowLoadingIndicator(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                    />
-                    入力中ローディングを表示
-                  </label>
-                  <select
-                    value={loadingSeconds}
-                    onChange={(e) => setLoadingSeconds(Number.parseInt(e.target.value, 10))}
-                    disabled={!showLoadingIndicator}
-                    className="border border-gray-300 rounded-md px-2 py-1 bg-white disabled:bg-gray-100 disabled:text-gray-400"
-                  >
-                    {[5, 10, 15, 20, 30, 45, 60].map((sec) => (
-                      <option key={sec} value={sec}>{sec}秒</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
+                <form
+                  className="flex items-end gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void handleSendMessage()
+                  }}
+                >
+                  <textarea
                     value={messageContent}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setMessageContent(value)
-                      if (selectedChatId && isMessageInputFocused && value.trim()) {
-                        void triggerLoadingAnimation(selectedChatId)
-                      }
-                    }}
-                    onFocus={() => {
-                      setIsMessageInputFocused(true)
-                      if (selectedChatId) {
-                        void triggerLoadingAnimation(selectedChatId)
-                      }
-                    }}
-                    onBlur={() => setIsMessageInputFocused(false)}
+                    onChange={(e) => setMessageContent(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="メッセージを入力..."
-                    className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    rows={3}
+                    placeholder="メッセージを入力...（⌘+Enterで送信）"
+                    className="min-h-[72px] max-h-40 flex-1 resize-y text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                   <button
-                    onClick={handleSendMessage}
+                    type="submit"
                     disabled={sending || !messageContent.trim()}
                     className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ backgroundColor: '#06C755' }}
                   >
                     {sending ? '送信中...' : '送信'}
                   </button>
-                </div>
+                </form>
               </div>
             </>
           ) : null}
