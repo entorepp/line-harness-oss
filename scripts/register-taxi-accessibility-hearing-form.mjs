@@ -288,11 +288,13 @@ const formPayload = {
     ),
     field('cancellation_policy', 'キャンセルポリシーをご記入ください', 'textarea'),
     optionalField(
-      'photo_and_document_urls',
-      '車両・設備写真、車両諸元、料金表、モデルコース等のURLをご記入ください',
-      'textarea',
+      'vehicle_and_service_photos',
+      '車両、車いす乗車設備、車内、貸出備品等の写真を添付してください',
+      'file',
       {
-        placeholder: 'URLが複数ある場合は、1行に1件ずつご記入ください。',
+        multiple: true,
+        accept: 'image/*',
+        helperText: '複数枚添付できます。車両全体、乗降設備、車いす固定位置、車内、貸出備品が分かる写真をお願いします。',
       },
     ),
   ],
@@ -344,7 +346,7 @@ const TAXI_SHEET_COLUMN_COVERAGE = [
   { source: '支払い方法', fields: ['payment_methods'] },
   { source: 'おすすめモデルコース', fields: ['recommended_model_courses'] },
   { source: 'キャンセルポリシー', fields: ['cancellation_policy'] },
-  { source: '写真等のURL', fields: ['photo_and_document_urls'] },
+  { source: '写真等のURL', fields: ['vehicle_and_service_photos'] },
 ];
 
 function validateFormDefinition(form, coverage) {
