@@ -303,9 +303,6 @@ const formPayload = {
       required: false,
     }),
     optionalText('operating_company', '運営会社・親会社名をご記入ください'),
-    optionalText('checkin_checkout_times', '通常のチェックイン・チェックアウト時刻をご記入ください', {
-      placeholder: '例：チェックイン15:00／チェックアウト11:00',
-    }),
     field(
       'multipurpose_restroom_details',
       '館内の多目的トイレの有無、設置場所、設備（オストメイト等）をご教示ください',
@@ -432,7 +429,7 @@ const HOTEL_SHEET_COLUMN_COVERAGE = [
   { source: '電話番号', fields: ['contact_phone'] },
   { source: 'メール', fields: ['contact_email'] },
   { source: '運営会社（親）', fields: ['operating_company'] },
-  { source: 'チェックイン／アウト', fields: ['checkin_checkout_times'] },
+  { source: 'チェックイン／アウト', internalOnlyReason: 'Flat Care側で公式情報を確認' },
   { source: '多目的トイレの有無', fields: ['multipurpose_restroom_details'] },
   { source: '福祉用具貸出', fields: ['available_equipment_inventory', 'rental_equipment_photos', 'equipment_rental_timing'] },
   { source: '1室料金／朝食付き', fields: ['room_rate_with_breakfast'] },
