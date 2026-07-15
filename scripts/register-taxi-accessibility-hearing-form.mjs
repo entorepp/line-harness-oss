@@ -91,13 +91,6 @@ function optionalField(name, label, type = 'text', extras = {}) {
   });
 }
 
-function fileUpload(name, label, extras = {}) {
-  return optionalField(name, label, 'file', {
-    multiple: true,
-    ...extras,
-  });
-}
-
 const formPayload = {
   id: FORM_ID,
   name: FORM_NAME,
@@ -205,26 +198,16 @@ const formPayload = {
     }),
     optionalField(
       'mobility_equipment_loans',
-      'スロープ、踏み台、貸出用車いす等の種類・数量・料金・手配期限をご教示ください',
+      'スロープ、踏み台、貸出用車いす等の種類・数量・料金・手配期限をご教示ください。写真URLがあれば併記してください',
       'textarea',
     ),
-    fileUpload('mobility_equipment_photos', '貸出備品の写真を添付してください', {
-      accept: 'image/*',
-    }),
     optionalField(
       'toll_parking_prepayment',
-      '駐車場代・高速道路料金を事前払いまたは見積内に含めることは可能ですか',
-      'radio',
-      {
-        options: ['事前払い可能', '見積内に概算で計上可能', '当日実費精算のみ', '後日実費精算のみ'],
-        allowOtherOption: true,
-        otherOptionLabel: 'その他',
-      },
-    ),
-    optionalField(
-      'toll_parking_prepayment_notes',
-      '駐車場代・高速道路料金の精算について補足があればご記入ください',
+      '駐車場代・高速道路料金を事前払いまたは見積内に含められるか、精算方法とあわせてご教示ください',
       'textarea',
+      {
+        placeholder: '例：見積内に概算計上可能。差額は運行後に請求書で精算。',
+      },
     ),
     optionalField(
       'guide_arrangement_languages',
@@ -259,16 +242,14 @@ const formPayload = {
         otherOptionLabel: 'その他',
       },
     ),
-    optionalField('driver_meal_expense', '観光中の乗務員・ガイドの食事代はお客様負担ですか', 'radio', {
-      options: ['お客様負担', '事業者負担', '条件により異なる', '食事代は不要'],
-    }),
-    optionalField('driver_meal_expense_notes', '乗務員・ガイドの食事・休憩条件をご記入ください', 'textarea'),
-    optionalField('route_planning_support', '観光ルートの作成・提案に対応できますか', 'radio', {
-      options: ['対応可能', '条件付きで対応可能', '対応不可'],
-    }),
     optionalField(
-      'route_planning_notes',
-      '観光ルート作成の料金、必要な準備期間、提供形式をご記入ください',
+      'driver_meal_expense',
+      '観光中の乗務員・ガイドの食事代がお客様負担か、食事・休憩条件とあわせてご教示ください',
+      'textarea',
+    ),
+    optionalField(
+      'route_planning_support',
+      '観光ルートの作成・提案可否と、料金、必要な準備期間、提供形式をご教示ください',
       'textarea',
     ),
     optionalField(
@@ -281,15 +262,7 @@ const formPayload = {
     ),
     optionalField(
       'direct_messaging_exchange',
-      '運行前にWhatsApp等でお客様と直接連絡先を交換できますか',
-      'radio',
-      {
-        options: ['対応可能', '旅行会社を含むグループのみ可能', '当日のみ可能', '対応不可'],
-      },
-    ),
-    optionalField(
-      'direct_messaging_channels',
-      '利用可能な連絡手段と、連絡先交換のタイミング・条件をご記入ください',
+      '運行前にWhatsApp等でお客様と直接連絡先を交換できるか、利用可能な連絡手段・タイミング・条件をご教示ください',
       'textarea',
       {
         placeholder: '例：WhatsApp、LINE、WeChat。運行3日前から交換可能。',
@@ -300,15 +273,13 @@ const formPayload = {
       '全旅クーポン、旅行会社向けコミッション、タリフの有無と計算方法をご教示ください',
       'textarea',
     ),
-    optionalField('payment_methods', '対応可能な支払い方法を選択してください', 'checkbox', {
-      options: ['請求書払い', '事前銀行振込', 'クレジットカード', '決済リンク', '現地現金払い', '全旅クーポン'],
-      allowOtherOption: true,
-      otherOptionLabel: 'その他',
-    }),
     optionalField(
-      'payment_terms',
-      '支払期限、事前金、実費の精算時期、請求書発行方法をご教示ください',
+      'payment_methods',
+      '対応可能な支払い方法と、支払期限、事前金、実費精算、請求書発行方法をご教示ください',
       'textarea',
+      {
+        placeholder: '例：請求書払い。運行後翌月末振込。高速・駐車場代は運行後に実費精算。',
+      },
     ),
     optionalField(
       'recommended_model_courses',
@@ -316,9 +287,6 @@ const formPayload = {
       'textarea',
     ),
     field('cancellation_policy', 'キャンセルポリシーをご記入ください', 'textarea'),
-    fileUpload('vehicle_and_service_photos', '車両、車いす乗車設備、車内、貸出備品等の写真を添付してください', {
-      accept: 'image/*',
-    }),
     optionalField(
       'photo_and_document_urls',
       '車両・設備写真、車両諸元、料金表、モデルコース等のURLをご記入ください',
@@ -361,22 +329,22 @@ const TAXI_SHEET_COLUMN_COVERAGE = [
   { source: '観光8時間', fields: ['sightseeing_8h_pricing'] },
   { source: '観光10時間', fields: ['sightseeing_10h_pricing'] },
   { source: 'ドライバー言語', fields: ['driver_languages'] },
-  { source: 'スロープ・踏み台・車いす貸出', fields: ['mobility_equipment_loans', 'mobility_equipment_photos'] },
-  { source: '駐車場・高速代の前払い', fields: ['toll_parking_prepayment', 'toll_parking_prepayment_notes'] },
+  { source: 'スロープ・踏み台・車いす貸出', fields: ['mobility_equipment_loans'] },
+  { source: '駐車場・高速代の前払い', fields: ['toll_parking_prepayment'] },
   { source: 'ガイド手配・言語', fields: ['guide_arrangement_languages'] },
   { source: '下車観光ガイド・言語別キャパ', fields: ['off_vehicle_guide_capacity'] },
   { source: '同一ドライバー連続対応・宿泊', fields: ['multi_day_driver_continuity'] },
   { source: '身体介助・介護資格', fields: ['physical_assistance_qualifications'] },
   { source: '移乗・車いすを押すサポート', fields: ['transfer_wheelchair_assistance'] },
-  { source: '乗務員の食事代', fields: ['driver_meal_expense', 'driver_meal_expense_notes'] },
-  { source: '観光ルート作成', fields: ['route_planning_support', 'route_planning_notes'] },
+  { source: '乗務員の食事代', fields: ['driver_meal_expense'] },
+  { source: '観光ルート作成', fields: ['route_planning_support'] },
   { source: '飛行機遅延時の対応', fields: ['flight_delay_policy'] },
-  { source: 'WhatsApp等の連絡先交換', fields: ['direct_messaging_exchange', 'direct_messaging_channels'] },
+  { source: 'WhatsApp等の連絡先交換', fields: ['direct_messaging_exchange'] },
   { source: '全旅クーポン・コミッション', fields: ['travel_agency_coupon_commission'] },
-  { source: '支払い方法', fields: ['payment_methods', 'payment_terms'] },
+  { source: '支払い方法', fields: ['payment_methods'] },
   { source: 'おすすめモデルコース', fields: ['recommended_model_courses'] },
   { source: 'キャンセルポリシー', fields: ['cancellation_policy'] },
-  { source: '写真等のURL', fields: ['vehicle_and_service_photos', 'photo_and_document_urls'] },
+  { source: '写真等のURL', fields: ['photo_and_document_urls'] },
 ];
 
 function validateFormDefinition(form, coverage) {
@@ -395,6 +363,16 @@ function validateFormDefinition(form, coverage) {
 
   if (coverage.length !== 39) {
     throw new Error(`Expected coverage for 39 taxi sheet columns, received ${coverage.length}`);
+  }
+
+  const splitMappings = coverage.filter((item) => item.fields.length !== 1);
+  const mappedFieldNames = coverage.map((item) => item.fields[0]);
+  if (
+    splitMappings.length > 0
+    || form.fields.length !== coverage.length
+    || new Set(mappedFieldNames).size !== mappedFieldNames.length
+  ) {
+    throw new Error('Taxi form must keep a strict one-sheet-column-to-one-question mapping');
   }
 }
 
