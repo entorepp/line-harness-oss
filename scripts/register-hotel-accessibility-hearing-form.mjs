@@ -410,7 +410,10 @@ const formPayload = {
         placeholder: 'URLが複数ある場合は、1行に1件ずつご記入ください。',
       },
     ),
-  ],
+  ].map((item) => ({
+    ...item,
+    required: false,
+  })),
   locale: 'ja',
   translationGroupId: TRANSLATION_GROUP_ID,
   submitButtonLabel: '送信',
