@@ -274,6 +274,149 @@ const formPayload = {
       'free_media_feature_permission_notes',
       '掲載・紹介にあたってのご希望や注意事項があればご記入ください',
     ),
+    optionalText('official_website_url', '貴施設の公式WebサイトURLをご記入ください', {
+      placeholder: 'https://example.com',
+    }),
+    optionalText('service_area', '貴施設のエリア（都道府県・市区町村・最寄り駅など）をご記入ください'),
+    optionalText('property_address', '貴施設の住所をご記入ください'),
+    field('contact_phone', '本件のご連絡先電話番号をご記入ください', 'tel', {
+      required: false,
+    }),
+    field('contact_email', '本件のご連絡先メールアドレスをご記入ください', 'email', {
+      required: false,
+    }),
+    optionalText('operating_company', '運営会社・親会社名をご記入ください'),
+    optionalText('checkin_checkout_times', '通常のチェックイン・チェックアウト時刻をご記入ください', {
+      placeholder: '例：チェックイン15:00／チェックアウト11:00',
+    }),
+    field(
+      'multipurpose_restroom_details',
+      '館内の多目的トイレの有無、設置場所、設備（オストメイト等）をご教示ください',
+      'textarea',
+      { required: false },
+    ),
+    field(
+      'room_rate_with_breakfast',
+      'バリアフリー客室の1室料金・朝食付き料金の目安をご教示ください',
+      'textarea',
+      {
+        required: false,
+        helperText: '時期、人数、税・サービス料込み／別もあわせてご記入ください。',
+      },
+    ),
+    optionalText('accessible_room_size_sqm', 'バリアフリー客室の広さ（㎡）をご記入ください'),
+    field(
+      'bathroom_toilet_layout',
+      'バリアフリー客室の浴室・トイレの形式と設備をご教示ください',
+      'textarea',
+      {
+        required: false,
+        helperText: 'ユニットバス／バス・トイレ別／シャワーのみ、段差、手すり、シャワーチェア等をご記入ください。',
+      },
+    ),
+    field(
+      'electric_bed_inventory',
+      '電動ベッド・介護用ベッドの有無、機能、常設室数または貸出可能数をご教示ください',
+      'textarea',
+      { required: false },
+    ),
+    field(
+      'usable_standard_room_options',
+      '一般客室のうち、車いす利用者にも比較的使いやすい客室タイプと室数をご教示ください',
+      'textarea',
+      {
+        required: false,
+        helperText: 'シャワーブース、バス・トイレ別、広い動線など、使いやすい理由もご記入ください。',
+      },
+    ),
+    field('breakfast_price_and_style', '朝食料金、提供形式、会場、提供時間をご教示ください', 'textarea', {
+      required: false,
+    }),
+    field('zentabi_coupon_support', '全旅クーポンの発行に対応していますか', 'radio', {
+      required: false,
+      options: ['対応可能', '条件付きで対応可能', '対応不可', '要確認'],
+    }),
+    field('dida_booking_support', 'DidaTravel経由での予約に対応していますか', 'radio', {
+      required: false,
+      options: ['対応可能', '条件付きで対応可能', '対応不可', '不明・要確認'],
+    }),
+    field(
+      'post_booking_room_transfer',
+      '一般客室を予約後、同料金帯のバリアフリー客室へ振り替えることは可能ですか',
+      'radio',
+      {
+        required: false,
+        options: ['対応可能', '空室・条件により対応可能', '対応不可', '要確認'],
+      },
+    ),
+    field(
+      'equivalent_room_for_transfer',
+      '振替可能な場合、同等料金で管理している一般客室名とDidaTravel上の客室名をご教示ください',
+      'textarea',
+      { required: false },
+    ),
+    field(
+      'booking_and_payment_methods',
+      '旅行会社からの最適な予約方法・支払い方法を選択してください',
+      'checkbox',
+      {
+        required: false,
+        options: [
+          'DidaTravel',
+          '全旅クーポン',
+          'ホテルへ直接予約',
+          '請求書払い',
+          '事前銀行振込',
+          'クレジットカード事前決済',
+          '現地決済',
+        ],
+        allowOtherOption: true,
+        otherOptionLabel: 'その他',
+      },
+    ),
+    optionalText('accommodation_tax', '宿泊税（1名1泊あたり）の金額・条件をご記入ください'),
+    field('cancellation_policy', '通常のキャンセルポリシーをご記入ください', 'textarea', {
+      required: false,
+    }),
+    optionalText('bathing_tax', '入湯税（1名1泊あたり）の金額・条件をご記入ください'),
+    field(
+      'baggage_wheelchair_preacceptance',
+      '荷物・車いす・福祉用具の事前受け取り、保管、当日の引き渡し方法をご教示ください',
+      'textarea',
+      {
+        required: false,
+        helperText: '受け取り可能な時間帯、宛名、保管料、台数・サイズ制限があればご記入ください。',
+      },
+    ),
+    field(
+      'room_arrangement_support',
+      '対応可能な客室・館内サービスを選択してください',
+      'checkbox',
+      {
+        required: false,
+        options: [
+          'コネクティングルーム',
+          '隣室の手配',
+          '同フロアの手配',
+          'ハリウッドツイン',
+          '貸切風呂',
+          '車いすで利用可能な大浴場',
+          '部屋食',
+          '個室での食事',
+        ],
+        allowOtherOption: true,
+        otherOptionLabel: 'その他',
+      },
+    ),
+    field(
+      'reference_urls',
+      '客室・浴室・貸出備品・館内設備などの写真や資料URLをご記入ください',
+      'textarea',
+      {
+        required: false,
+        placeholder: 'URLが複数ある場合は、1行に1件ずつご記入ください。',
+      },
+    ),
   ],
   locale: 'ja',
   translationGroupId: TRANSLATION_GROUP_ID,
@@ -283,6 +426,70 @@ const formPayload = {
   saveToMetadata: true,
   isActive: true,
 };
+
+const HOTEL_SHEET_COLUMN_COVERAGE = [
+  { source: 'ホテル名', fields: ['property_name'] },
+  { source: 'おすすめ ★〜★★★', internalOnlyReason: 'Flat Care社内の選定・評価項目' },
+  { source: '参考URL', fields: ['official_website_url'] },
+  { source: 'エリア', fields: ['service_area'] },
+  { source: '住所', fields: ['property_address'] },
+  { source: '電話番号', fields: ['contact_phone'] },
+  { source: 'メール', fields: ['contact_email'] },
+  { source: '運営会社（親）', fields: ['operating_company'] },
+  { source: 'チェックイン／アウト', fields: ['checkin_checkout_times'] },
+  { source: '多目的トイレの有無', fields: ['multipurpose_restroom_details'] },
+  { source: '福祉用具貸出', fields: ['available_equipment_inventory', 'rental_equipment_photos', 'equipment_rental_timing'] },
+  { source: '1室料金／朝食付き', fields: ['room_rate_with_breakfast'] },
+  { source: 'バリアフリールームの部屋名', fields: ['accessible_room_name'] },
+  { source: 'BFの平米', fields: ['accessible_room_size_sqm'] },
+  { source: '定員・エクストラベッド', fields: ['room_capacity', 'extra_bed_types'] },
+  { source: '合計部屋数', fields: ['room_type_inventory'] },
+  { source: 'BFルームの階数', fields: ['room_floor'] },
+  { source: 'バスルームとトイレ', fields: ['room_facilities', 'bathroom_toilet_layout'] },
+  { source: '電動ベッドの保有有無と室数', fields: ['available_equipment_inventory', 'electric_bed_inventory'] },
+  { source: '一般客室で使えそうな部屋名と数', fields: ['usable_standard_room_options'] },
+  { source: '朝食有無', fields: ['meal_plan_types'] },
+  { source: '夕食有無', fields: ['meal_plan_types'] },
+  { source: 'ベジタリアン等の食事配慮', fields: ['meal_special_request_support', 'meal_special_request_notes'] },
+  { source: '朝食料金／形式', fields: ['breakfast_price_and_style'] },
+  { source: '全旅クーポン発行', fields: ['zentabi_coupon_support'] },
+  { source: 'Dida予約可否', fields: ['dida_booking_support'] },
+  { source: '一般客室予約後の振替可否', fields: ['post_booking_room_transfer'] },
+  { source: '同等料金の部屋名／Dida', fields: ['equivalent_room_for_transfer'] },
+  { source: 'Bestな予約方法／支払い方法', fields: ['booking_and_payment_methods'] },
+  { source: '宿泊税', fields: ['accommodation_tax'] },
+  { source: 'キャンセルポリシー', fields: ['cancellation_policy'] },
+  { source: '入湯税', fields: ['bathing_tax'] },
+  { source: 'アセスメント 未／予／済', internalOnlyReason: 'Flat Care社内の進行管理項目' },
+  { source: '介護用ベッド搬入・追加料金', fields: ['special_request_support', 'delivery_entrance_route', 'delivery_time_restrictions', 'electric_bed_inventory'] },
+  { source: '荷物／車椅子の事前受け取り・引き渡し', fields: ['special_request_support', 'baggage_wheelchair_preacceptance'] },
+  { source: 'その他の客室・館内対応', fields: ['hollywood_twin_available', 'accessible_private_bath', 'room_arrangement_support', 'other_accessibility_services'] },
+  { source: '写真等のURL', fields: ['accessible_room_floor_plan', 'rental_equipment_photos', 'reference_urls'] },
+];
+
+function validateFormDefinition(form, coverage) {
+  const fieldNames = form.fields.map((item) => item.name);
+  const uniqueFieldNames = new Set(fieldNames);
+  if (fieldNames.length !== uniqueFieldNames.size) {
+    throw new Error('Duplicate hotel form field names detected');
+  }
+
+  const missingMappings = coverage.flatMap((item) => (
+    item.fields || []
+  ).filter((fieldName) => !uniqueFieldNames.has(fieldName)).map((fieldName) => ({
+    source: item.source,
+    fieldName,
+  })));
+  if (missingMappings.length > 0) {
+    throw new Error(`Hotel sheet coverage references missing fields: ${JSON.stringify(missingMappings)}`);
+  }
+
+  if (coverage.length !== 37) {
+    throw new Error(`Expected coverage for 37 hotel sheet columns, received ${coverage.length}`);
+  }
+}
+
+validateFormDefinition(formPayload, HOTEL_SHEET_COLUMN_COVERAGE);
 
 const payloads = [formPayload];
 
