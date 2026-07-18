@@ -516,6 +516,10 @@ export const api = {
       fetchApi<ApiResponse<null>>(`/api/scheduled-messages/${id}`, {
         method: 'DELETE',
       }),
+    sendNow: (id: string) =>
+      fetchApi<ApiResponse<{ status: 'sent' | 'already-processing' }>>(`/api/scheduled-messages/${id}/send-now`, {
+        method: 'POST',
+      }),
   },
   reminders: {
     list: (params?: { accountId?: string }) => {

@@ -26,6 +26,7 @@ import {
   presentWhatsappDisplayName,
 } from '../services/whatsapp-display.js';
 import { normalizeFutureScheduledAt } from '../services/schedule-validation.js';
+import { processScheduledMessageById } from '../services/scheduled-messages.js';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 
 const chats = new Hono<Env>();
@@ -111,8 +112,10 @@ function serializeScheduleMetadata(body: {
   fileName?: string;
   fileSize?: string;
   fileIcon?: string;
+  deliveryMode?: string;
+  undoGroupId?: string;
 }): string | null {
-  if (!body.fileName && !body.fileSize && !body.fileIcon) {
+  if (!body.fileName && !body.fileSize && !body.fileIcon && !body.deliveryMode && !body.undoGroupId) {
     return null;
   }
 
@@ -120,6 +123,8 @@ function serializeScheduleMetadata(body: {
     fileName: body.fileName ?? null,
     fileSize: body.fileSize ?? null,
     fileIcon: body.fileIcon ?? null,
+    deliveryMode: body.deliveryMode ?? null,
+    undoGroupId: body.undoGroupId ?? null,
   });
 }
 
@@ -378,6 +383,8 @@ chats.post('/api/chats/:id/send', async (c) => {
       fileSize?: string;
       fileIcon?: string;
       scheduledAt?: string | null;
+      deliveryMode?: string;
+      undoGroupId?: string;
     }>();
     if (!body.content) return c.json({ success: false, error: 'content is required' }, 400);
 
@@ -478,11 +485,39 @@ chats.delete('/api/scheduled-messages/:id', async (c) => {
     if (item.status === 'sent') {
       return c.json({ success: false, error: 'Sent scheduled messages cannot be cancelled' }, 400);
     }
+    if (item.status === 'sending') {
+      return c.json({ success: false, error: 'Sending scheduled messages cannot be cancelled' }, 400);
+    }
 
     await cancelScheduledMessage(c.env.DB, id);
     return c.json({ success: true, data: null });
   } catch (err) {
     console.error('DELETE /api/scheduled-messages/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+chats.post('/api/scheduled-messages/:id/send-now', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const result = await processScheduledMessageById(c.env, id);
+
+    if (result === 'not-found') {
+      return c.json({ success: false, error: 'Scheduled message not found' }, 404);
+    }
+    if (result === 'not-due') {
+      return c.json({ success: false, error: 'Scheduled message is not due yet' }, 409);
+    }
+    if (result === 'cancelled') {
+      return c.json({ success: false, error: 'Scheduled message was cancelled' }, 409);
+    }
+    if (result === 'failed') {
+      return c.json({ success: false, error: 'Scheduled message delivery failed' }, 500);
+    }
+
+    return c.json({ success: true, data: { status: result } });
+  } catch (err) {
+    console.error('POST /api/scheduled-messages/:id/send-now error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

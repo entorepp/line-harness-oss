@@ -19,9 +19,14 @@ type EmojiPreset = {
 }
 
 type UndoSendToast = {
-  scheduledMessageId: string
-  summary: string
+  scheduledMessageIds: string[]
+  undoGroupId: string
   expiresAt: number
+}
+
+type ScheduledMessageMetadata = {
+  deliveryMode?: string | null
+  undoGroupId?: string | null
 }
 
 const EMOJI_STORAGE_KEY = 'line-crm-chat-emoji-presets'
@@ -109,6 +114,24 @@ function toDatetimeLocalValue(value: string): string {
   if (Number.isNaN(date.getTime())) return ''
 
   return toJstDatetimeLocalValue(date)
+}
+
+function scheduledMessageMetadata(item: ApiScheduledMessage): ScheduledMessageMetadata {
+  if (!item.metadata) return {}
+
+  try {
+    const parsed = JSON.parse(item.metadata) as Record<string, unknown>
+    return {
+      deliveryMode: typeof parsed.deliveryMode === 'string' ? parsed.deliveryMode : null,
+      undoGroupId: typeof parsed.undoGroupId === 'string' ? parsed.undoGroupId : null,
+    }
+  } catch {
+    return {}
+  }
+}
+
+function isUndoHold(item: ApiScheduledMessage): boolean {
+  return scheduledMessageMetadata(item).deliveryMode === 'undo_hold'
 }
 
 function formatFileSize(bytes: number): string {
@@ -335,8 +358,11 @@ export default function ChatComposer({
   const [savingScheduledId, setSavingScheduledId] = useState<string | null>(null)
   const [undoToast, setUndoToast] = useState<UndoSendToast | null>(null)
   const [undoRemaining, setUndoRemaining] = useState(0)
+  const finalizingUndoGroupsRef = useRef(new Set<string>())
+  const dismissedUndoGroupsRef = useRef(new Set<string>())
   const isWhatsApp = channelType === 'whatsapp'
   const isKakao = channelType === 'kakao'
+  const supportsUndoSend = !isKakao
   const textOnlyChannel = isWhatsApp || isKakao
   const textOnlyChannelLabel = isKakao ? 'Kakao' : 'WhatsApp'
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
@@ -378,25 +404,43 @@ export default function ChatComposer({
     clearAttachment()
   }, [textOnlyChannel])
 
-  useEffect(() => {
-    if (!undoToast) return
-
-    const updateRemaining = () => {
-      const remaining = Math.max(0, Math.ceil((undoToast.expiresAt - Date.now()) / 1000))
-      setUndoRemaining(remaining)
-      if (remaining <= 0) setUndoToast(null)
-    }
-
-    updateRemaining()
-    const interval = window.setInterval(updateRemaining, 250)
-    return () => window.clearInterval(interval)
-  }, [undoToast])
-
   const loadScheduledMessages = useCallback(async (silent = false) => {
     try {
       const response = await api.friends.listScheduledMessages(friendId)
       if (response.success) {
-        setScheduledMessages(response.data)
+        const undoHolds = response.data.filter(
+          (item) => isUndoHold(item) && (item.status === 'scheduled' || item.status === 'sending'),
+        )
+        setScheduledMessages(
+          response.data.filter(
+            (item) => !isUndoHold(item) || (item.status !== 'scheduled' && item.status !== 'sending'),
+          ),
+        )
+
+        const groups = new Map<string, ApiScheduledMessage[]>()
+        for (const item of undoHolds) {
+          const metadata = scheduledMessageMetadata(item)
+          const groupId = metadata.undoGroupId || item.id
+          const group = groups.get(groupId) ?? []
+          group.push(item)
+          groups.set(groupId, group)
+        }
+
+        const latestGroup = [...groups.entries()]
+          .filter(([groupId]) => !dismissedUndoGroupsRef.current.has(groupId))
+          .sort(([, left], [, right]) => {
+            const leftCreatedAt = Math.max(...left.map((item) => new Date(item.createdAt).getTime()))
+            const rightCreatedAt = Math.max(...right.map((item) => new Date(item.createdAt).getTime()))
+            return rightCreatedAt - leftCreatedAt
+          })[0]
+
+        if (latestGroup) {
+          const [undoGroupId, items] = latestGroup
+          const expiresAt = Math.max(...items.map((item) => new Date(item.scheduledAt).getTime()))
+          setUndoToast((current) => current?.undoGroupId === undoGroupId
+            ? { ...current, scheduledMessageIds: items.map((item) => item.id), expiresAt }
+            : { undoGroupId, scheduledMessageIds: items.map((item) => item.id), expiresAt })
+        }
       }
     } catch {
       if (!silent) {
@@ -404,6 +448,42 @@ export default function ChatComposer({
       }
     }
   }, [friendId])
+
+  const finalizeUndoSend = useCallback(async (target: UndoSendToast) => {
+    dismissedUndoGroupsRef.current.add(target.undoGroupId)
+    setUndoToast((current) => current?.undoGroupId === target.undoGroupId ? null : current)
+
+    const results = await Promise.allSettled(
+      target.scheduledMessageIds.map((id) => api.scheduledMessages.sendNow(id)),
+    )
+    const failed = results.some((result) => result.status === 'rejected')
+
+    await loadScheduledMessages(true)
+    await onSent?.()
+
+    if (failed) {
+      onError?.('送信確定をサーバーに引き継ぎました。まもなく送信されます。')
+    }
+  }, [loadScheduledMessages, onError, onSent])
+
+  useEffect(() => {
+    if (!undoToast) return
+
+    const updateRemaining = () => {
+      const remaining = Math.max(0, Math.ceil((undoToast.expiresAt - Date.now()) / 1000))
+      setUndoRemaining(remaining)
+      if (remaining <= 0 && !finalizingUndoGroupsRef.current.has(undoToast.undoGroupId)) {
+        finalizingUndoGroupsRef.current.add(undoToast.undoGroupId)
+        void finalizeUndoSend(undoToast).finally(() => {
+          finalizingUndoGroupsRef.current.delete(undoToast.undoGroupId)
+        })
+      }
+    }
+
+    updateRemaining()
+    const interval = window.setInterval(updateRemaining, 250)
+    return () => window.clearInterval(interval)
+  }, [finalizeUndoSend, undoToast])
 
   useEffect(() => {
     void loadScheduledMessages()
@@ -544,15 +624,11 @@ export default function ChatComposer({
     }
   }
 
-  async function sendPayloads(schedule: boolean): Promise<ApiScheduledMessage[]> {
+  async function sendPayloads(schedule: boolean): Promise<{
+    scheduledItems: ApiScheduledMessage[]
+    undoGroupId: string | null
+  }> {
     onError?.('')
-
-    const usesUndoWindow = isWhatsApp && !schedule
-    const scheduledAtValue = schedule
-      ? validateFutureJstSchedule(scheduledAt)
-      : usesUndoWindow
-        ? toJstIsoString(new Date(Date.now() + 30_000))
-        : null
 
     const payloads: Record<string, string | null | undefined>[] = []
 
@@ -572,51 +648,71 @@ export default function ChatComposer({
       throw new Error('送信内容がありません。')
     }
 
+    const usesUndoWindow = supportsUndoSend && !schedule
+    const undoGroupId = usesUndoWindow ? crypto.randomUUID() : null
+    const scheduledAtValue = schedule
+      ? validateFutureJstSchedule(scheduledAt)
+      : usesUndoWindow
+        ? toJstIsoString(new Date(Date.now() + 30_000))
+        : null
+
     const scheduledItems: ApiScheduledMessage[] = []
 
-    for (const payload of payloads) {
-      let response:
-        | Awaited<ReturnType<typeof api.chats.send>>
-        | undefined
+    try {
+      for (const payload of payloads) {
+        let response:
+          | Awaited<ReturnType<typeof api.chats.send>>
+          | undefined
 
-      if (scheduledAtValue) {
-        payload.scheduledAt = scheduledAtValue
-      }
+        if (scheduledAtValue) {
+          payload.scheduledAt = scheduledAtValue
+          payload.deliveryMode = usesUndoWindow ? 'undo_hold' : 'scheduled'
+        }
+        if (undoGroupId) {
+          payload.undoGroupId = undoGroupId
+        }
 
-      if (chatId) {
-        response = await api.chats.send(chatId, payload)
-      } else {
-        response = await api.friends.sendMessage(friendId, payload)
-      }
+        if (chatId) {
+          response = await api.chats.send(chatId, payload)
+        } else {
+          response = await api.friends.sendMessage(friendId, payload)
+        }
 
-      if (!response?.success) {
-        throw new Error(response?.error || (scheduledAtValue ? '予約登録に失敗しました。' : '送信に失敗しました。'))
-      }
+        if (!response?.success) {
+          throw new Error(response?.error || (scheduledAtValue ? '予約登録に失敗しました。' : '送信に失敗しました。'))
+        }
 
-      if (response.data?.scheduledMessage) {
-        scheduledItems.push(response.data.scheduledMessage)
+        if (response.data?.scheduledMessage) {
+          scheduledItems.push(response.data.scheduledMessage)
+        }
       }
+    } catch (err) {
+      await Promise.allSettled(
+        scheduledItems.map((item) => api.scheduledMessages.cancel(item.id)),
+      )
+      throw err
     }
 
-    return scheduledItems
+    return { scheduledItems, undoGroupId }
   }
 
   async function handleSubmit(schedule: boolean) {
     setSending(true)
 
     try {
-      const scheduledItems = await sendPayloads(schedule)
+      const { scheduledItems, undoGroupId } = await sendPayloads(schedule)
 
       setMessageContent('')
       clearAttachment()
       setReserveMode(false)
       setScheduledAt('')
 
-      if (isWhatsApp && !schedule && scheduledItems[0]) {
+      if (undoGroupId && !schedule && scheduledItems.length > 0) {
+        const expiresAt = Math.max(...scheduledItems.map((item) => new Date(item.scheduledAt).getTime()))
         setUndoToast({
-          scheduledMessageId: scheduledItems[0].id,
-          summary: summarizeScheduledMessage(scheduledItems[0]),
-          expiresAt: Date.now() + 30_000,
+          scheduledMessageIds: scheduledItems.map((item) => item.id),
+          undoGroupId,
+          expiresAt,
         })
       }
 
@@ -651,8 +747,25 @@ export default function ChatComposer({
     if (!undoToast) return
 
     const target = undoToast
+    dismissedUndoGroupsRef.current.add(target.undoGroupId)
     setUndoToast(null)
-    await handleCancelScheduledMessage(target.scheduledMessageId)
+    setCancellingScheduledId(target.scheduledMessageIds[0] ?? null)
+    onError?.('')
+
+    try {
+      const results = await Promise.allSettled(
+        target.scheduledMessageIds.map((id) => api.scheduledMessages.cancel(id)),
+      )
+      if (results.some((result) => result.status === 'rejected')) {
+        throw new Error('送信処理が始まっているため、一部を取り消せませんでした。')
+      }
+      await loadScheduledMessages(true)
+      await onSent?.()
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : '送信の取消に失敗しました。')
+    } finally {
+      setCancellingScheduledId(null)
+    }
   }
 
   function beginEditScheduledMessage(item: ApiScheduledMessage) {
@@ -1081,22 +1194,21 @@ export default function ChatComposer({
       )}
 
       {undoToast && (
-        <div className="fixed bottom-5 left-5 z-50 max-w-[calc(100vw-2.5rem)] rounded bg-[#323232] px-4 py-3 text-sm text-white shadow-2xl">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <span className="min-w-0">
-              送信予定にしました
-              <span className="ml-2 text-white/70">{undoRemaining}s</span>
-            </span>
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-5 left-5 z-50 max-w-[calc(100vw-2.5rem)] rounded-md bg-[#323232] px-4 py-3 text-sm text-white shadow-2xl"
+        >
+          <div className="flex items-center gap-4 whitespace-nowrap">
+            <span>送信しました</span>
             <button
               type="button"
               onClick={() => void handleUndoSend()}
-              className="rounded px-1.5 py-0.5 text-sm font-semibold text-[#8ab4f8] transition-colors hover:bg-white/10"
+              className="rounded px-1.5 py-0.5 text-sm font-semibold text-[#8ab4f8] transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]"
             >
-              取消
+              元に戻す
             </button>
-            <span className="max-w-[260px] truncate text-xs text-white/55">
-              {undoToast.summary}
-            </span>
+            <span className="text-xs tabular-nums text-white/65">{undoRemaining}秒</span>
           </div>
         </div>
       )}
