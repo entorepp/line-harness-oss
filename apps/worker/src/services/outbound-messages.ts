@@ -45,6 +45,15 @@ interface FilePayload {
   fileIcon: string;
 }
 
+function normalizeMediaContent(content: string): { url: string } {
+  const parsed = safeJsonParse(content);
+  const url = typeof parsed?.url === 'string' ? parsed.url : content;
+  if (!url.trim()) {
+    throw new Error('Media URL is required');
+  }
+  return { url };
+}
+
 function safeJsonParse(content: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(content);
@@ -240,6 +249,10 @@ export function serializeOutboundContent(input: OutboundMessageInput): string {
     return JSON.stringify(normalizeFileContent(input));
   }
 
+  if (messageType === 'video' || messageType === 'audio') {
+    return JSON.stringify(normalizeMediaContent(input.content));
+  }
+
   if (messageType === 'sticker') {
     return JSON.stringify(normalizeStickerContent(input.content));
   }
@@ -265,6 +278,12 @@ export function summarizeOutboundMessage(messageType: string, storedContent: str
     const fileName = typeof parsed?.fileName === 'string' ? parsed.fileName : 'ファイル';
     const url = typeof parsed?.url === 'string' ? parsed.url : '';
     return `[ファイル] ${fileName}${url ? ` ${url}` : ''}`;
+  }
+
+  if (messageType === 'video' || messageType === 'audio') {
+    const parsed = safeJsonParse(storedContent);
+    const url = typeof parsed?.url === 'string' ? parsed.url : storedContent;
+    return `[${messageType === 'video' ? '動画' : '音声'}] ${url}`;
   }
 
   if (messageType === 'sticker') {
@@ -314,6 +333,45 @@ function resolveKakaoRecipient(friend: MessagingFriendContext): string {
   return parts.length >= 4 ? parts.slice(3).join(':') : friend.line_user_id;
 }
 
+export function buildWhatsAppMessagePayload(
+  to: string,
+  input: OutboundMessageInput,
+): Record<string, unknown> {
+  const messageType = input.messageType ?? 'text';
+  let providerMessage: Record<string, unknown>;
+
+  if (messageType === 'text') {
+    providerMessage = {
+      type: 'text',
+      text: { body: serializeOutboundContent(input) },
+    };
+  } else if (messageType === 'image') {
+    const image = normalizeImageContent(input.content);
+    providerMessage = { type: 'image', image: { link: image.originalContentUrl } };
+  } else if (messageType === 'file') {
+    const document = normalizeFileContent(input);
+    providerMessage = {
+      type: 'document',
+      document: { link: document.url, filename: document.fileName },
+    };
+  } else if (messageType === 'video') {
+    const video = normalizeMediaContent(input.content);
+    providerMessage = { type: 'video', video: { link: video.url } };
+  } else if (messageType === 'audio') {
+    const audio = normalizeMediaContent(input.content);
+    providerMessage = { type: 'audio', audio: { link: audio.url } };
+  } else {
+    throw new Error(`WhatsApp account does not support ${messageType} manual sends`);
+  }
+
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    ...providerMessage,
+  };
+}
+
 export async function dispatchOutboundMessage(opts: {
   env: Env['Bindings'];
   friend: MessagingFriendContext;
@@ -322,10 +380,6 @@ export async function dispatchOutboundMessage(opts: {
   const messageType = opts.input.messageType ?? 'text';
 
   if (opts.friend.channel_type === 'whatsapp') {
-    if (messageType !== 'text') {
-      throw new Error('WhatsApp account currently supports only text for manual or scheduled sends');
-    }
-
     const content = serializeOutboundContent(opts.input);
     const waToken = opts.friend.channel_access_token;
     const waPhoneNumberId = opts.friend.channel_id;
@@ -340,12 +394,7 @@ export async function dispatchOutboundMessage(opts: {
         Authorization: `Bearer ${waToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: opts.friend.line_user_id,
-        type: 'text',
-        text: { body: content },
-      }),
+      body: JSON.stringify(buildWhatsAppMessagePayload(opts.friend.line_user_id, opts.input)),
     });
 
     if (!res.ok) {

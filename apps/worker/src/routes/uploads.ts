@@ -19,9 +19,20 @@ function inferContentTypeFromKey(key: string, fallback: string): string {
   if (ext === 'gif') return 'image/gif';
   if (ext === 'webp') return 'image/webp';
   if (ext === 'mp4') return 'video/mp4';
+  if (ext === '3gp') return 'video/3gpp';
+  if (ext === 'aac') return 'audio/aac';
+  if (ext === 'amr') return 'audio/amr';
   if (ext === 'mp3') return 'audio/mpeg';
   if (ext === 'm4a') return 'audio/mp4';
+  if (ext === 'ogg') return 'audio/ogg';
   if (ext === 'wav') return 'audio/wav';
+  if (ext === 'txt') return 'text/plain';
+  if (ext === 'doc') return 'application/msword';
+  if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (ext === 'xls') return 'application/vnd.ms-excel';
+  if (ext === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (ext === 'ppt') return 'application/vnd.ms-powerpoint';
+  if (ext === 'pptx') return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
   return fallback;
 }
 
@@ -199,7 +210,17 @@ uploads.get('/api/files/:key', async (c) => {
   };
 
   // PDFs and images display inline; other files download
-  const inlineTypes = [...IMAGE_TYPES, 'application/pdf'];
+  const inlineTypes = [
+    ...IMAGE_TYPES,
+    'application/pdf',
+    'video/mp4',
+    'video/3gpp',
+    'audio/aac',
+    'audio/amr',
+    'audio/mpeg',
+    'audio/mp4',
+    'audio/ogg',
+  ];
   if (!inlineTypes.includes(contentType) && metadata?.originalName) {
     headers['Content-Disposition'] = buildContentDisposition('attachment', metadata.originalName);
   } else if (contentType === 'application/pdf') {

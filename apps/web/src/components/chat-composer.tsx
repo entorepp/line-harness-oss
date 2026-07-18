@@ -29,9 +29,13 @@ type ScheduledMessageMetadata = {
   undoGroupId?: string | null
 }
 
+type WhatsAppAttachmentKind = 'image' | 'video' | 'audio' | 'document'
+
 const EMOJI_STORAGE_KEY = 'line-crm-chat-emoji-presets'
 const JST_OFFSET_MS = 9 * 60 * 60_000
 const DATETIME_LOCAL_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/
+const DEFAULT_ATTACHMENT_ACCEPT = 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.zip,.mp4,.mp3,.wav,.m4a'
+const WHATSAPP_ATTACHMENT_ACCEPT = 'image/jpeg,image/png,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.mp4,.3gp,.aac,.amr,.mp3,.m4a,.ogg'
 
 const DEFAULT_EMOJI_PRESETS: EmojiPreset[] = [
   { key: 'plane', label: '飛行機', value: '✈️', aliases: ['airplane', 'plane', 'flight', 'travel_plane', 'fly', '飛行機'] },
@@ -132,6 +136,52 @@ function scheduledMessageMetadata(item: ApiScheduledMessage): ScheduledMessageMe
 
 function isUndoHold(item: ApiScheduledMessage): boolean {
   return scheduledMessageMetadata(item).deliveryMode === 'undo_hold'
+}
+
+function fileExtension(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf('.')
+  return dotIndex === -1 ? '' : fileName.slice(dotIndex + 1).toLowerCase()
+}
+
+function whatsappAttachmentKind(file: File): WhatsAppAttachmentKind | null {
+  const mimeType = file.type.toLowerCase()
+  const extension = fileExtension(file.name)
+
+  if (['image/jpeg', 'image/png'].includes(mimeType) || ['jpg', 'jpeg', 'png'].includes(extension)) {
+    return 'image'
+  }
+  if (['video/mp4', 'video/3gpp'].includes(mimeType) || ['mp4', '3gp'].includes(extension)) {
+    return 'video'
+  }
+  if (
+    ['audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg'].includes(mimeType)
+    || ['aac', 'm4a', 'mp3', 'amr', 'ogg'].includes(extension)
+  ) {
+    return 'audio'
+  }
+  if (
+    [
+      'application/pdf',
+      'text/plain',
+      'application/msword',
+      'application/vnd.ms-excel',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ].includes(mimeType)
+    || ['pdf', 'txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(extension)
+  ) {
+    return 'document'
+  }
+
+  return null
+}
+
+function whatsappAttachmentLimitBytes(kind: WhatsAppAttachmentKind): number {
+  if (kind === 'image') return 5 * 1024 * 1024
+  if (kind === 'video' || kind === 'audio') return 16 * 1024 * 1024
+  return 25 * 1024 * 1024
 }
 
 function formatFileSize(bytes: number): string {
@@ -363,8 +413,8 @@ export default function ChatComposer({
   const isWhatsApp = channelType === 'whatsapp'
   const isKakao = channelType === 'kakao'
   const supportsUndoSend = !isKakao
-  const textOnlyChannel = isWhatsApp || isKakao
-  const textOnlyChannelLabel = isKakao ? 'Kakao' : 'WhatsApp'
+  const attachmentsDisabled = isKakao
+  const attachmentAccept = isWhatsApp ? WHATSAPP_ATTACHMENT_ACCEPT : DEFAULT_ATTACHMENT_ACCEPT
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
 
   useEffect(() => {
@@ -400,9 +450,9 @@ export default function ChatComposer({
   }, [customEmojiPresets])
 
   useEffect(() => {
-    if (!textOnlyChannel) return
+    if (!attachmentsDisabled) return
     clearAttachment()
-  }, [textOnlyChannel])
+  }, [attachmentsDisabled])
 
   const loadScheduledMessages = useCallback(async (silent = false) => {
     try {
@@ -558,12 +608,24 @@ export default function ChatComposer({
   }
 
   function setAttachmentFromFile(file: File) {
-    if (textOnlyChannel) {
-      onError?.(`${textOnlyChannelLabel} では現在ファイル・画像送信に未対応です。`)
+    if (attachmentsDisabled) {
+      onError?.('Kakao では現在ファイル・画像送信に未対応です。')
       return
     }
 
-    if (file.size > 25 * 1024 * 1024) {
+    if (isWhatsApp) {
+      const kind = whatsappAttachmentKind(file)
+      if (!kind) {
+        onError?.('WhatsAppではJPEG・PNG・PDF・Office文書・MP4・MP3などの対応形式を選んでください。')
+        return
+      }
+
+      const limitBytes = whatsappAttachmentLimitBytes(kind)
+      if (file.size > limitBytes) {
+        onError?.(`WhatsAppの${kind === 'image' ? '画像' : kind === 'document' ? '文書' : kind === 'video' ? '動画' : '音声'}は${Math.round(limitBytes / 1024 / 1024)}MB以下にしてください。`)
+        return
+      }
+    } else if (file.size > 25 * 1024 * 1024) {
       onError?.('ファイルサイズは25MB以下にしてください。')
       return
     }
@@ -604,7 +666,8 @@ export default function ChatComposer({
     }
 
     const { url, fileName, fileSizeFormatted, isImage, icon } = uploadRes.data
-    if (isImage) {
+    const whatsappKind = isWhatsApp ? whatsappAttachmentKind(attachment.file) : null
+    if (whatsappKind === 'image' || (!isWhatsApp && isImage)) {
       return {
         messageType: 'image',
         content: JSON.stringify({
@@ -612,6 +675,13 @@ export default function ChatComposer({
           originalContentUrl: url,
           previewImageUrl: url,
         }),
+      }
+    }
+
+    if (whatsappKind === 'video' || whatsappKind === 'audio') {
+      return {
+        messageType: whatsappKind,
+        content: JSON.stringify({ url }),
       }
     }
 
@@ -820,8 +890,8 @@ export default function ChatComposer({
       const file = fileItem.getAsFile()
       if (file) {
         event.preventDefault()
-        if (textOnlyChannel) {
-          onError?.(`${textOnlyChannelLabel} では現在ファイル・画像送信に未対応です。`)
+        if (attachmentsDisabled) {
+          onError?.('Kakao では現在ファイル・画像送信に未対応です。')
           return
         }
         setAttachmentFromFile(file)
@@ -986,7 +1056,7 @@ export default function ChatComposer({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.zip,.mp4,.mp3,.wav,.m4a"
+            accept={attachmentAccept}
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0]
@@ -997,9 +1067,9 @@ export default function ChatComposer({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={textOnlyChannel}
+            disabled={attachmentsDisabled}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-sm transition-colors hover:bg-[#F1F5F8] disabled:cursor-not-allowed disabled:opacity-50"
-            title={textOnlyChannel ? `${textOnlyChannelLabel} では現在添付未対応` : '画像やファイルを追加'}
+            title={attachmentsDisabled ? 'Kakao では現在添付未対応' : '画像やファイルを追加'}
           >
             ＋
           </button>
@@ -1011,7 +1081,7 @@ export default function ChatComposer({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={
-              textOnlyChannel
+              attachmentsDisabled
                 ? 'メッセージを入力。:hotel: や :taxi: を貼ると絵文字に変換します。'
                 : 'メッセージを入力。:hotel: や :taxi: を貼ると絵文字に変換します。画像貼り付けやPDF添付にも対応しています。'
             }
