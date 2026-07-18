@@ -57,6 +57,7 @@ export type Env = {
     GA4_MEASUREMENT_ID: string;
     UPLOADS: KVNamespace;
     WA_BRIDGE_SECRET: string;
+    WHATSAPP_VERIFY_TOKEN?: string;
     KAKAO_BIZMESSAGE_ENDPOINT?: string;
     KAKAO_BIZMESSAGE_API_KEY?: string;
     KAKAO_MESSAGE_WEBHOOK_SECRET?: string;

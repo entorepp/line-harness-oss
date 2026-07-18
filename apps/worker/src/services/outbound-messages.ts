@@ -333,7 +333,7 @@ export async function dispatchOutboundMessage(opts: {
       throw new Error('No WhatsApp credentials configured');
     }
 
-    const GRAPH_API = 'https://graph.facebook.com/v22.0';
+    const GRAPH_API = 'https://graph.facebook.com/v25.0';
     const res = await fetch(`${GRAPH_API}/${waPhoneNumberId}/messages`, {
       method: 'POST',
       headers: {

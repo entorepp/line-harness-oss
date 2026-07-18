@@ -11,7 +11,7 @@ import type { Env } from '../index.js';
 import { fetchKakaoStatus } from '../services/kakao.js';
 
 const lineAccounts = new Hono<Env>();
-const GRAPH_API = 'https://graph.facebook.com/v22.0';
+const GRAPH_API = 'https://graph.facebook.com/v25.0';
 
 type WhatsAppBusinessProfile = {
   about?: string;

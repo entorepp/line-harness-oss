@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, toJstString, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
+import { fireEvent } from '../services/event-bus.js';
 
 const waWebhook = new Hono<Env>();
-const GRAPH_API = 'https://graph.facebook.com/v22.0';
+const GRAPH_API = 'https://graph.facebook.com/v25.0';
 
 type WaDirection = 'incoming' | 'outgoing';
 type BridgeWaDirection = WaDirection | 'outbound';
@@ -648,6 +649,7 @@ function resolveCounterpartyId(msg: NormalizedWaMessage): string | null {
 }
 
 async function persistWaMessage(
+  env: Env['Bindings'],
   db: D1Database,
   msg: NormalizedWaMessage,
   account: ResolvedWhatsAppAccount,
@@ -697,6 +699,45 @@ async function persistWaMessage(
   }
 
   await updateChatForWaMessage(db, friend.id, msg.direction, msg.occurredAt);
+
+  if (!duplicate && msg.direction === 'incoming') {
+    const eventText = msg.text?.trim() || (
+      msg.type === 'image' || msg.type === 'sticker'
+        ? '📷 画像を送信'
+        : msg.type === 'video'
+          ? '🎥 動画を送信'
+          : msg.type === 'audio'
+            ? '🎵 音声を送信'
+            : msg.type === 'document' || msg.type === 'file'
+              ? `📎 ファイル: ${media?.fileName || msg.fileName || ''}`
+              : msg.type === 'location'
+                ? '📍 位置情報を送信'
+                : `[${msg.type}]`
+    );
+
+    await fireEvent(
+      db,
+      'message_received',
+      {
+        friendId: friend.id,
+        suppressLineActions: true,
+        eventData: {
+          text: eventText,
+          matched: false,
+          messageType: stored.messageType,
+          mediaUrl: media?.url || msg.mediaUrl,
+          fileName: media?.fileName || msg.fileName,
+          provider: 'whatsapp',
+        },
+      },
+      undefined,
+      account.id,
+      {
+        token: env.SLACK_BOT_TOKEN,
+        googleTranslateApiKey: env.GOOGLE_TRANSLATE_API_KEY,
+      },
+    );
+  }
 }
 
 function normalizeBridgeMessage(msg: WaForwardedMessage): NormalizedWaMessage | null {
@@ -854,13 +895,14 @@ waWebhook.get('/webhook/whatsapp', async (c) => {
   const mode = c.req.query('hub.mode');
   const token = c.req.query('hub.verify_token');
   const challenge = c.req.query('hub.challenge');
+  const verifyToken = c.env.WHATSAPP_VERIFY_TOKEN || c.env.WA_BRIDGE_SECRET;
 
   if (
     mode === 'subscribe' &&
     token &&
     challenge &&
-    c.env.WA_BRIDGE_SECRET &&
-    token === c.env.WA_BRIDGE_SECRET
+    verifyToken &&
+    token === verifyToken
   ) {
     return c.text(challenge, 200);
   }
@@ -909,7 +951,7 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
         messageId: msg.messageId,
       });
 
-      await persistWaMessage(db, msg, account);
+      await persistWaMessage(c.env, db, msg, account);
       return c.text('OK', 200);
     }
 
@@ -957,7 +999,7 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
           }
         }
 
-        await persistWaMessage(db, msg, account, storedMedia);
+        await persistWaMessage(c.env, db, msg, account, storedMedia);
       }
 
       return c.text('OK', 200);
@@ -994,7 +1036,7 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
             }
           }
 
-          await persistWaMessage(db, msg, account, storedMedia);
+          await persistWaMessage(c.env, db, msg, account, storedMedia);
         }
 
         return c.text('OK', 200);

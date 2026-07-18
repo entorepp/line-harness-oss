@@ -229,6 +229,21 @@ Meta App Dashboard の流れ:
 7. 070 番号の `Pending` が解除されたらプロフィール取得とテスト送信を確認
 8. 「Greeting messages」を **無効** に設定（シナリオで制御するため）
 
+Webhook 設定:
+
+| 値 | 内容 |
+|---|---|
+| Callback URL | `https://line-flattravel.flat-travel.workers.dev/webhook/whatsapp` |
+| Verify token | Worker secret `WHATSAPP_VERIFY_TOKEN` と同じ値 |
+| 購読フィールド | `messages` |
+
+Worker からの WhatsApp Graph API 呼び出しは、Meta App の現行購読バージョンに合わせて `v25.0` を使用します。
+
+WABA 単位で Callback URL を上書きする場合は、System User token で
+`POST /{WABA_ID}/subscribed_apps` を呼び、`override_callback_uri` と
+`verify_token` を指定します。設定後は `GET /{WABA_ID}/subscribed_apps` で
+`override_callback_uri` が上記 Worker URL になっていることを確認します。
+
 ## 7. 管理画面デプロイ
 
 ### Cloudflare Pages（推奨）

@@ -48,6 +48,7 @@ crons = ["*/5 * * * *"]
 | `LIFF_URL` | 任意 | string | LIFF アプリ URL | `https://liff.line.me/12345-abcde` |
 | `LINE_LOGIN_CHANNEL_ID` | 任意 | string | LINE Login チャネルID（UUID連携用） | `9876543210` |
 | `LINE_LOGIN_CHANNEL_SECRET` | 任意 | string | LINE Login チャネルシークレット | `xyz789...` |
+| `WHATSAPP_VERIFY_TOKEN` | WhatsApp連携時必須 | string | Metaが Callback URL を検証するための専用トークン | 十分に長いランダム値 |
 
 ### シークレット設定コマンド
 
