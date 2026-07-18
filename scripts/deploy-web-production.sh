@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PRODUCTION_BRANCH="main"
 PRODUCTION_PROJECT="line-crm-web"
 PRODUCTION_URL="https://line-crm-web-2ob.pages.dev"
+PRODUCTION_API_URL="https://line-flattravel.flat-travel.workers.dev"
 CURRENT_BRANCH="${GITHUB_REF_NAME:-}"
 
 if [[ -z "$CURRENT_BRANCH" ]]; then
@@ -19,10 +20,21 @@ fi
 
 echo "=== Building web app ==="
 cd "$ROOT_DIR"
+export NEXT_PUBLIC_API_URL="$PRODUCTION_API_URL"
 pnpm --filter web build
 
 if [[ ! -d "$ROOT_DIR/apps/web/out" ]]; then
   echo "Build output not found: $ROOT_DIR/apps/web/out"
+  exit 1
+fi
+
+if ! rg -q --fixed-strings "$PRODUCTION_API_URL" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
+  echo "Production API URL is missing from the generated web bundle."
+  exit 1
+fi
+
+if rg -q --fixed-strings "http://localhost:8787" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
+  echo "Refusing to deploy a production bundle that points to localhost."
   exit 1
 fi
 
