@@ -77,11 +77,14 @@ type FriendRowWithChannel = DbFriend & {
 function serializeFriend(row: FriendRowWithChannel) {
   const isWhatsApp = row.channel_type === 'whatsapp'
   const isKakao = row.channel_type === 'kakao'
+  const isWeChat = row.channel_type === 'wechat'
   const metadata = JSON.parse(row.metadata || '{}') as Record<string, unknown>
   const lineUserId = isWhatsApp
     ? formatWhatsappPhoneForDisplay(row.line_user_id)
     : isKakao && typeof metadata.kakaoId === 'string'
       ? metadata.kakaoId
+      : isWeChat && typeof metadata.openId === 'string'
+        ? metadata.openId
     : row.line_user_id
   const displayName = isWhatsApp
     ? presentWhatsappDisplayName(row.display_name, row.line_user_id)

@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { api, type KakaoStatus, type WhatsAppBusinessProfile, type WhatsAppPhoneStatus } from '@/lib/api'
+import { api, type KakaoStatus, type WeChatQr, type WeChatStatus, type WhatsAppBusinessProfile, type WhatsAppPhoneStatus } from '@/lib/api'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 
-type ChannelType = 'line' | 'whatsapp' | 'kakao'
+type ChannelType = 'line' | 'whatsapp' | 'kakao' | 'wechat'
 
 interface LineAccountListItem {
   id: string
@@ -32,12 +32,14 @@ const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787').
 function getChannelLabel(channelType?: ChannelType): string {
   if (channelType === 'whatsapp') return 'WhatsApp'
   if (channelType === 'kakao') return 'Kakao'
+  if (channelType === 'wechat') return 'WeChat'
   return 'LINE'
 }
 
 function getChannelColor(channelType?: ChannelType): string {
   if (channelType === 'whatsapp') return '#25D366'
   if (channelType === 'kakao') return '#FEE500'
+  if (channelType === 'wechat') return '#07C160'
   return '#06C755'
 }
 
@@ -46,7 +48,7 @@ function getChannelTextColor(channelType?: ChannelType): string {
 }
 
 type AccountSettingsForm = {
-  locale: 'ja' | 'zh-TW' | 'ko'
+  locale: 'ja' | 'zh-TW' | 'zh-CN' | 'ko'
   defaultSlackChannel: string
 }
 
@@ -76,13 +78,13 @@ const ccPrompts = [
     prompt: `現在登録されているチャネルアカウントの設定を確認してください。
 1. 各アカウントのChannel ID・名前・有効/無効ステータスを一覧表示
 2. Provider token/key と webhook secret が正しく設定されているか検証
-3. LINE / WhatsApp / Kakao 側の設定整合性をチェック
+3. LINE / WhatsApp / Kakao / WeChat 側の設定整合性をチェック
 結果をレポートしてください。`,
   },
   {
     title: 'アカウント追加手順',
     prompt: `新しいチャネルアカウントを追加する手順をガイドしてください。
-1. LINE / WhatsApp / Kakao の各管理画面での作成手順を説明
+1. LINE / WhatsApp / Kakao / WeChat の各管理画面での作成手順を説明
 2. Channel ID、Access Token/API Key、Webhook Secretの取得方法
 3. CRMへの登録手順と初期設定のベストプラクティス
 手順を示してください。`,
@@ -106,17 +108,24 @@ export default function AccountsPage() {
   const [kakaoStatuses, setKakaoStatuses] = useState<Record<string, KakaoStatus>>({})
   const [kakaoStatusErrors, setKakaoStatusErrors] = useState<Record<string, string>>({})
   const [loadingKakaoStatusAccountId, setLoadingKakaoStatusAccountId] = useState<string | null>(null)
+  const [wechatStatuses, setWeChatStatuses] = useState<Record<string, WeChatStatus>>({})
+  const [wechatStatusErrors, setWeChatStatusErrors] = useState<Record<string, string>>({})
+  const [loadingWeChatStatusAccountId, setLoadingWeChatStatusAccountId] = useState<string | null>(null)
+  const [wechatQrs, setWeChatQrs] = useState<Record<string, WeChatQr>>({})
+  const [generatingWeChatQrAccountId, setGeneratingWeChatQrAccountId] = useState<string | null>(null)
   const [form, setForm] = useState({
     channelType: 'line' as ChannelType,
     channelId: '',
     name: '',
     channelAccessToken: '',
     channelSecret: '',
-    locale: 'ja' as 'ja' | 'zh-TW' | 'ko',
+    wechatEncodingAesKey: '',
+    locale: 'ja' as 'ja' | 'zh-TW' | 'zh-CN' | 'ko',
     defaultSlackChannel: '',
   })
   const isWhatsAppForm = form.channelType === 'whatsapp'
   const isKakaoForm = form.channelType === 'kakao'
+  const isWeChatForm = form.channelType === 'wechat'
   const kakaoWebhookUrl = `${apiBaseUrl}/webhook/kakao`
 
   const load = async () => {
@@ -132,7 +141,7 @@ export default function AccountsPage() {
             items.map((account) => [
               account.id,
               {
-                locale: account.locale === 'zh-TW' || account.locale === 'ko' ? account.locale : 'ja',
+                locale: account.locale === 'zh-TW' || account.locale === 'zh-CN' || account.locale === 'ko' ? account.locale : 'ja',
                 defaultSlackChannel: account.defaultSlackChannel || '',
               },
             ]),
@@ -151,7 +160,13 @@ export default function AccountsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.channelId || !form.name || !form.channelAccessToken || (!isWhatsAppForm && !form.channelSecret)) return
+    if (
+      !form.channelId ||
+      !form.name ||
+      !form.channelAccessToken ||
+      (!isWhatsAppForm && !form.channelSecret) ||
+      (isWeChatForm && !form.wechatEncodingAesKey)
+    ) return
     try {
       await api.lineAccounts.create({
         ...form,
@@ -164,6 +179,7 @@ export default function AccountsPage() {
         name: '',
         channelAccessToken: '',
         channelSecret: '',
+        wechatEncodingAesKey: '',
         locale: 'ja',
         defaultSlackChannel: '',
       })
@@ -306,11 +322,47 @@ export default function AccountsPage() {
     setLoadingKakaoStatusAccountId(null)
   }
 
+  const loadWeChatStatus = async (accountId: string) => {
+    setLoadingWeChatStatusAccountId(accountId)
+    setWeChatStatusErrors((prev) => ({ ...prev, [accountId]: '' }))
+    try {
+      const res = await api.lineAccounts.getWeChatStatus(accountId)
+      if (res.success) {
+        setWeChatStatuses((prev) => ({ ...prev, [accountId]: res.data }))
+      } else {
+        setWeChatStatusErrors((prev) => ({ ...prev, [accountId]: '接続確認に失敗しました' }))
+      }
+    } catch (err) {
+      setWeChatStatusErrors((prev) => ({
+        ...prev,
+        [accountId]: err instanceof Error ? err.message : '接続確認に失敗しました',
+      }))
+    }
+    setLoadingWeChatStatusAccountId(null)
+  }
+
+  const generateWeChatQr = async (accountId: string) => {
+    setGeneratingWeChatQrAccountId(accountId)
+    setWeChatStatusErrors((prev) => ({ ...prev, [accountId]: '' }))
+    try {
+      const res = await api.lineAccounts.generateWeChatQr(accountId)
+      if (!res.success) throw new Error(res.error || 'QRコード生成に失敗しました')
+      setWeChatQrs((prev) => ({ ...prev, [accountId]: res.data }))
+      await loadWeChatStatus(accountId)
+    } catch (err) {
+      setWeChatStatusErrors((prev) => ({
+        ...prev,
+        [accountId]: err instanceof Error ? err.message : 'QRコード生成に失敗しました',
+      }))
+    }
+    setGeneratingWeChatQrAccountId(null)
+  }
+
   return (
     <div>
       <Header
         title="チャネルアカウント管理"
-        description="LINE / WhatsApp / Kakao マルチアカウント設定"
+        description="LINE / WhatsApp / Kakao / WeChat マルチアカウント設定"
         action={
           <button
             onClick={() => setShowCreate(!showCreate)}
@@ -341,6 +393,7 @@ export default function AccountsPage() {
                 <option value="line">LINE</option>
                 <option value="whatsapp">WhatsApp</option>
                 <option value="kakao">Kakao</option>
+                <option value="wechat">WeChat</option>
               </select>
             </div>
             <div>
@@ -355,13 +408,13 @@ export default function AccountsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isWhatsAppForm ? 'Phone Number ID' : isKakaoForm ? 'KakaoTalk Channel profile ID' : 'Channel ID'}
+                {isWhatsAppForm ? 'Phone Number ID' : isKakaoForm ? 'KakaoTalk Channel profile ID' : isWeChatForm ? 'AppID' : 'Channel ID'}
               </label>
               <input
                 value={form.channelId}
                 onChange={(e) => setForm({ ...form, channelId: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                placeholder={isWhatsAppForm ? '123456789012345' : isKakaoForm ? '_ZeUTxl' : '123456789'}
+                placeholder={isWhatsAppForm ? '123456789012345' : isKakaoForm ? '_ZeUTxl' : isWeChatForm ? 'wx1234567890abcdef' : '123456789'}
                 required
               />
               <p className="mt-1 text-xs text-gray-400">
@@ -369,12 +422,14 @@ export default function AccountsPage() {
                   ? 'Meta / Cloud API の Phone Number ID を入力します'
                   : isKakaoForm
                     ? 'KakaoTalk Channel Manager Center のチャンネルURL末尾を入力します'
+                    : isWeChatForm
+                      ? 'WeChat Official Account の Developer ID (AppID) を入力します'
                     : 'LINE Developers Console の Channel ID を入力します'}
               </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isWhatsAppForm ? 'Access Token' : isKakaoForm ? 'REST API Key / Admin Key' : 'Channel Access Token'}
+                {isWhatsAppForm ? 'Access Token' : isKakaoForm ? 'REST API Key / Admin Key' : isWeChatForm ? 'AppSecret' : 'Channel Access Token'}
               </label>
               <input
                 type="password"
@@ -386,7 +441,7 @@ export default function AccountsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isWhatsAppForm ? 'App Secret（任意）' : isKakaoForm ? 'Primary Admin Key' : 'Channel Secret'}
+                {isWhatsAppForm ? 'App Secret（任意）' : isKakaoForm ? 'Primary Admin Key' : isWeChatForm ? 'Token' : 'Channel Secret'}
               </label>
               <input
                 type="password"
@@ -400,18 +455,36 @@ export default function AccountsPage() {
                   ? '未使用なら空欄のままで構いません'
                   : isKakaoForm
                     ? 'Kakao Channel Webhook の Authorization 検証に使います'
+                    : isWeChatForm
+                      ? 'WeChatのサーバー設定で指定する3〜32文字のTokenと同じ値です'
                     : 'Messaging API チャネルの secret を入力します'}
               </p>
             </div>
+            {isWeChatForm && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">EncodingAESKey</label>
+                <input
+                  type="password"
+                  value={form.wechatEncodingAesKey}
+                  onChange={(e) => setForm({ ...form, wechatEncodingAesKey: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  minLength={43}
+                  maxLength={43}
+                  required
+                />
+                <p className="mt-1 text-xs text-gray-400">WeChat管理画面で生成した43文字の鍵を入力し、安全モードで接続します</p>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">言語</label>
               <select
                 value={form.locale}
-                      onChange={(e) => setForm({ ...form, locale: e.target.value as 'ja' | 'zh-TW' | 'ko' })}
+                      onChange={(e) => setForm({ ...form, locale: e.target.value as 'ja' | 'zh-TW' | 'zh-CN' | 'ko' })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               >
                 <option value="ja">日本語</option>
                 <option value="zh-TW">繁體中文</option>
+                <option value="zh-CN">简体中文</option>
                 <option value="ko">한국어</option>
               </select>
             </div>
@@ -441,7 +514,7 @@ export default function AccountsPage() {
       ) : accounts.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">
           <p className="mb-2">チャネルアカウントが登録されていません</p>
-          <p className="text-xs text-gray-300">LINE / WhatsApp / Kakao の接続情報を取得して登録してください</p>
+          <p className="text-xs text-gray-300">LINE / WhatsApp / Kakao / WeChat の接続情報を取得して登録してください</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -467,6 +540,8 @@ export default function AccountsPage() {
                         ? 'W'
                         : account.channelType === 'kakao'
                           ? 'K'
+                          : account.channelType === 'wechat'
+                            ? '微'
                           : account.displayName?.charAt(0) || 'L'}
                     </div>
                   )}
@@ -479,6 +554,8 @@ export default function AccountsPage() {
                             ? 'bg-emerald-100 text-emerald-700'
                             : account.channelType === 'kakao'
                               ? 'bg-yellow-100 text-yellow-800'
+                              : account.channelType === 'wechat'
+                                ? 'bg-green-100 text-green-800'
                             : 'bg-green-100 text-green-700'
                         }`}
                       >
@@ -491,6 +568,8 @@ export default function AccountsPage() {
                         ? 'Phone Number ID'
                         : account.channelType === 'kakao'
                           ? 'Profile ID'
+                          : account.channelType === 'wechat'
+                            ? 'AppID'
                           : 'Channel ID'}: {account.channelId}
                     </p>
                   </div>
@@ -526,7 +605,7 @@ export default function AccountsPage() {
                         setSettings((prev) => ({
                           ...prev,
                           [account.id]: {
-                            locale: e.target.value as 'ja' | 'zh-TW' | 'ko',
+                            locale: e.target.value as 'ja' | 'zh-TW' | 'zh-CN' | 'ko',
                             defaultSlackChannel: prev[account.id]?.defaultSlackChannel || '',
                           },
                         }))
@@ -535,6 +614,7 @@ export default function AccountsPage() {
                     >
                       <option value="ja">日本語</option>
                       <option value="zh-TW">繁體中文</option>
+                      <option value="zh-CN">简体中文</option>
                       <option value="ko">한국어</option>
                     </select>
                   </div>
@@ -752,6 +832,91 @@ export default function AccountsPage() {
                           <p><span className="font-medium text-gray-500">空きslot:</span> {kakaoStatuses[account.id]?.emptySlot ?? '-'}</p>
                         </div>
                       )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {account.channelType === 'wechat' && (
+                <div className="mb-4 rounded-lg border border-green-200 bg-green-50/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-green-950">WeChat Official Account 接続</p>
+                      <p className="mt-1 text-xs text-green-800">
+                        安全モードのWebhook受信、API返信、フォロー用QRをFlat Harnessに接続します。
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void loadWeChatStatus(account.id)}
+                        className="rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-900 hover:bg-green-50"
+                        disabled={loadingWeChatStatusAccountId === account.id}
+                      >
+                        {loadingWeChatStatusAccountId === account.id ? '確認中...' : 'API接続確認'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void generateWeChatQr(account.id)}
+                        className="rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                        disabled={generatingWeChatQrAccountId === account.id}
+                      >
+                        {generatingWeChatQrAccountId === account.id ? '生成中...' : 'フォロー用QR生成'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-3 rounded-lg border border-green-100 bg-white p-3 text-xs">
+                    <div>
+                      <p className="font-medium text-gray-500">Webhook URL</p>
+                      <p className="mt-1 break-all font-mono text-gray-700">
+                        {wechatStatuses[account.id]?.webhookUrl || `${apiBaseUrl}/webhook/wechat/${account.id}`}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-500">お客様共有URL</p>
+                      <a
+                        href={wechatQrs[account.id]?.landingUrl || wechatStatuses[account.id]?.landingUrl || `${apiBaseUrl}/wechat/${account.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 block break-all font-mono text-green-700 underline"
+                      >
+                        {wechatQrs[account.id]?.landingUrl || wechatStatuses[account.id]?.landingUrl || `${apiBaseUrl}/wechat/${account.id}`}
+                      </a>
+                    </div>
+                    <p className="text-gray-400">WeChat管理画面では「安全モード」を選び、このWebhook URL、Token、EncodingAESKeyを保存します。</p>
+                  </div>
+
+                  {(wechatStatuses[account.id] || wechatStatusErrors[account.id]) && (
+                    <div className="mt-3 rounded-lg border border-green-100 bg-white p-3 text-xs">
+                      {wechatStatusErrors[account.id] ? (
+                        <p className="text-red-600">{wechatStatusErrors[account.id]}</p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <p><span className="font-medium text-gray-500">AppID:</span> {wechatStatuses[account.id]?.appId}</p>
+                          <p><span className="font-medium text-gray-500">API:</span> 接続済み</p>
+                          <p><span className="font-medium text-gray-500">安全モード:</span> {wechatStatuses[account.id]?.encryptedModeReady ? '準備済み' : '鍵未設定'}</p>
+                          <p><span className="font-medium text-gray-500">QR:</span> {wechatStatuses[account.id]?.qrReady ? '生成済み' : '未生成'}</p>
+                          <p className="sm:col-span-2"><span className="font-medium text-gray-500">Token有効期限:</span> {wechatStatuses[account.id]?.tokenExpiresAt ? new Date(wechatStatuses[account.id].tokenExpiresAt as string).toLocaleString('ja-JP') : '-'}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(wechatQrs[account.id] || wechatStatuses[account.id]?.qrReady) && (
+                    <div className="mt-3 flex flex-col items-center rounded-lg border border-green-100 bg-white p-4">
+                      <img
+                        src={wechatQrs[account.id]?.imageUrl || `${apiBaseUrl}/wechat/${account.id}/qr.png`}
+                        alt={`${account.displayName} WeChat QR`}
+                        className="h-52 w-52 rounded-lg border border-gray-100 object-contain"
+                      />
+                      <a
+                        href={wechatQrs[account.id]?.imageUrl || `${apiBaseUrl}/wechat/${account.id}/qr.png`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 text-xs font-medium text-green-700 underline"
+                      >
+                        QRコードを開く
+                      </a>
                     </div>
                   )}
                 </div>

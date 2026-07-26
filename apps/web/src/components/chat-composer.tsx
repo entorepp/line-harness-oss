@@ -384,7 +384,7 @@ export default function ChatComposer({
 }: {
   friendId: string
   chatId?: string | null
-  channelType?: 'line' | 'whatsapp' | 'kakao'
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
   onSent?: () => void | Promise<void>
   onError?: (message: string) => void
 }) {
@@ -412,8 +412,9 @@ export default function ChatComposer({
   const dismissedUndoGroupsRef = useRef(new Set<string>())
   const isWhatsApp = channelType === 'whatsapp'
   const isKakao = channelType === 'kakao'
+  const isWeChat = channelType === 'wechat'
   const supportsUndoSend = !isKakao
-  const attachmentsDisabled = isKakao
+  const attachmentsDisabled = isKakao || isWeChat
   const attachmentAccept = isWhatsApp ? WHATSAPP_ATTACHMENT_ACCEPT : DEFAULT_ATTACHMENT_ACCEPT
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
 
@@ -609,7 +610,7 @@ export default function ChatComposer({
 
   function setAttachmentFromFile(file: File) {
     if (attachmentsDisabled) {
-      onError?.('Kakao では現在ファイル・画像送信に未対応です。')
+      onError?.(`${isWeChat ? 'WeChat' : 'Kakao'} では現在ファイル・画像送信に未対応です。`)
       return
     }
 
@@ -891,7 +892,7 @@ export default function ChatComposer({
       if (file) {
         event.preventDefault()
         if (attachmentsDisabled) {
-          onError?.('Kakao では現在ファイル・画像送信に未対応です。')
+          onError?.(`${isWeChat ? 'WeChat' : 'Kakao'} では現在ファイル・画像送信に未対応です。`)
           return
         }
         setAttachmentFromFile(file)
@@ -1069,7 +1070,7 @@ export default function ChatComposer({
             onClick={() => fileInputRef.current?.click()}
             disabled={attachmentsDisabled}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-sm transition-colors hover:bg-[#F1F5F8] disabled:cursor-not-allowed disabled:opacity-50"
-            title={attachmentsDisabled ? 'Kakao では現在添付未対応' : '画像やファイルを追加'}
+            title={attachmentsDisabled ? `${isWeChat ? 'WeChat' : 'Kakao'} では現在添付未対応` : '画像やファイルを追加'}
           >
             ＋
           </button>

@@ -3,7 +3,7 @@ import { jstNow } from './utils.js';
 // LINE Accounts — Multi-Account Management
 // =============================================================================
 
-export type LineAccountChannelType = 'line' | 'whatsapp' | 'kakao';
+export type LineAccountChannelType = 'line' | 'whatsapp' | 'kakao' | 'wechat';
 
 export interface LineAccount {
   id: string;
@@ -17,6 +17,10 @@ export interface LineAccount {
   channel_type: LineAccountChannelType;
   locale: string;
   default_slack_channel: string | null;
+  wechat_encoding_aes_key: string | null;
+  wechat_access_token: string | null;
+  wechat_qr_ticket: string | null;
+  wechat_qr_url: string | null;
   token_expires_at: string | null;
   is_active: number;
   created_at: string;
@@ -31,6 +35,7 @@ export interface CreateLineAccountInput {
   channelType?: LineAccountChannelType;
   locale?: string;
   defaultSlackChannel?: string | null;
+  wechatEncodingAesKey?: string | null;
 }
 
 export async function createLineAccount(
@@ -43,8 +48,8 @@ export async function createLineAccount(
   await db
     .prepare(
       `INSERT INTO line_accounts
-         (id, channel_id, name, channel_access_token, channel_secret, channel_type, locale, default_slack_channel, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+         (id, channel_id, name, channel_access_token, channel_secret, channel_type, locale, default_slack_channel, wechat_encoding_aes_key, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     )
     .bind(
       id,
@@ -55,6 +60,7 @@ export async function createLineAccount(
       input.channelType ?? 'line',
       input.locale ?? 'ja',
       input.defaultSlackChannel ?? null,
+      input.wechatEncodingAesKey ?? null,
       now,
       now,
     )
@@ -97,6 +103,10 @@ export interface UpdateLineAccountInput {
   channel_type?: LineAccountChannelType;
   locale?: string;
   default_slack_channel?: string | null;
+  wechat_encoding_aes_key?: string | null;
+  wechat_access_token?: string | null;
+  wechat_qr_ticket?: string | null;
+  wechat_qr_url?: string | null;
   token_expires_at?: string | null;
   is_active?: number;
 }
@@ -132,6 +142,22 @@ export async function updateLineAccount(
   if ('default_slack_channel' in updates) {
     fields.push('default_slack_channel = ?');
     values.push(updates.default_slack_channel ?? null);
+  }
+  if (updates.wechat_encoding_aes_key !== undefined) {
+    fields.push('wechat_encoding_aes_key = ?');
+    values.push(updates.wechat_encoding_aes_key ?? null);
+  }
+  if (updates.wechat_access_token !== undefined) {
+    fields.push('wechat_access_token = ?');
+    values.push(updates.wechat_access_token ?? null);
+  }
+  if (updates.wechat_qr_ticket !== undefined) {
+    fields.push('wechat_qr_ticket = ?');
+    values.push(updates.wechat_qr_ticket ?? null);
+  }
+  if (updates.wechat_qr_url !== undefined) {
+    fields.push('wechat_qr_url = ?');
+    values.push(updates.wechat_qr_url ?? null);
   }
   if (updates.token_expires_at !== undefined) {
     fields.push('token_expires_at = ?');

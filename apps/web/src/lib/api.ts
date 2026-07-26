@@ -79,6 +79,24 @@ export type KakaoStatus = {
   }>
 }
 
+export type WeChatStatus = {
+  appId: string
+  connected: true
+  apiDomainIpCount: number
+  tokenExpiresAt: string | null
+  encryptedModeReady: boolean
+  qrReady: boolean
+  webhookUrl: string
+  landingUrl: string
+}
+
+export type WeChatQr = {
+  ticket: string
+  url: string
+  imageUrl: string
+  landingUrl: string
+}
+
 export type ApiSendMessageResult = {
   sent?: boolean
   messageId?: string
@@ -116,7 +134,10 @@ export async function fetchApi<T>(path: string, options?: RequestInit & { rawBod
       ...fetchOptions?.headers,
     },
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string; message?: string } | null
+    throw new Error(body?.error || body?.message || `API error: ${res.status}`)
+  }
   return res.json() as Promise<T>
 }
 
@@ -292,15 +313,16 @@ export const api = {
       name: string
       channelAccessToken: string
       channelSecret?: string
-      channelType?: 'line' | 'whatsapp' | 'kakao'
+      channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
       locale?: string
       defaultSlackChannel?: string | null
+      wechatEncodingAesKey?: string | null
     }) =>
       fetchApi<ApiResponse<LineAccount>>('/api/line-accounts', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'channelType' | 'locale' | 'defaultSlackChannel' | 'isActive'>>) =>
+    update: (id: string, data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'wechatEncodingAesKey' | 'channelType' | 'locale' | 'defaultSlackChannel' | 'isActive'>>) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
@@ -311,6 +333,10 @@ export const api = {
       fetchApi<ApiResponse<WhatsAppPhoneStatus>>(`/api/line-accounts/${id}/whatsapp-status`),
     getKakaoStatus: (id: string) =>
       fetchApi<ApiResponse<KakaoStatus>>(`/api/line-accounts/${id}/kakao-status`),
+    getWeChatStatus: (id: string) =>
+      fetchApi<ApiResponse<WeChatStatus>>(`/api/line-accounts/${id}/wechat-status`),
+    generateWeChatQr: (id: string) =>
+      fetchApi<ApiResponse<WeChatQr>>(`/api/line-accounts/${id}/wechat-qr`, { method: 'POST' }),
     updateWhatsAppProfile: (id: string, data: WhatsAppBusinessProfile) =>
       fetchApi<ApiResponse<WhatsAppBusinessProfile>>(`/api/line-accounts/${id}/whatsapp-profile`, {
         method: 'PUT',

@@ -279,11 +279,13 @@ export interface LineAccount {
   /** アカウント名 */
   name: string;
   /** チャネル種別 */
-  channelType?: "line" | "whatsapp" | "kakao";
+  channelType?: "line" | "whatsapp" | "kakao" | "wechat";
   /** Provider access token or API key */
   channelAccessToken: string;
   /** Provider secret used for webhook verification */
   channelSecret: string;
+  /** WeChat callback message encryption key */
+  wechatEncodingAesKey?: string | null;
   /** このアカウント向けの通知・文言ロケール */
   locale?: string;
   /** 個別Slack未紐付け時のデフォルト通知先 */

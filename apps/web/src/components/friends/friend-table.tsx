@@ -28,6 +28,8 @@ export default function FriendTable({ friends, allTags, onRefresh }: FriendTable
       ? 'WhatsApp番号'
       : selectedAccount?.channelType === 'kakao'
         ? 'Kakao ID'
+        : selectedAccount?.channelType === 'wechat'
+          ? 'WeChat OpenID'
         : 'LINE ユーザーID'
 
   const toggleExpand = (id: string) => {

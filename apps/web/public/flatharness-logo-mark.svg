@@ -1,0 +1,19 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="flatharnessGradient" x1="8" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#20D981"/>
+      <stop offset="0.55" stop-color="#0D9488"/>
+      <stop offset="1" stop-color="#0284C7"/>
+    </linearGradient>
+    <linearGradient id="flatharnessGlow" x1="35" y1="5" x2="55" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="white" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="18" fill="url(#flatharnessGradient)"/>
+  <circle cx="48" cy="15" r="14" fill="url(#flatharnessGlow)"/>
+  <path d="M20 47V17H45M20 32H38" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="45" cy="17" r="4" fill="white"/>
+  <circle cx="38" cy="32" r="4" fill="white"/>
+  <circle cx="20" cy="47" r="4" fill="white"/>
+</svg>

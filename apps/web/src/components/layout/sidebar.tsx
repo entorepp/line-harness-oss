@@ -68,18 +68,19 @@ function AccountAvatar({ account, size = 32 }: { account: AccountWithStats; size
   }
   const isWhatsApp = account.channelType === 'whatsapp'
   const isKakao = account.channelType === 'kakao'
+  const isWeChat = account.channelType === 'wechat'
   return (
     <div
       className="rounded-full flex items-center justify-center text-white font-bold shrink-0"
       style={{
         width: size,
         height: size,
-        backgroundColor: isWhatsApp ? '#25D366' : isKakao ? '#FEE500' : '#06C755',
+        backgroundColor: isWhatsApp ? '#25D366' : isKakao ? '#FEE500' : isWeChat ? '#07C160' : '#06C755',
         color: isKakao ? '#111827' : '#ffffff',
         fontSize: size * 0.4,
       }}
     >
-      {isWhatsApp ? 'W' : isKakao ? 'K' : displayName.charAt(0)}
+      {isWhatsApp ? 'W' : isKakao ? 'K' : isWeChat ? '微' : displayName.charAt(0)}
     </div>
   )
 }
@@ -168,13 +169,15 @@ function NavIcon({ d }: { d: string }) {
   )
 }
 
-const whatsappVisiblePaths = new Set(['/', '/friends', '/chats', '/accounts'])
+const limitedChannelVisiblePaths = new Set(['/', '/friends', '/chats', '/accounts'])
 
 export default function Sidebar() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const { selectedAccount } = useAccount()
   const isWhatsApp = selectedAccount?.channelType === 'whatsapp'
+  const isWeChat = selectedAccount?.channelType === 'wechat'
+  const isLimitedChannel = isWhatsApp || isWeChat
 
   useEffect(() => { setIsOpen(false) }, [pathname])
   useEffect(() => {
@@ -190,13 +193,15 @@ export default function Sidebar() {
       <div className="px-6 py-5 border-b border-gray-200">
         <div className="flex items-center gap-3">
           <img
-            src="/lineharness-logo-mark.svg"
-            alt="LINEharness"
+            src="/flatharness-logo-mark.svg"
+            alt="Flat Harness"
             className="w-9 h-9 shrink-0"
           />
           <div>
-            <p className="text-sm font-bold text-gray-900 leading-tight tracking-tight">LINEharness</p>
-            <p className="text-xs text-green-700/75 font-medium">Simple CRM Console</p>
+            <p className="text-sm font-bold text-gray-900 leading-tight tracking-tight">
+              Flat <span className="text-teal-600">Harness</span>
+            </p>
+            <p className="text-xs text-teal-700/75 font-medium">Messaging Console</p>
           </div>
         </div>
       </div>
@@ -207,13 +212,13 @@ export default function Sidebar() {
       {/* ナビゲーション */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {menuSections.map((section, si) => {
-          const visibleItems = isWhatsApp
-            ? section.items.filter((item) => whatsappVisiblePaths.has(item.href))
+          const visibleItems = isLimitedChannel
+            ? section.items.filter((item) => limitedChannelVisiblePaths.has(item.href))
             : section.items
           if (visibleItems.length === 0) return null
           return (
           <div key={si}>
-            {section.label && !isWhatsApp && (
+            {section.label && !isLimitedChannel && (
               <div className="pt-5 pb-2 px-3">
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{section.label}</p>
               </div>
@@ -262,7 +267,7 @@ export default function Sidebar() {
 
       {/* フッター */}
       <div className="px-6 py-4 border-t border-gray-200 space-y-3">
-        <p className="text-xs text-gray-400">LINE Harness v0.1</p>
+        <p className="text-xs text-gray-400">Flat Harness v0.1</p>
         <button
           onClick={() => {
             localStorage.removeItem('lh_api_key')
@@ -297,11 +302,13 @@ export default function Sidebar() {
         </button>
         <div className="flex items-center gap-2">
           <img
-            src="/lineharness-logo-mark.svg"
-            alt="LINEharness"
+            src="/flatharness-logo-mark.svg"
+            alt="Flat Harness"
             className="w-7 h-7 shrink-0"
           />
-          <p className="text-sm font-bold text-gray-900 tracking-tight">LINEharness</p>
+          <p className="text-sm font-bold text-gray-900 tracking-tight">
+            Flat <span className="text-teal-600">Harness</span>
+          </p>
         </div>
       </div>
 

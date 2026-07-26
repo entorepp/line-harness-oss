@@ -11,11 +11,13 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path === '/webhook/whatsapp' ||
     path === '/webhook/kakao' ||
     path === '/webhook/kakao/messages' ||
+    path.startsWith('/webhook/wechat/') ||
     path === '/docs' ||
     path === '/openapi.json' ||
     path === '/api/affiliates/click' ||
     path.startsWith('/t/') ||
     path.startsWith('/r/') ||
+    path.startsWith('/wechat/') ||
     path.startsWith('/api/liff/') ||
     path.startsWith('/auth/') ||
     path === '/api/integrations/stripe/webhook' ||

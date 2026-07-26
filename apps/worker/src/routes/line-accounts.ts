@@ -9,6 +9,7 @@ import {
 import type { LineAccount as DbLineAccount } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fetchKakaoStatus } from '../services/kakao.js';
+import { fetchWeChatStatus, generateWeChatQr } from '../services/wechat.js';
 
 const lineAccounts = new Hono<Env>();
 const GRAPH_API = 'https://graph.facebook.com/v25.0';
@@ -33,7 +34,7 @@ type WhatsAppPhoneStatus = {
   messaging_limit_tier?: string;
 };
 
-type ChannelType = 'line' | 'whatsapp' | 'kakao';
+type ChannelType = 'line' | 'whatsapp' | 'kakao' | 'wechat';
 
 function serializeLineAccount(row: DbLineAccount) {
   return {
@@ -55,6 +56,7 @@ function serializeLineAccountFull(row: DbLineAccount) {
     ...serializeLineAccount(row),
     channelAccessToken: row.channel_access_token,
     channelSecret: row.channel_secret,
+    wechatEncodingAesKey: row.wechat_encoding_aes_key,
   };
 }
 
@@ -112,6 +114,13 @@ async function getKakaoAccountOrThrow(db: D1Database, id: string): Promise<DbLin
   const account = await getLineAccountById(db, id);
   if (!account) throw new Response('Channel account not found', { status: 404 });
   if (account.channel_type !== 'kakao') throw new Response('Account is not Kakao', { status: 400 });
+  return account;
+}
+
+async function getWeChatAccountOrThrow(db: D1Database, id: string): Promise<DbLineAccount> {
+  const account = await getLineAccountById(db, id);
+  if (!account) throw new Response('Channel account not found', { status: 404 });
+  if (account.channel_type !== 'wechat') throw new Response('Account is not WeChat', { status: 400 });
   return account;
 }
 
@@ -174,10 +183,11 @@ lineAccounts.get('/api/line-accounts', async (c) => {
       items.map(async (item) => {
         const isWhatsApp = item.channel_type === 'whatsapp';
         const isKakao = item.channel_type === 'kakao';
+        const isWeChat = item.channel_type === 'wechat';
         const [profile, friendCount, scenarioCount, msgCount] = await Promise.all([
           isWhatsApp
             ? fetchWhatsAppPhoneProfile(item.channel_id, item.channel_access_token)
-            : isKakao
+            : isKakao || isWeChat
               ? { displayName: item.name, pictureUrl: undefined, basicId: item.channel_id }
               : fetchBotProfile(item.channel_access_token),
           db.prepare(`SELECT COUNT(*) as count FROM friends WHERE is_following = 1 AND line_account_id = ?`).bind(item.id).first<{ count: number }>(),
@@ -280,6 +290,49 @@ lineAccounts.get('/api/line-accounts/:id/kakao-status', async (c) => {
   }
 });
 
+lineAccounts.get('/api/line-accounts/:id/wechat-status', async (c) => {
+  try {
+    const account = await getWeChatAccountOrThrow(c.env.DB, c.req.param('id'));
+    const status = await fetchWeChatStatus(c.env.DB, c.env, account);
+    return c.json({
+      success: true,
+      data: {
+        ...status,
+        webhookUrl: `${c.env.WORKER_URL || new URL(c.req.url).origin}/webhook/wechat/${account.id}`,
+        landingUrl: `${c.env.WORKER_URL || new URL(c.req.url).origin}/wechat/${account.id}`,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Response) {
+      return c.json({ success: false, error: await err.text() }, err.status as 400 | 404);
+    }
+    console.error('GET /api/line-accounts/:id/wechat-status error:', err);
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Internal server error' }, 500);
+  }
+});
+
+lineAccounts.post('/api/line-accounts/:id/wechat-qr', async (c) => {
+  try {
+    const account = await getWeChatAccountOrThrow(c.env.DB, c.req.param('id'));
+    const qr = await generateWeChatQr(c.env.DB, c.env, account);
+    const baseUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+    return c.json({
+      success: true,
+      data: {
+        ...qr,
+        imageUrl: `${baseUrl}/wechat/${account.id}/qr.png`,
+        landingUrl: `${baseUrl}/wechat/${account.id}`,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Response) {
+      return c.json({ success: false, error: await err.text() }, err.status as 400 | 404);
+    }
+    console.error('POST /api/line-accounts/:id/wechat-qr error:', err);
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Internal server error' }, 500);
+  }
+});
+
 // POST /api/line-accounts - create
 lineAccounts.post('/api/line-accounts', async (c) => {
   try {
@@ -291,6 +344,7 @@ lineAccounts.post('/api/line-accounts', async (c) => {
       channelType?: ChannelType;
       locale?: string;
       defaultSlackChannel?: string | null;
+      wechatEncodingAesKey?: string | null;
     }>();
 
     const channelType: ChannelType =
@@ -298,9 +352,11 @@ lineAccounts.post('/api/line-accounts', async (c) => {
         ? 'whatsapp'
         : body.channelType === 'kakao'
           ? 'kakao'
+          : body.channelType === 'wechat'
+            ? 'wechat'
           : 'line';
 
-    const secretRequired = channelType === 'line' || channelType === 'kakao';
+    const secretRequired = channelType === 'line' || channelType === 'kakao' || channelType === 'wechat';
     if (!body.channelId || !body.name || !body.channelAccessToken || (secretRequired && !body.channelSecret)) {
       return c.json(
         {
@@ -310,16 +366,28 @@ lineAccounts.post('/api/line-accounts', async (c) => {
               ? 'channelId, name, and channelAccessToken are required'
               : channelType === 'kakao'
                 ? 'channelId, name, channelAccessToken, and channelSecret are required for Kakao'
+                : channelType === 'wechat'
+                  ? 'AppID, account name, AppSecret, and Token are required for WeChat'
                 : 'channelId, name, channelAccessToken, and channelSecret are required',
         },
         400,
       );
     }
 
+    if (channelType === 'wechat') {
+      if (body.channelSecret!.length < 3 || body.channelSecret!.length > 32) {
+        return c.json({ success: false, error: 'WeChat Token must be 3 to 32 characters' }, 400);
+      }
+      if (!body.wechatEncodingAesKey || body.wechatEncodingAesKey.trim().length !== 43) {
+        return c.json({ success: false, error: 'WeChat EncodingAESKey must be 43 characters' }, 400);
+      }
+    }
+
     const account = await createLineAccount(c.env.DB, {
       ...body,
       channelType,
       channelSecret: body.channelSecret ?? '',
+      wechatEncodingAesKey: channelType === 'wechat' ? body.wechatEncodingAesKey?.trim() || null : null,
     });
     return c.json({ success: true, data: serializeLineAccountFull(account) }, 201);
   } catch (err) {
@@ -339,6 +407,7 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       channelType?: ChannelType;
       locale?: string;
       defaultSlackChannel?: string | null;
+      wechatEncodingAesKey?: string | null;
       isActive?: boolean;
     }>();
 
@@ -349,6 +418,9 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       channel_type: body.channelType,
       locale: body.locale,
       default_slack_channel: body.defaultSlackChannel,
+      wechat_encoding_aes_key: body.wechatEncodingAesKey,
+      wechat_access_token: body.channelAccessToken !== undefined ? null : undefined,
+      token_expires_at: body.channelAccessToken !== undefined ? null : undefined,
       is_active: body.isActive !== undefined ? (body.isActive ? 1 : 0) : undefined,
     });
 

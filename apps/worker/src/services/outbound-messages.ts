@@ -1,8 +1,10 @@
 import { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
+import { getLineAccountById } from '@line-crm/db';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
 import { dispatchKakaoBizMessage } from './kakao.js';
+import { dispatchWeChatText } from './wechat.js';
 
 export interface MessagingFriendContext {
   id: string;
@@ -333,6 +335,22 @@ function resolveKakaoRecipient(friend: MessagingFriendContext): string {
   return parts.length >= 4 ? parts.slice(3).join(':') : friend.line_user_id;
 }
 
+function resolveWeChatRecipient(friend: MessagingFriendContext): string {
+  if (friend.metadata) {
+    try {
+      const parsed = JSON.parse(friend.metadata) as Record<string, unknown>;
+      if (typeof parsed.openId === 'string' && parsed.openId.trim()) {
+        return parsed.openId.trim();
+      }
+    } catch {
+      // fall back to stored identifier
+    }
+  }
+
+  const parts = friend.line_user_id.split(':');
+  return parts.length >= 3 ? parts.slice(2).join(':') : friend.line_user_id;
+}
+
 export function buildWhatsAppMessagePayload(
   to: string,
   input: OutboundMessageInput,
@@ -432,6 +450,30 @@ export async function dispatchOutboundMessage(opts: {
       messageType,
       storedContent: content,
     };
+  }
+
+  if (opts.friend.channel_type === 'wechat') {
+    if (messageType !== 'text') {
+      throw new Error('WeChat account currently supports only text for manual or scheduled sends');
+    }
+    if (!opts.friend.line_account_id) {
+      throw new Error('No WeChat account configured for this friend');
+    }
+
+    const account = await getLineAccountById(opts.env.DB, opts.friend.line_account_id);
+    if (!account || account.channel_type !== 'wechat') {
+      throw new Error('WeChat account is unavailable');
+    }
+    const content = serializeOutboundContent(opts.input);
+    await dispatchWeChatText({
+      db: opts.env.DB,
+      env: opts.env,
+      account,
+      to: resolveWeChatRecipient(opts.friend),
+      text: content,
+    });
+
+    return { messageType, storedContent: content };
   }
 
   const accessToken =
