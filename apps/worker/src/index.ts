@@ -38,6 +38,7 @@ import { uploads } from './routes/uploads.js';
 import { waWebhook } from './routes/wa-webhook.js';
 import { kakaoWebhook } from './routes/kakao-webhook.js';
 import { wechatWebhook } from './routes/wechat-webhook.js';
+import { wechatKfWebhook } from './routes/wechat-kf-webhook.js';
 
 export type Env = {
   Bindings: {
@@ -63,6 +64,7 @@ export type Env = {
     KAKAO_BIZMESSAGE_API_KEY?: string;
     KAKAO_MESSAGE_WEBHOOK_SECRET?: string;
     WECHAT_API_BASE_URL?: string;
+    WECOM_API_BASE_URL?: string;
   };
 };
 
@@ -126,6 +128,7 @@ app.route('/', uploads);
 app.route('/', waWebhook);
 app.route('/', kakaoWebhook);
 app.route('/', wechatWebhook);
+app.route('/', wechatKfWebhook);
 
 // Short link: /r/:ref → record click with referrer → redirect to LINE add-friend URL
 // Also supports /r/ (no ref) as a universal tracking redirect

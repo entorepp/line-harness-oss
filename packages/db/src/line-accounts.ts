@@ -21,6 +21,16 @@ export interface LineAccount {
   wechat_access_token: string | null;
   wechat_qr_ticket: string | null;
   wechat_qr_url: string | null;
+  wechat_kf_corp_id: string | null;
+  wechat_kf_secret: string | null;
+  wechat_kf_open_kfid: string | null;
+  wechat_kf_callback_token: string | null;
+  wechat_kf_encoding_aes_key: string | null;
+  wechat_kf_access_token: string | null;
+  wechat_kf_token_expires_at: string | null;
+  wechat_kf_contact_url: string | null;
+  wechat_kf_sync_cursor: string | null;
+  wechat_follow_url: string | null;
   token_expires_at: string | null;
   is_active: number;
   created_at: string;
@@ -107,6 +117,16 @@ export interface UpdateLineAccountInput {
   wechat_access_token?: string | null;
   wechat_qr_ticket?: string | null;
   wechat_qr_url?: string | null;
+  wechat_kf_corp_id?: string | null;
+  wechat_kf_secret?: string | null;
+  wechat_kf_open_kfid?: string | null;
+  wechat_kf_callback_token?: string | null;
+  wechat_kf_encoding_aes_key?: string | null;
+  wechat_kf_access_token?: string | null;
+  wechat_kf_token_expires_at?: string | null;
+  wechat_kf_contact_url?: string | null;
+  wechat_kf_sync_cursor?: string | null;
+  wechat_follow_url?: string | null;
   token_expires_at?: string | null;
   is_active?: number;
 }
@@ -158,6 +178,46 @@ export async function updateLineAccount(
   if (updates.wechat_qr_url !== undefined) {
     fields.push('wechat_qr_url = ?');
     values.push(updates.wechat_qr_url ?? null);
+  }
+  if (updates.wechat_kf_corp_id !== undefined) {
+    fields.push('wechat_kf_corp_id = ?');
+    values.push(updates.wechat_kf_corp_id ?? null);
+  }
+  if (updates.wechat_kf_secret !== undefined) {
+    fields.push('wechat_kf_secret = ?');
+    values.push(updates.wechat_kf_secret ?? null);
+  }
+  if (updates.wechat_kf_open_kfid !== undefined) {
+    fields.push('wechat_kf_open_kfid = ?');
+    values.push(updates.wechat_kf_open_kfid ?? null);
+  }
+  if (updates.wechat_kf_callback_token !== undefined) {
+    fields.push('wechat_kf_callback_token = ?');
+    values.push(updates.wechat_kf_callback_token ?? null);
+  }
+  if (updates.wechat_kf_encoding_aes_key !== undefined) {
+    fields.push('wechat_kf_encoding_aes_key = ?');
+    values.push(updates.wechat_kf_encoding_aes_key ?? null);
+  }
+  if (updates.wechat_kf_access_token !== undefined) {
+    fields.push('wechat_kf_access_token = ?');
+    values.push(updates.wechat_kf_access_token ?? null);
+  }
+  if (updates.wechat_kf_token_expires_at !== undefined) {
+    fields.push('wechat_kf_token_expires_at = ?');
+    values.push(updates.wechat_kf_token_expires_at ?? null);
+  }
+  if (updates.wechat_kf_contact_url !== undefined) {
+    fields.push('wechat_kf_contact_url = ?');
+    values.push(updates.wechat_kf_contact_url ?? null);
+  }
+  if (updates.wechat_kf_sync_cursor !== undefined) {
+    fields.push('wechat_kf_sync_cursor = ?');
+    values.push(updates.wechat_kf_sync_cursor ?? null);
+  }
+  if (updates.wechat_follow_url !== undefined) {
+    fields.push('wechat_follow_url = ?');
+    values.push(updates.wechat_follow_url ?? null);
   }
   if (updates.token_expires_at !== undefined) {
     fields.push('token_expires_at = ?');

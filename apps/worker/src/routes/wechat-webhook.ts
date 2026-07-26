@@ -4,6 +4,7 @@ import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
 import {
   decryptWeChatPayload,
+  dispatchWeChatText,
   readWeChatXmlValue,
   verifyWeChatSignature,
 } from '../services/wechat.js';
@@ -14,10 +15,15 @@ type WeChatAccount = {
   id: string;
   channel_id: string;
   name: string;
+  channel_access_token: string;
   channel_secret: string;
   wechat_encoding_aes_key: string | null;
+  wechat_access_token: string | null;
   wechat_qr_ticket: string | null;
   wechat_qr_url: string | null;
+  wechat_kf_contact_url: string | null;
+  token_expires_at: string | null;
+  locale: string;
   default_slack_channel: string | null;
 };
 
@@ -37,8 +43,10 @@ type NormalizedWeChatMessage = {
 async function resolveWeChatAccount(db: D1Database, id: string): Promise<WeChatAccount | null> {
   return db
     .prepare(
-      `SELECT id, channel_id, name, channel_secret, wechat_encoding_aes_key,
-              wechat_qr_ticket, wechat_qr_url, default_slack_channel
+      `SELECT id, channel_id, name, channel_access_token, channel_secret,
+              wechat_encoding_aes_key, wechat_access_token,
+              wechat_qr_ticket, wechat_qr_url, wechat_kf_contact_url,
+              token_expires_at, locale, default_slack_channel
          FROM line_accounts
         WHERE id = ? AND channel_type = 'wechat' AND is_active = 1
         LIMIT 1`,
@@ -409,6 +417,20 @@ wechatWebhook.post('/webhook/wechat/:accountId', async (c) => {
 
   try {
     await persistWeChatMessage(c.env, account, message);
+    if (message.metadata.event === 'subscribe') {
+      c.executionCtx.waitUntil(
+        dispatchWeChatText({
+          db: c.env.DB,
+          env: c.env,
+          account,
+          to: message.openId,
+          text:
+            '感谢关注“无障碍旅游就选自在旅游”。请返回咨询窗口，继续发送您的出行日期、人数和轮椅使用情况。',
+        }).catch((err) => {
+          console.error('WeChat subscribe auto reply failed:', err);
+        }),
+      );
+    }
     return c.text('success');
   } catch (err) {
     console.error('WeChat webhook persistence failed:', err);
@@ -444,13 +466,15 @@ wechatWebhook.get('/wechat/:accountId/qr.png', async (c) => {
 
 wechatWebhook.get('/wechat/:accountId', async (c) => {
   const account = await resolveWeChatAccount(c.env.DB, c.req.param('accountId'));
-  if (!account?.wechat_qr_ticket || !account.wechat_qr_url) {
-    return c.html('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>WeChat</title><p>QR code is not ready.</p></html>', 404);
+  if (!account || (!account.wechat_kf_contact_url && !account.wechat_qr_ticket)) {
+    return c.html('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>WeChat</title><p>WeChat contact is not ready.</p></html>', 404);
   }
 
   const name = escapeHtml(account.name);
   const qrUrl = `/wechat/${encodeURIComponent(account.id)}/qr.png`;
-  const openUrl = escapeHtml(account.wechat_qr_url);
+  const contactUrl = `/wechat/${encodeURIComponent(account.id)}/contact`;
+  const hasContactUrl = Boolean(account.wechat_kf_contact_url);
+  const hasQr = Boolean(account.wechat_qr_ticket);
   return c.html(`<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -459,10 +483,10 @@ wechatWebhook.get('/wechat/:accountId', async (c) => {
   <meta name="robots" content="noindex,nofollow">
   <title>${name} - WeChat</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f7f4;color:#13241a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;padding:24px}.card{width:min(100%,420px);background:#fff;border:1px solid #e2ebe5;border-radius:24px;padding:34px 28px;text-align:center;box-shadow:0 18px 50px rgba(18,55,34,.08)}.mark{width:56px;height:56px;border-radius:18px;background:#07c160;color:#fff;display:grid;place-items:center;font-size:28px;font-weight:800;margin:0 auto 18px}h1{font-size:22px;margin:0 0 10px}.lead{font-size:14px;line-height:1.7;color:#607066;margin:0 0 20px}.qr{width:min(100%,280px);aspect-ratio:1;border:1px solid #e6ece8;border-radius:18px;padding:10px;background:#fff}.button{display:block;margin-top:20px;padding:14px 18px;border-radius:12px;background:#07c160;color:#fff;text-decoration:none;font-weight:700}.note{font-size:12px;color:#8a978f;line-height:1.6;margin:16px 0 0}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f7f4;color:#13241a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;padding:24px}.card{width:min(100%,420px);background:#fff;border:1px solid #e2ebe5;border-radius:24px;padding:34px 28px;text-align:center;box-shadow:0 18px 50px rgba(18,55,34,.08)}.mark{width:56px;height:56px;border-radius:18px;background:#07c160;color:#fff;display:grid;place-items:center;font-size:28px;font-weight:800;margin:0 auto 18px}h1{font-size:22px;margin:0 0 10px}.lead{font-size:14px;line-height:1.7;color:#607066;margin:0 0 20px}.qr{width:min(100%,240px);aspect-ratio:1;border:1px solid #e6ece8;border-radius:18px;padding:10px;background:#fff}.button{display:block;margin:0 0 20px;padding:15px 18px;border-radius:12px;background:#07c160;color:#fff;text-decoration:none;font-weight:700}.divider{display:flex;align-items:center;gap:12px;color:#9aa69e;font-size:12px;margin:4px 0 16px}.divider:before,.divider:after{content:"";height:1px;background:#e6ece8;flex:1}.note{font-size:12px;color:#8a978f;line-height:1.6;margin:16px 0 0}
   </style>
 </head>
-<body><main class="card"><div class="mark">微</div><h1>${name}</h1><p class="lead">使用微信扫描二维码，关注公众号后即可开始咨询。</p><img class="qr" src="${qrUrl}" alt="${name} WeChat QR code"><a class="button" href="${openUrl}">在微信中打开</a><p class="note">电脑：使用手机微信扫码<br>手机：点击上方按钮后按微信提示操作</p></main></body>
+<body><main class="card"><div class="mark">微</div><h1>${name}</h1><p class="lead">${hasContactUrl ? '点击下方按钮，可直接进入微信咨询。进入后请按提示关注官方账号，以便继续接收行程和报价通知。' : '使用微信扫描二维码，关注官方账号后即可开始咨询。'}</p>${hasContactUrl ? `<a class="button" href="${contactUrl}">在微信中直接咨询</a>` : ''}${hasContactUrl && hasQr ? '<div class="divider">或扫码关注</div>' : ''}${hasQr ? `<img class="qr" src="${qrUrl}" alt="${name} WeChat QR code">` : ''}<p class="note">${hasContactUrl ? '手机：点击按钮直接打开微信客服<br>电脑：可使用手机微信扫描二维码' : '请使用手机微信扫描二维码'}</p></main></body>
 </html>`);
 });
 

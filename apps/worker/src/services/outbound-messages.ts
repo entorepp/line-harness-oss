@@ -4,6 +4,7 @@ import { getLineAccountById } from '@line-crm/db';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
 import { dispatchKakaoBizMessage } from './kakao.js';
+import { dispatchWeChatKfText } from './wechat-kf.js';
 import { dispatchWeChatText } from './wechat.js';
 
 export interface MessagingFriendContext {
@@ -351,6 +352,41 @@ function resolveWeChatRecipient(friend: MessagingFriendContext): string {
   return parts.length >= 3 ? parts.slice(2).join(':') : friend.line_user_id;
 }
 
+function parseFriendMetadata(friend: MessagingFriendContext): Record<string, unknown> {
+  if (!friend.metadata) return {};
+  try {
+    const parsed = JSON.parse(friend.metadata);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveWeChatKfRecipient(friend: MessagingFriendContext): {
+  externalUserId: string;
+  openKfid: string | undefined;
+} {
+  const metadata = parseFriendMetadata(friend);
+  const externalUserId =
+    typeof metadata.externalUserId === 'string' && metadata.externalUserId.trim()
+      ? metadata.externalUserId.trim()
+      : friend.line_user_id.split(':').slice(2).join(':');
+  const openKfid =
+    typeof metadata.openKfid === 'string' && metadata.openKfid.trim()
+      ? metadata.openKfid.trim()
+      : friend.line_user_id.startsWith('wechat-kf:')
+        ? friend.line_user_id.split(':')[1]
+        : undefined;
+  return { externalUserId, openKfid };
+}
+
+function isWeChatKfFriend(friend: MessagingFriendContext): boolean {
+  const metadata = parseFriendMetadata(friend);
+  return metadata.provider === 'wechat_kf' || friend.line_user_id.startsWith('wechat-kf:');
+}
+
 export function buildWhatsAppMessagePayload(
   to: string,
   input: OutboundMessageInput,
@@ -465,13 +501,28 @@ export async function dispatchOutboundMessage(opts: {
       throw new Error('WeChat account is unavailable');
     }
     const content = serializeOutboundContent(opts.input);
-    await dispatchWeChatText({
-      db: opts.env.DB,
-      env: opts.env,
-      account,
-      to: resolveWeChatRecipient(opts.friend),
-      text: content,
-    });
+    if (isWeChatKfFriend(opts.friend)) {
+      const recipient = resolveWeChatKfRecipient(opts.friend);
+      if (!recipient.externalUserId) {
+        throw new Error('WeChat Customer Service recipient is unavailable');
+      }
+      await dispatchWeChatKfText({
+        db: opts.env.DB,
+        env: opts.env,
+        account,
+        externalUserId: recipient.externalUserId,
+        openKfid: recipient.openKfid,
+        text: content,
+      });
+    } else {
+      await dispatchWeChatText({
+        db: opts.env.DB,
+        env: opts.env,
+        account,
+        to: resolveWeChatRecipient(opts.friend),
+        text: content,
+      });
+    }
 
     return { messageType, storedContent: content };
   }

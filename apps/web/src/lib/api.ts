@@ -97,6 +97,34 @@ export type WeChatQr = {
   landingUrl: string
 }
 
+export type WeChatKfStatus = {
+  configured: boolean
+  connected: boolean
+  corpId?: string
+  openKfid?: string | null
+  accountName?: string | null
+  accountAvatar?: string | null
+  availableAccounts?: Array<{
+    openKfid: string
+    name: string | null
+    avatar: string | null
+  }>
+  tokenExpiresAt?: string | null
+  openKfidReady: boolean
+  callbackReady: boolean
+  contactUrlReady: boolean
+  followUrlReady: boolean
+  callbackUrl: string
+  directUrl: string
+  landingUrl: string
+}
+
+export type WeChatKfLink = {
+  providerUrl: string
+  directUrl: string
+  landingUrl: string
+}
+
 export type ApiSendMessageResult = {
   sent?: boolean
   messageId?: string
@@ -322,7 +350,26 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'wechatEncodingAesKey' | 'channelType' | 'locale' | 'defaultSlackChannel' | 'isActive'>>) =>
+    update: (
+      id: string,
+      data: Partial<Pick<
+        LineAccount,
+        | 'name'
+        | 'channelAccessToken'
+        | 'channelSecret'
+        | 'wechatEncodingAesKey'
+        | 'wechatKfCorpId'
+        | 'wechatKfSecret'
+        | 'wechatKfOpenKfid'
+        | 'wechatKfCallbackToken'
+        | 'wechatKfEncodingAesKey'
+        | 'wechatFollowUrl'
+        | 'channelType'
+        | 'locale'
+        | 'defaultSlackChannel'
+        | 'isActive'
+      >>,
+    ) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
@@ -337,6 +384,13 @@ export const api = {
       fetchApi<ApiResponse<WeChatStatus>>(`/api/line-accounts/${id}/wechat-status`),
     generateWeChatQr: (id: string) =>
       fetchApi<ApiResponse<WeChatQr>>(`/api/line-accounts/${id}/wechat-qr`, { method: 'POST' }),
+    getWeChatKfStatus: (id: string) =>
+      fetchApi<ApiResponse<WeChatKfStatus>>(`/api/line-accounts/${id}/wechat-kf-status`),
+    generateWeChatKfLink: (id: string, scene = 'flat-harness') =>
+      fetchApi<ApiResponse<WeChatKfLink>>(`/api/line-accounts/${id}/wechat-kf-link`, {
+        method: 'POST',
+        body: JSON.stringify({ scene }),
+      }),
     updateWhatsAppProfile: (id: string, data: WhatsAppBusinessProfile) =>
       fetchApi<ApiResponse<WhatsAppBusinessProfile>>(`/api/line-accounts/${id}/whatsapp-profile`, {
         method: 'PUT',

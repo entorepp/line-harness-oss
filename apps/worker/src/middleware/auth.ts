@@ -12,6 +12,7 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path === '/webhook/kakao' ||
     path === '/webhook/kakao/messages' ||
     path.startsWith('/webhook/wechat/') ||
+    path.startsWith('/webhook/wechat-kf/') ||
     path === '/docs' ||
     path === '/openapi.json' ||
     path === '/api/affiliates/click' ||

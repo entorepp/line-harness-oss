@@ -1,7 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { api, type KakaoStatus, type WeChatQr, type WeChatStatus, type WhatsAppBusinessProfile, type WhatsAppPhoneStatus } from '@/lib/api'
+import {
+  api,
+  type KakaoStatus,
+  type WeChatKfStatus,
+  type WeChatQr,
+  type WeChatStatus,
+  type WhatsAppBusinessProfile,
+  type WhatsAppPhoneStatus,
+} from '@/lib/api'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 
@@ -62,6 +70,24 @@ type WhatsAppProfileForm = {
   vertical: string
 }
 
+type WeChatKfForm = {
+  corpId: string
+  secret: string
+  openKfid: string
+  callbackToken: string
+  encodingAesKey: string
+  followUrl: string
+}
+
+const emptyWeChatKfForm: WeChatKfForm = {
+  corpId: '',
+  secret: '',
+  openKfid: '',
+  callbackToken: '',
+  encodingAesKey: '',
+  followUrl: '',
+}
+
 const emptyWhatsAppProfileForm: WhatsAppProfileForm = {
   about: '',
   address: '',
@@ -113,6 +139,13 @@ export default function AccountsPage() {
   const [loadingWeChatStatusAccountId, setLoadingWeChatStatusAccountId] = useState<string | null>(null)
   const [wechatQrs, setWeChatQrs] = useState<Record<string, WeChatQr>>({})
   const [generatingWeChatQrAccountId, setGeneratingWeChatQrAccountId] = useState<string | null>(null)
+  const [openWeChatKfAccountId, setOpenWeChatKfAccountId] = useState<string | null>(null)
+  const [wechatKfForms, setWeChatKfForms] = useState<Record<string, WeChatKfForm>>({})
+  const [wechatKfStatuses, setWeChatKfStatuses] = useState<Record<string, WeChatKfStatus>>({})
+  const [wechatKfErrors, setWeChatKfErrors] = useState<Record<string, string>>({})
+  const [loadingWeChatKfAccountId, setLoadingWeChatKfAccountId] = useState<string | null>(null)
+  const [savingWeChatKfAccountId, setSavingWeChatKfAccountId] = useState<string | null>(null)
+  const [generatingWeChatKfLinkAccountId, setGeneratingWeChatKfLinkAccountId] = useState<string | null>(null)
   const [form, setForm] = useState({
     channelType: 'line' as ChannelType,
     channelId: '',
@@ -356,6 +389,109 @@ export default function AccountsPage() {
       }))
     }
     setGeneratingWeChatQrAccountId(null)
+  }
+
+  const updateWeChatKfForm = (accountId: string, patch: Partial<WeChatKfForm>) => {
+    setWeChatKfForms((prev) => ({
+      ...prev,
+      [accountId]: {
+        ...emptyWeChatKfForm,
+        ...prev[accountId],
+        ...patch,
+      },
+    }))
+  }
+
+  const loadWeChatKfStatus = async (accountId: string) => {
+    setLoadingWeChatKfAccountId(accountId)
+    setWeChatKfErrors((prev) => ({ ...prev, [accountId]: '' }))
+    try {
+      const res = await api.lineAccounts.getWeChatKfStatus(accountId)
+      if (!res.success) throw new Error(res.error || '微信客服の接続確認に失敗しました')
+      setWeChatKfStatuses((prev) => ({ ...prev, [accountId]: res.data }))
+      if (res.data.openKfid) {
+        updateWeChatKfForm(accountId, { openKfid: res.data.openKfid })
+      }
+    } catch (err) {
+      setWeChatKfErrors((prev) => ({
+        ...prev,
+        [accountId]: err instanceof Error ? err.message : '微信客服の接続確認に失敗しました',
+      }))
+    } finally {
+      setLoadingWeChatKfAccountId(null)
+    }
+  }
+
+  const openWeChatKfConfig = async (accountId: string) => {
+    if (openWeChatKfAccountId === accountId) {
+      setOpenWeChatKfAccountId(null)
+      return
+    }
+    setOpenWeChatKfAccountId(accountId)
+    setLoadingWeChatKfAccountId(accountId)
+    setWeChatKfErrors((prev) => ({ ...prev, [accountId]: '' }))
+    try {
+      const res = await api.lineAccounts.get(accountId)
+      if (!res.success) throw new Error(res.error || '微信客服設定の取得に失敗しました')
+      updateWeChatKfForm(accountId, {
+        corpId: res.data.wechatKfCorpId || '',
+        secret: res.data.wechatKfSecret || '',
+        openKfid: res.data.wechatKfOpenKfid || '',
+        callbackToken: res.data.wechatKfCallbackToken || '',
+        encodingAesKey: res.data.wechatKfEncodingAesKey || '',
+        followUrl: res.data.wechatFollowUrl || '',
+      })
+      await loadWeChatKfStatus(accountId)
+    } catch (err) {
+      setWeChatKfErrors((prev) => ({
+        ...prev,
+        [accountId]: err instanceof Error ? err.message : '微信客服設定の取得に失敗しました',
+      }))
+      setLoadingWeChatKfAccountId(null)
+    }
+  }
+
+  const saveWeChatKfConfig = async (accountId: string) => {
+    const current = wechatKfForms[accountId]
+    if (!current) return
+    setSavingWeChatKfAccountId(accountId)
+    setWeChatKfErrors((prev) => ({ ...prev, [accountId]: '' }))
+    try {
+      const res = await api.lineAccounts.update(accountId, {
+        wechatKfCorpId: current.corpId.trim() || null,
+        wechatKfSecret: current.secret.trim() || null,
+        wechatKfOpenKfid: current.openKfid.trim() || null,
+        wechatKfCallbackToken: current.callbackToken.trim() || null,
+        wechatKfEncodingAesKey: current.encodingAesKey.trim() || null,
+        wechatFollowUrl: current.followUrl.trim() || null,
+      })
+      if (!res.success) throw new Error(res.error || '微信客服設定の保存に失敗しました')
+      await loadWeChatKfStatus(accountId)
+    } catch (err) {
+      setWeChatKfErrors((prev) => ({
+        ...prev,
+        [accountId]: err instanceof Error ? err.message : '微信客服設定の保存に失敗しました',
+      }))
+    } finally {
+      setSavingWeChatKfAccountId(null)
+    }
+  }
+
+  const generateWeChatKfLink = async (accountId: string) => {
+    setGeneratingWeChatKfLinkAccountId(accountId)
+    setWeChatKfErrors((prev) => ({ ...prev, [accountId]: '' }))
+    try {
+      const res = await api.lineAccounts.generateWeChatKfLink(accountId)
+      if (!res.success) throw new Error(res.error || '直接相談URLの生成に失敗しました')
+      await loadWeChatKfStatus(accountId)
+    } catch (err) {
+      setWeChatKfErrors((prev) => ({
+        ...prev,
+        [accountId]: err instanceof Error ? err.message : '直接相談URLの生成に失敗しました',
+      }))
+    } finally {
+      setGeneratingWeChatKfLinkAccountId(null)
+    }
   }
 
   return (
@@ -919,6 +1055,207 @@ export default function AccountsPage() {
                       </a>
                     </div>
                   )}
+
+                  <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50/70 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold text-teal-950">微信客服（QR不要の直接相談）</p>
+                        <p className="mt-1 text-xs leading-5 text-teal-800">
+                          外部サイトのボタンから微信客服を開き、入室時に公式アカウントのフォロー案内を自動表示します。
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void loadWeChatKfStatus(account.id)}
+                          disabled={loadingWeChatKfAccountId === account.id}
+                          className="rounded-lg border border-teal-300 bg-white px-3 py-1.5 text-xs font-medium text-teal-900 hover:bg-teal-50 disabled:opacity-50"
+                        >
+                          {loadingWeChatKfAccountId === account.id ? '確認中...' : '接続確認'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void openWeChatKfConfig(account.id)}
+                          disabled={loadingWeChatKfAccountId === account.id}
+                          className="rounded-lg bg-teal-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                        >
+                          {openWeChatKfAccountId === account.id ? '設定を閉じる' : '微信客服を設定'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 space-y-3 rounded-lg border border-teal-100 bg-white p-3 text-xs">
+                      <div>
+                        <p className="font-medium text-gray-500">企業微信へ登録するコールバックURL</p>
+                        <p className="mt-1 break-all font-mono text-gray-700">
+                          {wechatKfStatuses[account.id]?.callbackUrl || `${apiBaseUrl}/webhook/wechat-kf/${account.id}`}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-500">サイトに設置する直接相談URL</p>
+                        <a
+                          href={wechatKfStatuses[account.id]?.directUrl || `${apiBaseUrl}/wechat/${account.id}/contact`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 block break-all font-mono text-teal-700 underline"
+                        >
+                          {wechatKfStatuses[account.id]?.directUrl || `${apiBaseUrl}/wechat/${account.id}/contact`}
+                        </a>
+                        <p className="mt-1 text-gray-400">
+                          流入元を識別する場合は末尾に `?ref=tour-slug` を付けられます。
+                        </p>
+                      </div>
+                    </div>
+
+                    {(wechatKfStatuses[account.id] || wechatKfErrors[account.id]) && (
+                      <div className="mt-3 rounded-lg border border-teal-100 bg-white p-3 text-xs">
+                        {wechatKfErrors[account.id] ? (
+                          <p className="text-red-600">{wechatKfErrors[account.id]}</p>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <p>
+                              <span className="font-medium text-gray-500">API:</span>{' '}
+                              {wechatKfStatuses[account.id]?.connected
+                                ? '接続済み'
+                                : wechatKfStatuses[account.id]?.configured
+                                  ? '確認待ち'
+                                  : '未設定'}
+                            </p>
+                            <p>
+                              <span className="font-medium text-gray-500">コールバック:</span>{' '}
+                              {wechatKfStatuses[account.id]?.callbackReady ? '準備済み' : 'Token・鍵未設定'}
+                            </p>
+                            <p>
+                              <span className="font-medium text-gray-500">直接相談URL:</span>{' '}
+                              {wechatKfStatuses[account.id]?.contactUrlReady ? '生成済み' : '未生成'}
+                            </p>
+                            <p>
+                              <span className="font-medium text-gray-500">フォローボタン:</span>{' '}
+                              {wechatKfStatuses[account.id]?.followUrlReady ? '設定済み' : '遷移先未設定'}
+                            </p>
+                            {wechatKfStatuses[account.id]?.accountName && (
+                              <p className="sm:col-span-2">
+                                <span className="font-medium text-gray-500">客服アカウント:</span>{' '}
+                                {wechatKfStatuses[account.id]?.accountName}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {openWeChatKfAccountId === account.id && (
+                      <div className="mt-3 space-y-3 rounded-lg border border-teal-200 bg-white p-4">
+                        <div className="rounded-lg bg-teal-50 p-3 text-xs leading-5 text-teal-900">
+                          企業微信の「微信客服 → API → 受信イベントサーバー」で、下記と同じ
+                          Token・EncodingAESKeyを設定します。CorpID、Secret、open_kfidは微信客服側から取得します。
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-gray-600">CorpID</label>
+                            <input
+                              value={wechatKfForms[account.id]?.corpId || ''}
+                              onChange={(e) => updateWeChatKfForm(account.id, { corpId: e.target.value })}
+                              className="w-full rounded-lg border border-teal-200 px-3 py-2 text-sm"
+                              placeholder="ww..."
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-gray-600">open_kfid</label>
+                            <input
+                              value={wechatKfForms[account.id]?.openKfid || ''}
+                              onChange={(e) => updateWeChatKfForm(account.id, { openKfid: e.target.value })}
+                              className="w-full rounded-lg border border-teal-200 px-3 py-2 text-sm"
+                              placeholder="wk..."
+                              list={`wechat-kf-accounts-${account.id}`}
+                            />
+                            <datalist id={`wechat-kf-accounts-${account.id}`}>
+                              {(wechatKfStatuses[account.id]?.availableAccounts || []).map((item) => (
+                                <option key={item.openKfid} value={item.openKfid}>
+                                  {item.name || item.openKfid}
+                                </option>
+                              ))}
+                            </datalist>
+                            {(wechatKfStatuses[account.id]?.availableAccounts?.length || 0) > 0 && (
+                              <p className="mt-1 text-gray-400">
+                                APIで取得した客服アカウントから選択できます。
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">微信客服 Secret</label>
+                          <input
+                            type="password"
+                            value={wechatKfForms[account.id]?.secret || ''}
+                            onChange={(e) => updateWeChatKfForm(account.id, { secret: e.target.value })}
+                            className="w-full rounded-lg border border-teal-200 px-3 py-2 text-sm"
+                            autoComplete="new-password"
+                            placeholder="微信客服 API Secret"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-gray-600">コールバック Token</label>
+                            <input
+                              value={wechatKfForms[account.id]?.callbackToken || ''}
+                              onChange={(e) => updateWeChatKfForm(account.id, { callbackToken: e.target.value })}
+                              className="w-full rounded-lg border border-teal-200 px-3 py-2 text-sm"
+                              placeholder="3〜32文字"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-gray-600">EncodingAESKey</label>
+                            <input
+                              value={wechatKfForms[account.id]?.encodingAesKey || ''}
+                              onChange={(e) => updateWeChatKfForm(account.id, { encodingAesKey: e.target.value })}
+                              className="w-full rounded-lg border border-teal-200 px-3 py-2 text-sm"
+                              placeholder="43文字"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">
+                            公式アカウントのプロフィール／記事URL
+                          </label>
+                          <input
+                            type="url"
+                            value={wechatKfForms[account.id]?.followUrl || ''}
+                            onChange={(e) => updateWeChatKfForm(account.id, { followUrl: e.target.value })}
+                            className="w-full rounded-lg border border-teal-200 px-3 py-2 text-sm"
+                            placeholder="https://mp.weixin.qq.com/..."
+                          />
+                          <p className="mt-1 text-gray-400">
+                            入室時メニューの「关注官方账号」ボタンで開く、公開済み記事または公式プロフィールのHTTPS URLです。
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void saveWeChatKfConfig(account.id)}
+                            disabled={savingWeChatKfAccountId === account.id}
+                            className="rounded-lg border border-teal-300 bg-white px-4 py-2 text-xs font-medium text-teal-900 disabled:opacity-50"
+                          >
+                            {savingWeChatKfAccountId === account.id ? '保存中...' : '設定を保存'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void generateWeChatKfLink(account.id)}
+                            disabled={
+                              generatingWeChatKfLinkAccountId === account.id
+                              || !wechatKfStatuses[account.id]?.connected
+                              || !wechatKfStatuses[account.id]?.openKfidReady
+                            }
+                            className="rounded-lg bg-teal-800 px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+                          >
+                            {generatingWeChatKfLinkAccountId === account.id
+                              ? '生成中...'
+                              : '直接相談URLを生成'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               <div className="flex items-center justify-between">

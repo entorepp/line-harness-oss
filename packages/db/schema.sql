@@ -192,11 +192,31 @@ CREATE TABLE IF NOT EXISTS line_accounts (
   wechat_access_token    TEXT,
   wechat_qr_ticket       TEXT,
   wechat_qr_url          TEXT,
+  wechat_kf_corp_id      TEXT,
+  wechat_kf_secret       TEXT,
+  wechat_kf_open_kfid    TEXT,
+  wechat_kf_callback_token TEXT,
+  wechat_kf_encoding_aes_key TEXT,
+  wechat_kf_access_token TEXT,
+  wechat_kf_token_expires_at TEXT,
+  wechat_kf_contact_url  TEXT,
+  wechat_kf_sync_cursor  TEXT,
+  wechat_follow_url      TEXT,
   token_expires_at     TEXT,
   is_active            INTEGER NOT NULL DEFAULT 1,
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
+
+CREATE TABLE IF NOT EXISTS wechat_kf_message_receipts (
+  line_account_id TEXT NOT NULL,
+  message_id      TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now', '+9 hours')),
+  PRIMARY KEY (line_account_id, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wechat_kf_receipts_created
+  ON wechat_kf_message_receipts(created_at);
 
 -- ============================================================
 -- Round 2: Conversion Points (CV Tracking)

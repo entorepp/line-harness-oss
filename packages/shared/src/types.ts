@@ -286,6 +286,20 @@ export interface LineAccount {
   channelSecret: string;
   /** WeChat callback message encryption key */
   wechatEncodingAesKey?: string | null;
+  /** WeCom corporation ID for WeChat Customer Service */
+  wechatKfCorpId?: string | null;
+  /** WeChat Customer Service application secret */
+  wechatKfSecret?: string | null;
+  /** WeChat Customer Service account ID */
+  wechatKfOpenKfid?: string | null;
+  /** WeChat Customer Service callback token */
+  wechatKfCallbackToken?: string | null;
+  /** WeChat Customer Service callback encryption key */
+  wechatKfEncodingAesKey?: string | null;
+  /** Generated direct consultation URL */
+  wechatKfContactUrl?: string | null;
+  /** Official Account profile/article URL used by the welcome button */
+  wechatFollowUrl?: string | null;
   /** このアカウント向けの通知・文言ロケール */
   locale?: string;
   /** 個別Slack未紐付け時のデフォルト通知先 */

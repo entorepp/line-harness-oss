@@ -9,6 +9,10 @@ import {
 import type { LineAccount as DbLineAccount } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fetchKakaoStatus } from '../services/kakao.js';
+import {
+  fetchWeChatKfStatus,
+  generateWeChatKfContactUrl,
+} from '../services/wechat-kf.js';
 import { fetchWeChatStatus, generateWeChatQr } from '../services/wechat.js';
 
 const lineAccounts = new Hono<Env>();
@@ -57,6 +61,13 @@ function serializeLineAccountFull(row: DbLineAccount) {
     channelAccessToken: row.channel_access_token,
     channelSecret: row.channel_secret,
     wechatEncodingAesKey: row.wechat_encoding_aes_key,
+    wechatKfCorpId: row.wechat_kf_corp_id,
+    wechatKfSecret: row.wechat_kf_secret,
+    wechatKfOpenKfid: row.wechat_kf_open_kfid,
+    wechatKfCallbackToken: row.wechat_kf_callback_token,
+    wechatKfEncodingAesKey: row.wechat_kf_encoding_aes_key,
+    wechatKfContactUrl: row.wechat_kf_contact_url,
+    wechatFollowUrl: row.wechat_follow_url,
   };
 }
 
@@ -333,6 +344,81 @@ lineAccounts.post('/api/line-accounts/:id/wechat-qr', async (c) => {
   }
 });
 
+lineAccounts.get('/api/line-accounts/:id/wechat-kf-status', async (c) => {
+  try {
+    const account = await getWeChatAccountOrThrow(c.env.DB, c.req.param('id'));
+    const baseUrl = (c.env.WORKER_URL || new URL(c.req.url).origin).replace(/\/+$/, '');
+    const callbackReady = Boolean(
+      account.wechat_kf_callback_token?.trim()
+        && account.wechat_kf_encoding_aes_key?.trim(),
+    );
+    const configured = Boolean(
+      account.wechat_kf_corp_id?.trim()
+        && account.wechat_kf_secret?.trim(),
+    );
+    const common = {
+      configured,
+      openKfidReady: Boolean(account.wechat_kf_open_kfid?.trim()),
+      callbackReady,
+      contactUrlReady: Boolean(account.wechat_kf_contact_url),
+      followUrlReady: Boolean(account.wechat_follow_url),
+      callbackUrl: `${baseUrl}/webhook/wechat-kf/${account.id}`,
+      directUrl: `${baseUrl}/wechat/${account.id}/contact`,
+      landingUrl: `${baseUrl}/wechat/${account.id}`,
+    };
+    if (!configured) {
+      return c.json({ success: true, data: { connected: false, ...common } });
+    }
+    const status = await fetchWeChatKfStatus(c.env.DB, c.env, account, callbackReady);
+    return c.json({
+      success: true,
+      data: { ...common, ...status, openKfidReady: Boolean(status.openKfid) },
+    });
+  } catch (err) {
+    if (err instanceof Response) {
+      return c.json({ success: false, error: await err.text() }, err.status as 400 | 404);
+    }
+    console.error('GET /api/line-accounts/:id/wechat-kf-status error:', err);
+    return c.json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Internal server error',
+    }, 500);
+  }
+});
+
+lineAccounts.post('/api/line-accounts/:id/wechat-kf-link', async (c) => {
+  try {
+    const account = await getWeChatAccountOrThrow(c.env.DB, c.req.param('id'));
+    const body: { scene?: string } = await c.req
+      .json<{ scene?: string }>()
+      .catch(() => ({}));
+    const contactUrl = await generateWeChatKfContactUrl({
+      db: c.env.DB,
+      env: c.env,
+      account,
+      scene: body.scene,
+    });
+    const baseUrl = (c.env.WORKER_URL || new URL(c.req.url).origin).replace(/\/+$/, '');
+    return c.json({
+      success: true,
+      data: {
+        providerUrl: contactUrl,
+        directUrl: `${baseUrl}/wechat/${account.id}/contact`,
+        landingUrl: `${baseUrl}/wechat/${account.id}`,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Response) {
+      return c.json({ success: false, error: await err.text() }, err.status as 400 | 404);
+    }
+    console.error('POST /api/line-accounts/:id/wechat-kf-link error:', err);
+    return c.json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Internal server error',
+    }, 500);
+  }
+});
+
 // POST /api/line-accounts - create
 lineAccounts.post('/api/line-accounts', async (c) => {
   try {
@@ -408,9 +494,64 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       locale?: string;
       defaultSlackChannel?: string | null;
       wechatEncodingAesKey?: string | null;
+      wechatKfCorpId?: string | null;
+      wechatKfSecret?: string | null;
+      wechatKfOpenKfid?: string | null;
+      wechatKfCallbackToken?: string | null;
+      wechatKfEncodingAesKey?: string | null;
+      wechatFollowUrl?: string | null;
       isActive?: boolean;
     }>();
 
+    if (
+      body.wechatKfEncodingAesKey !== undefined
+      && body.wechatKfEncodingAesKey !== null
+      && body.wechatKfEncodingAesKey.trim()
+      && body.wechatKfEncodingAesKey.trim().length !== 43
+    ) {
+      return c.json({
+        success: false,
+        error: 'WeChat Customer Service EncodingAESKey must be 43 characters',
+      }, 400);
+    }
+    if (
+      body.wechatKfCallbackToken !== undefined
+      && body.wechatKfCallbackToken !== null
+      && body.wechatKfCallbackToken.trim()
+      && (body.wechatKfCallbackToken.trim().length < 3
+        || body.wechatKfCallbackToken.trim().length > 32)
+    ) {
+      return c.json({
+        success: false,
+        error: 'WeChat Customer Service callback Token must be 3 to 32 characters',
+      }, 400);
+    }
+    if (body.wechatFollowUrl?.trim()) {
+      try {
+        const url = new URL(body.wechatFollowUrl.trim());
+        if (url.protocol !== 'https:') throw new Error('not https');
+      } catch {
+        return c.json({
+          success: false,
+          error: 'Official Account follow URL must be a valid HTTPS URL',
+        }, 400);
+      }
+    }
+
+    const existing = await getLineAccountById(c.env.DB, id);
+    if (!existing) {
+      return c.json({ success: false, error: 'LINE account not found' }, 404);
+    }
+    const kfCorpId = body.wechatKfCorpId?.trim() || null;
+    const kfSecret = body.wechatKfSecret?.trim() || null;
+    const kfOpenKfid = body.wechatKfOpenKfid?.trim() || null;
+    const kfCredentialsChanged =
+      (body.wechatKfCorpId !== undefined && kfCorpId !== existing.wechat_kf_corp_id)
+      || (body.wechatKfSecret !== undefined && kfSecret !== existing.wechat_kf_secret)
+      || (body.wechatKfOpenKfid !== undefined && kfOpenKfid !== existing.wechat_kf_open_kfid);
+    const kfIdentityChanged =
+      (body.wechatKfCorpId !== undefined && kfCorpId !== existing.wechat_kf_corp_id)
+      || (body.wechatKfOpenKfid !== undefined && kfOpenKfid !== existing.wechat_kf_open_kfid);
     const updated = await updateLineAccount(c.env.DB, id, {
       name: body.name,
       channel_access_token: body.channelAccessToken,
@@ -421,6 +562,26 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       wechat_encoding_aes_key: body.wechatEncodingAesKey,
       wechat_access_token: body.channelAccessToken !== undefined ? null : undefined,
       token_expires_at: body.channelAccessToken !== undefined ? null : undefined,
+      wechat_kf_corp_id:
+        body.wechatKfCorpId !== undefined ? kfCorpId : undefined,
+      wechat_kf_secret:
+        body.wechatKfSecret !== undefined ? kfSecret : undefined,
+      wechat_kf_open_kfid:
+        body.wechatKfOpenKfid !== undefined ? kfOpenKfid : undefined,
+      wechat_kf_callback_token:
+        body.wechatKfCallbackToken !== undefined
+          ? body.wechatKfCallbackToken?.trim() || null
+          : undefined,
+      wechat_kf_encoding_aes_key:
+        body.wechatKfEncodingAesKey !== undefined
+          ? body.wechatKfEncodingAesKey?.trim() || null
+          : undefined,
+      wechat_kf_access_token: kfCredentialsChanged ? null : undefined,
+      wechat_kf_token_expires_at: kfCredentialsChanged ? null : undefined,
+      wechat_kf_contact_url: kfIdentityChanged ? null : undefined,
+      wechat_kf_sync_cursor: kfIdentityChanged ? null : undefined,
+      wechat_follow_url:
+        body.wechatFollowUrl !== undefined ? body.wechatFollowUrl?.trim() || null : undefined,
       is_active: body.isActive !== undefined ? (body.isActive ? 1 : 0) : undefined,
     });
 
