@@ -39,7 +39,9 @@ jobs:
         run: node apps/web/scripts/verify-flatworker-route.mjs
 
       - name: Build Flat Harness web
-        run: pnpm --filter web build
+        run: |
+          pnpm --filter @line-crm/shared build
+          pnpm --filter web build
         env:
           NEXT_PUBLIC_API_URL: ${{ env.PRODUCTION_API_ORIGIN }}
 
@@ -55,6 +57,17 @@ jobs:
           accountId: 322a0c34972d981aa3dff5514306b1bc
           workingDirectory: apps/worker
           command: pages deploy ../web/out --project-name=line-crm-web --branch=main
+
+      - name: Verify the live scheduling and Slack UI
+        run: |
+          for attempt in $(seq 1 18); do
+            if node apps/web/scripts/verify-chat-ui-release.mjs "$PRODUCTION_ORIGIN"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Flat Harness chat UI did not converge on the restored release"
+          exit 1
 
       - name: Verify the live case redirect and TravelWorker ownership
         run: |
