@@ -1,0 +1,81 @@
+name: Deploy Web
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/deploy-web.yml'
+
+concurrency:
+  group: deploy-line-crm-web
+  cancel-in-progress: true
+
+env:
+  PRODUCTION_ORIGIN: https://line-crm-web-2ob.pages.dev
+  PRODUCTION_API_ORIGIN: https://line-flattravel.flat-travel.workers.dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify the canonical FlatWorker route
+        run: node apps/web/scripts/verify-flatworker-route.mjs
+
+      - name: Build Flat Harness web
+        run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ env.PRODUCTION_API_ORIGIN }}
+
+      - name: Verify the exported redirect rules
+        run: |
+          cmp apps/web/public/_redirects apps/web/out/_redirects
+          node apps/web/scripts/verify-flatworker-route.mjs
+
+      - name: Deploy Flat Harness web
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/worker
+          command: pages deploy ../web/out --project-name=line-crm-web --branch=main
+
+      - name: Verify the live case redirect and TravelWorker ownership
+        run: |
+          CANONICAL_CASES_URL="$(node apps/web/scripts/verify-flatworker-route.mjs)"
+          CANONICAL_ORIGIN="$(node -e 'console.log(new URL(process.argv[1]).origin)' "$CANONICAL_CASES_URL")"
+          for attempt in $(seq 1 18); do
+            HEADERS="$RUNNER_TEMP/flat-harness-cases.headers"
+            STATUS="$(curl --silent --show-error --output /dev/null --dump-header "$HEADERS" --write-out '%{http_code}' "$PRODUCTION_ORIGIN/cases")"
+            LOCATION="$(tr -d '\r' < "$HEADERS" | awk 'tolower($1) == "location:" { print $2 }' | tail -1)"
+            RELEASE="$(curl --fail --silent --show-error "$CANONICAL_ORIGIN/__flatworker/release" 2>/dev/null || true)"
+            if STATUS="$STATUS" LOCATION="$LOCATION" CANONICAL_CASES_URL="$CANONICAL_CASES_URL" RELEASE="$RELEASE" node - <<'NODE'
+          const payload = (() => { try { return JSON.parse(process.env.RELEASE) } catch { return {} } })()
+          if (process.env.STATUS !== '308') process.exit(1)
+          if (process.env.LOCATION !== process.env.CANONICAL_CASES_URL) process.exit(1)
+          if (payload.canonicalCasesUrl !== process.env.CANONICAL_CASES_URL) process.exit(1)
+          NODE
+            then
+              echo "Verified Flat Harness /cases -> ${CANONICAL_CASES_URL}"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Flat Harness did not converge on the canonical TravelWorker URL"
+          exit 1

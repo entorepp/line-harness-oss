@@ -1,1 +1,2 @@
-
+/cases https://travelworker-web.pages.dev/cases 308
+/cases/* https://travelworker-web.pages.dev/cases/:splat 308
