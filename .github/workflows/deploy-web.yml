@@ -52,7 +52,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: 322a0c34972d981aa3dff5514306b1bc
           workingDirectory: apps/worker
           command: pages deploy ../web/out --project-name=line-crm-web --branch=main
 
