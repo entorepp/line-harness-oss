@@ -6,6 +6,7 @@ PRODUCTION_BRANCH="main"
 PRODUCTION_PROJECT="line-crm-web"
 PRODUCTION_URL="https://line-crm-web-2ob.pages.dev"
 PRODUCTION_API_URL="https://line-flattravel.flat-travel.workers.dev"
+PRODUCTION_FLATWORKER_URL="https://travelworker-web.pages.dev/cases"
 CURRENT_BRANCH="${GITHUB_REF_NAME:-}"
 
 if [[ -z "$CURRENT_BRANCH" ]]; then
@@ -35,6 +36,16 @@ fi
 
 if rg -q --fixed-strings "http://localhost:8787" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
   echo "Refusing to deploy a production bundle that points to localhost."
+  exit 1
+fi
+
+if ! rg -q --fixed-strings "$PRODUCTION_FLATWORKER_URL" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
+  echo "Canonical FlatWorker URL is missing from the generated web bundle."
+  exit 1
+fi
+
+if rg -q --fixed-strings "https://flatworker.flatcare.jp" "$ROOT_DIR/apps/web/out"; then
+  echo "Refusing to deploy a bundle that still points to the retired FlatWorker URL."
   exit 1
 fi
 
