@@ -1,7 +1,7 @@
 import React from 'react'
 
 interface HeaderProps {
-  title: string
+  title: React.ReactNode
   description?: string
   action?: React.ReactNode
 }

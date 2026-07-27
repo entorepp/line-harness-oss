@@ -13,6 +13,7 @@ export interface AccountWithStats {
   displayName?: string
   pictureUrl?: string
   basicId?: string
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
   isActive: boolean
   stats?: {
     friendCount: number

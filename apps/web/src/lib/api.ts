@@ -30,6 +30,28 @@ import type { Broadcast } from '@line-crm/shared'
 /** Broadcast type from API (now camelCase after worker serialization) */
 export type ApiBroadcast = Broadcast
 
+export type ApiScheduledMessage = {
+  id: string
+  friendId: string
+  chatId: string | null
+  messageType: string
+  content: string
+  metadata: string | null
+  scheduledAt: string
+  status: 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled'
+  sentAt: string | null
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type ApiSendMessageResult = {
+  sent?: boolean
+  messageId?: string
+  scheduled?: boolean
+  scheduledMessage?: ApiScheduledMessage
+}
+
 export type BroadcastInsight = {
   broadcastId?: string
   delivered: number | null
@@ -61,16 +83,24 @@ function getApiKey(): string {
   return ''
 }
 
-export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+export async function fetchApi<T>(path: string, options?: RequestInit & { rawBody?: boolean }): Promise<T> {
+  const { rawBody, ...fetchOptions } = options || {}
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${getApiKey()}`,
+  }
+  if (!rawBody) headers['Content-Type'] = 'application/json'
+
   const res = await fetch(`${API_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getApiKey()}`,
-      ...options?.headers,
+      ...headers,
+      ...fetchOptions?.headers,
     },
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string; message?: string } | null
+    throw new Error(body?.error || body?.message || `API error: ${res.status}`)
+  }
   return res.json() as Promise<T>
 }
 
@@ -112,6 +142,13 @@ export const api = {
       fetchApi<ApiResponse<null>>(`/api/friends/${friendId}/tags/${tagId}`, {
         method: 'DELETE',
       }),
+    sendMessage: (friendId: string, data: Record<string, string | null | undefined>) =>
+      fetchApi<ApiResponse<ApiSendMessageResult>>(`/api/friends/${friendId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    listScheduledMessages: (friendId: string) =>
+      fetchApi<ApiResponse<ApiScheduledMessage[]>>(`/api/friends/${friendId}/scheduled-messages`),
   },
   tags: {
     list: () =>
@@ -386,10 +423,23 @@ export const api = {
         '/api/chats?' + new URLSearchParams(query),
       )
     },
-    get: (id: string) =>
-      fetchApi<ApiResponse<Chat & { messages?: { id: string; content: string; senderType: string; createdAt: string }[] }>>(
-        `/api/chats/${id}`,
-      ),
+    get: (id: string, params?: { beforeMessageId?: string; limit?: number }) => {
+      const query = new URLSearchParams()
+      if (params?.beforeMessageId) query.set('beforeMessageId', params.beforeMessageId)
+      if (params?.limit) query.set('limit', String(params.limit))
+      const suffix = query.toString() ? `?${query.toString()}` : ''
+      return fetchApi<ApiResponse<Chat & {
+        messages?: {
+          id: string
+          direction: 'incoming' | 'outgoing'
+          messageType: string
+          content: string
+          createdAt: string
+        }[]
+        hasMoreMessages?: boolean
+        oldestMessageId?: string | null
+      }>>(`/api/chats/${id}${suffix}`)
+    },
     create: (data: { friendId: string; operatorId?: string | null }) =>
       fetchApi<ApiResponse<Chat>>('/api/chats', {
         method: 'POST',
@@ -400,10 +450,25 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
-    send: (id: string, data: { content: string; messageType?: string }) =>
-      fetchApi<ApiResponse<unknown>>(`/api/chats/${id}/send`, {
+    send: (id: string, data: Record<string, string | null | undefined>) =>
+      fetchApi<ApiResponse<ApiSendMessageResult>>(`/api/chats/${id}/send`, {
         method: 'POST',
         body: JSON.stringify(data),
+      }),
+  },
+  scheduledMessages: {
+    update: (id: string, data: { scheduledAt: string }) =>
+      fetchApi<ApiResponse<ApiScheduledMessage>>(`/api/scheduled-messages/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    cancel: (id: string) =>
+      fetchApi<ApiResponse<null>>(`/api/scheduled-messages/${id}`, {
+        method: 'DELETE',
+      }),
+    sendNow: (id: string) =>
+      fetchApi<ApiResponse<{ status: 'sent' | 'already-processing' }>>(`/api/scheduled-messages/${id}/send-now`, {
+        method: 'POST',
       }),
   },
   reminders: {
@@ -553,5 +618,12 @@ export const api = {
       fetchApi<ApiResponse<null>>(`/api/staff/${id}`, { method: 'DELETE' }),
     regenerateKey: (id: string) =>
       fetchApi<ApiResponse<{ apiKey: string }>>(`/api/staff/${id}/regenerate-key`, { method: 'POST' }),
+  },
+  slack: {
+    linkFriend: (friendId: string, slackChannelId: string | null) =>
+      fetchApi<ApiResponse<unknown>>(`/api/friends/${friendId}/slack`, {
+        method: 'PUT',
+        body: JSON.stringify({ slackChannelId }),
+      }),
   },
 }
