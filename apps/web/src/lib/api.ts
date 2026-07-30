@@ -82,6 +82,43 @@ export type WeChatQr = {
   landingUrl: string
 }
 
+export type WeChatKfStatus = {
+  configured: boolean
+  connected: boolean
+  corpId?: string
+  openKfid?: string | null
+  accountName?: string | null
+  accountAvatar?: string | null
+  availableAccounts?: Array<{
+    openKfid: string
+    name: string | null
+    avatar: string | null
+  }>
+  tokenExpiresAt?: string | null
+  openKfidReady: boolean
+  callbackReady: boolean
+  contactUrlReady: boolean
+  followUrlReady: boolean
+  callbackUrl: string
+  directUrl: string
+  landingUrl: string
+}
+
+export type WeChatKfLink = {
+  providerUrl: string
+  directUrl: string
+  landingUrl: string
+}
+
+export type WeChatKfUpdate = {
+  wechatKfCorpId?: string | null
+  wechatKfSecret?: string | null
+  wechatKfOpenKfid?: string | null
+  wechatKfCallbackToken?: string | null
+  wechatKfEncodingAesKey?: string | null
+  wechatFollowUrl?: string | null
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL
 if (!API_URL) {
   throw new Error(
@@ -328,7 +365,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'isActive'>>) =>
+    update: (
+      id: string,
+      data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'isActive'>> & WeChatKfUpdate,
+    ) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
@@ -339,6 +379,13 @@ export const api = {
       fetchApi<ApiResponse<WeChatStatus>>(`/api/line-accounts/${id}/wechat-status`),
     generateWeChatQr: (id: string) =>
       fetchApi<ApiResponse<WeChatQr>>(`/api/line-accounts/${id}/wechat-qr`, { method: 'POST' }),
+    getWeChatKfStatus: (id: string) =>
+      fetchApi<ApiResponse<WeChatKfStatus>>(`/api/line-accounts/${id}/wechat-kf-status`),
+    generateWeChatKfLink: (id: string, scene = 'flat-harness') =>
+      fetchApi<ApiResponse<WeChatKfLink>>(`/api/line-accounts/${id}/wechat-kf-link`, {
+        method: 'POST',
+        body: JSON.stringify({ scene }),
+      }),
   },
   conversions: {
     points: () =>
