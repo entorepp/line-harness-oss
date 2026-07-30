@@ -64,6 +64,24 @@ export type BroadcastInsight = {
   fetchedAt?: string | null
 }
 
+export type WeChatStatus = {
+  appId: string
+  connected: true
+  apiDomainIpCount: number
+  tokenExpiresAt: string | null
+  encryptedModeReady: boolean
+  qrReady: boolean
+  webhookUrl: string
+  landingUrl: string
+}
+
+export type WeChatQr = {
+  ticket: string
+  url: string
+  imageUrl: string
+  landingUrl: string
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL
 if (!API_URL) {
   throw new Error(
@@ -317,6 +335,10 @@ export const api = {
       }),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/line-accounts/${id}`, { method: 'DELETE' }),
+    getWeChatStatus: (id: string) =>
+      fetchApi<ApiResponse<WeChatStatus>>(`/api/line-accounts/${id}/wechat-status`),
+    generateWeChatQr: (id: string) =>
+      fetchApi<ApiResponse<WeChatQr>>(`/api/line-accounts/${id}/wechat-qr`, { method: 'POST' }),
   },
   conversions: {
     points: () =>
