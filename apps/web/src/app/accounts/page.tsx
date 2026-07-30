@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
+import type { WeChatQr, WeChatStatus } from '@/lib/api'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 import TestRecipientsSetting from '@/components/accounts/test-recipients-setting'
@@ -13,6 +14,7 @@ interface LineAccountListItem {
   displayName: string
   pictureUrl: string | null
   basicId: string | null
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -48,6 +50,11 @@ export default function AccountsPage() {
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ channelId: '', name: '', channelAccessToken: '', channelSecret: '' })
+  const [wechatStatuses, setWeChatStatuses] = useState<Record<string, WeChatStatus>>({})
+  const [wechatQrs, setWeChatQrs] = useState<Record<string, WeChatQr>>({})
+  const [wechatErrors, setWeChatErrors] = useState<Record<string, string>>({})
+  const [checkingWeChatId, setCheckingWeChatId] = useState<string | null>(null)
+  const [generatingWeChatQrId, setGeneratingWeChatQrId] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -89,11 +96,46 @@ export default function AccountsPage() {
     load()
   }
 
+  const loadWeChatStatus = async (id: string) => {
+    setCheckingWeChatId(id)
+    setWeChatErrors((current) => ({ ...current, [id]: '' }))
+    try {
+      const res = await api.lineAccounts.getWeChatStatus(id)
+      if (!res.success) throw new Error('WeChat APIの接続確認に失敗しました')
+      setWeChatStatuses((current) => ({ ...current, [id]: res.data }))
+    } catch (err) {
+      setWeChatErrors((current) => ({
+        ...current,
+        [id]: err instanceof Error ? err.message : 'WeChat APIの接続確認に失敗しました',
+      }))
+    } finally {
+      setCheckingWeChatId(null)
+    }
+  }
+
+  const generateWeChatQr = async (id: string) => {
+    setGeneratingWeChatQrId(id)
+    setWeChatErrors((current) => ({ ...current, [id]: '' }))
+    try {
+      const res = await api.lineAccounts.generateWeChatQr(id)
+      if (!res.success) throw new Error('WeChatフォロー導線の生成に失敗しました')
+      setWeChatQrs((current) => ({ ...current, [id]: res.data }))
+      await loadWeChatStatus(id)
+    } catch (err) {
+      setWeChatErrors((current) => ({
+        ...current,
+        [id]: err instanceof Error ? err.message : 'WeChatフォロー導線の生成に失敗しました',
+      }))
+    } finally {
+      setGeneratingWeChatQrId(null)
+    }
+  }
+
   return (
     <div>
       <Header
-        title="LINEアカウント管理"
-        description="マルチアカウント設定"
+        title="チャネルアカウント管理"
+        description="LINE・WhatsApp・Kakao・WeChatの接続設定"
         action={
           <button
             onClick={() => setShowCreate(!showCreate)}
@@ -189,13 +231,14 @@ export default function AccountsPage() {
                       className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm"
                       style={{ backgroundColor: account.isActive ? '#06C755' : '#9CA3AF' }}
                     >
-                      {account.displayName?.charAt(0) || 'L'}
+                      {account.channelType === 'wechat' ? '微' : account.displayName?.charAt(0) || 'L'}
                     </div>
                   )}
                   <div>
                     <h3 className="text-sm font-bold text-gray-900">{account.displayName}</h3>
                     <p className="text-xs text-gray-400 font-mono">
-                      {account.basicId ? `${account.basicId} · ` : ''}Channel: {account.channelId}
+                      {account.basicId ? `${account.basicId} · ` : ''}
+                      {account.channelType === 'wechat' ? 'AppID' : 'Channel'}: {account.channelId}
                     </p>
                   </div>
                 </div>
@@ -221,6 +264,85 @@ export default function AccountsPage() {
                 </div>
               </div>
               <TestRecipientsSetting accountId={account.id} />
+
+              {account.channelType === 'wechat' && (
+                <div className="mt-4 rounded-lg border border-green-200 bg-green-50/60 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-green-950">WeChat Service Account</p>
+                      <p className="mt-1 text-xs leading-5 text-green-800">
+                        既存のAppIDを使い、フォロー後のメッセージをFlat Harnessで受信・返信します。
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => loadWeChatStatus(account.id)}
+                        disabled={checkingWeChatId === account.id}
+                        className="rounded-lg border border-green-700 bg-white px-3 py-1.5 text-xs font-medium text-green-800 disabled:opacity-50"
+                      >
+                        {checkingWeChatId === account.id ? '確認中...' : 'API接続確認'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => generateWeChatQr(account.id)}
+                        disabled={generatingWeChatQrId === account.id}
+                        className="rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      >
+                        {generatingWeChatQrId === account.id ? '生成中...' : '共有導線を生成'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {wechatErrors[account.id] && (
+                    <p className="mt-3 rounded-md border border-red-200 bg-white p-2 text-xs text-red-700">
+                      {wechatErrors[account.id]}
+                    </p>
+                  )}
+
+                  {wechatStatuses[account.id] && (
+                    <div className="mt-3 grid grid-cols-1 gap-2 rounded-md border border-green-100 bg-white p-3 text-xs sm:grid-cols-2">
+                      <p><span className="font-medium text-gray-500">API:</span> 接続済み</p>
+                      <p><span className="font-medium text-gray-500">安全モード:</span> {wechatStatuses[account.id].encryptedModeReady ? '準備済み' : '鍵未設定'}</p>
+                      <p><span className="font-medium text-gray-500">共有導線:</span> {wechatStatuses[account.id].qrReady ? '生成済み' : '未生成'}</p>
+                      <p><span className="font-medium text-gray-500">Token有効期限:</span> {wechatStatuses[account.id].tokenExpiresAt ? new Date(wechatStatuses[account.id].tokenExpiresAt as string).toLocaleString('ja-JP') : '-'}</p>
+                      <div className="sm:col-span-2">
+                        <p className="font-medium text-gray-500">お客様共有URL</p>
+                        <a
+                          href={wechatStatuses[account.id].landingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 block break-all font-mono text-green-700 underline"
+                        >
+                          {wechatStatuses[account.id].landingUrl}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {wechatQrs[account.id] && (
+                    <div className="mt-3 flex flex-col items-center rounded-md border border-green-100 bg-white p-4">
+                      <img
+                        src={wechatQrs[account.id].imageUrl}
+                        alt={`${account.displayName} WeChat follow QR`}
+                        className="h-48 w-48 rounded-lg border border-gray-100 object-contain"
+                      />
+                      <a
+                        href={wechatQrs[account.id].landingUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 text-xs font-medium text-green-700 underline"
+                      >
+                        お客様向けページを開く
+                      </a>
+                    </div>
+                  )}
+
+                  <p className="mt-3 text-[11px] leading-5 text-green-900/70">
+                    WeComはQRなしの直接相談にだけ必要です。サービスアカウントの受信・返信・フォロー導線はこの設定だけで利用できます。
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
                 <p className="text-xs text-gray-400">
