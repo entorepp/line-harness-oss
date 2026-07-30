@@ -59,7 +59,8 @@ L社/U社代替。API ネイティブ設計。
 ### Round 4 (予定)
 - [ ] メール配信連携 (SendGrid/SES)
 - [ ] SMS連携
-- [ ] Instagram DM連携
+- [ ] Facebook Messenger連携（受信・Slack・24時間内テキスト返信のソース実装、WA-CONFIGへのMessenger追加、Flat Travelページ権限、Pageトークン生成、D1 migration 019、WorkerとMETA_VERIFY_TOKENの本番反映、必要権限のApp Review下書きまで完了。App Secret協調ローテーション、アカウント行、callback、Pages、審査提出、実ユーザー疎通待ち）
+- [ ] Instagram DM連携（受信・Slack・24時間内テキスト返信のソース実装、Flat Travelページとflattravel_japanだけの権限接続、Pageトークン生成、D1 migration 019、WorkerとMETA_VERIFY_TOKENの本番反映、instagram_manage_messagesのApp Review下書きまで完了。App Secret協調ローテーション、アカウント行、callback、Pages、審査提出、実ユーザー疎通待ち）
 - [ ] LTV予測・チャーン予測
 - [ ] ポイントシステム
 - [ ] 抽選/くじ機能

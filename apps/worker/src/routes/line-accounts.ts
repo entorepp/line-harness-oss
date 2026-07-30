@@ -14,6 +14,10 @@ import {
   generateWeChatKfContactUrl,
 } from '../services/wechat-kf.js';
 import { fetchWeChatStatus, generateWeChatQr } from '../services/wechat.js';
+import {
+  fetchMetaChannelProfile,
+  isMetaMessagingChannel,
+} from '../services/meta-messaging.js';
 
 const lineAccounts = new Hono<Env>();
 const GRAPH_API = 'https://graph.facebook.com/v25.0';
@@ -38,7 +42,13 @@ type WhatsAppPhoneStatus = {
   messaging_limit_tier?: string;
 };
 
-type ChannelType = 'line' | 'whatsapp' | 'kakao' | 'wechat';
+type ChannelType =
+  | 'line'
+  | 'whatsapp'
+  | 'kakao'
+  | 'wechat'
+  | 'facebook'
+  | 'instagram';
 
 function serializeLineAccount(row: DbLineAccount) {
   return {
@@ -114,6 +124,19 @@ async function fetchWhatsAppPhoneProfile(phoneNumberId: string, accessToken: str
   }
 }
 
+async function fetchMetaMessagingAccountProfile(account: DbLineAccount): Promise<{ displayName?: string; pictureUrl?: string; basicId?: string }> {
+  try {
+    const profile = await fetchMetaChannelProfile(account);
+    return {
+      displayName: profile.name || profile.username || account.name,
+      pictureUrl: profile.pictureUrl || undefined,
+      basicId: profile.username ? `@${profile.username}` : profile.id,
+    };
+  } catch {
+    return { displayName: account.name, basicId: account.channel_id };
+  }
+}
+
 async function getWhatsAppAccountOrThrow(db: D1Database, id: string): Promise<DbLineAccount> {
   const account = await getLineAccountById(db, id);
   if (!account) throw new Response('Channel account not found', { status: 404 });
@@ -132,6 +155,15 @@ async function getWeChatAccountOrThrow(db: D1Database, id: string): Promise<DbLi
   const account = await getLineAccountById(db, id);
   if (!account) throw new Response('Channel account not found', { status: 404 });
   if (account.channel_type !== 'wechat') throw new Response('Account is not WeChat', { status: 400 });
+  return account;
+}
+
+async function getMetaMessagingAccountOrThrow(db: D1Database, id: string): Promise<DbLineAccount> {
+  const account = await getLineAccountById(db, id);
+  if (!account) throw new Response('Channel account not found', { status: 404 });
+  if (!isMetaMessagingChannel(account.channel_type)) {
+    throw new Response('Account is not Facebook Messenger or Instagram DM', { status: 400 });
+  }
   return account;
 }
 
@@ -195,9 +227,12 @@ lineAccounts.get('/api/line-accounts', async (c) => {
         const isWhatsApp = item.channel_type === 'whatsapp';
         const isKakao = item.channel_type === 'kakao';
         const isWeChat = item.channel_type === 'wechat';
+        const isMetaMessaging = isMetaMessagingChannel(item.channel_type);
         const [profile, friendCount, scenarioCount, msgCount] = await Promise.all([
           isWhatsApp
             ? fetchWhatsAppPhoneProfile(item.channel_id, item.channel_access_token)
+            : isMetaMessaging
+              ? fetchMetaMessagingAccountProfile(item)
             : isKakao || isWeChat
               ? { displayName: item.name, pictureUrl: undefined, basicId: item.channel_id }
               : fetchBotProfile(item.channel_access_token),
@@ -297,6 +332,29 @@ lineAccounts.get('/api/line-accounts/:id/kakao-status', async (c) => {
       return c.json({ success: false, error: await err.text() }, err.status as 400 | 404);
     }
     console.error('GET /api/line-accounts/:id/kakao-status error:', err);
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Internal server error' }, 500);
+  }
+});
+
+lineAccounts.get('/api/line-accounts/:id/meta-status', async (c) => {
+  try {
+    const account = await getMetaMessagingAccountOrThrow(c.env.DB, c.req.param('id'));
+    const profile = await fetchMetaChannelProfile(account);
+    const workerUrl = (c.env.WORKER_URL || new URL(c.req.url).origin).replace(/\/+$/, '');
+    return c.json({
+      success: true,
+      data: {
+        ...profile,
+        connected: true,
+        webhookUrl: `${workerUrl}/webhook/meta`,
+        replyWindowHours: 24,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Response) {
+      return c.json({ success: false, error: await err.text() }, err.status as 400 | 404);
+    }
+    console.error('GET /api/line-accounts/:id/meta-status error:', err);
     return c.json({ success: false, error: err instanceof Error ? err.message : 'Internal server error' }, 500);
   }
 });
@@ -440,9 +498,13 @@ lineAccounts.post('/api/line-accounts', async (c) => {
           ? 'kakao'
           : body.channelType === 'wechat'
             ? 'wechat'
+            : body.channelType === 'facebook'
+              ? 'facebook'
+              : body.channelType === 'instagram'
+                ? 'instagram'
           : 'line';
 
-    const secretRequired = channelType === 'line' || channelType === 'kakao' || channelType === 'wechat';
+    const secretRequired = channelType !== 'whatsapp';
     if (!body.channelId || !body.name || !body.channelAccessToken || (secretRequired && !body.channelSecret)) {
       return c.json(
         {
@@ -454,6 +516,10 @@ lineAccounts.post('/api/line-accounts', async (c) => {
                 ? 'channelId, name, channelAccessToken, and channelSecret are required for Kakao'
                 : channelType === 'wechat'
                   ? 'AppID, account name, AppSecret, and Token are required for WeChat'
+                  : channelType === 'facebook'
+                    ? 'Page ID, account name, Page Access Token, and Meta App Secret are required'
+                    : channelType === 'instagram'
+                      ? 'Instagram Professional Account ID, account name, access token, and Meta App Secret are required'
                 : 'channelId, name, channelAccessToken, and channelSecret are required',
         },
         400,

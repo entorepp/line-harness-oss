@@ -279,7 +279,7 @@ export interface LineAccount {
   /** アカウント名 */
   name: string;
   /** チャネル種別 */
-  channelType?: "line" | "whatsapp" | "kakao" | "wechat";
+  channelType?: "line" | "whatsapp" | "kakao" | "wechat" | "facebook" | "instagram";
   /** Provider access token or API key */
   channelAccessToken: string;
   /** Provider secret used for webhook verification */

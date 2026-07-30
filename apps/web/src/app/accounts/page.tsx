@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import {
   api,
   type KakaoStatus,
+  type MetaMessagingStatus,
   type WeChatKfStatus,
   type WeChatQr,
   type WeChatStatus,
@@ -13,7 +14,7 @@ import {
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 
-type ChannelType = 'line' | 'whatsapp' | 'kakao' | 'wechat'
+type ChannelType = 'line' | 'whatsapp' | 'kakao' | 'wechat' | 'facebook' | 'instagram'
 
 interface LineAccountListItem {
   id: string
@@ -41,6 +42,8 @@ function getChannelLabel(channelType?: ChannelType): string {
   if (channelType === 'whatsapp') return 'WhatsApp'
   if (channelType === 'kakao') return 'Kakao'
   if (channelType === 'wechat') return 'WeChat'
+  if (channelType === 'facebook') return 'Messenger'
+  if (channelType === 'instagram') return 'Instagram DM'
   return 'LINE'
 }
 
@@ -48,6 +51,8 @@ function getChannelColor(channelType?: ChannelType): string {
   if (channelType === 'whatsapp') return '#25D366'
   if (channelType === 'kakao') return '#FEE500'
   if (channelType === 'wechat') return '#07C160'
+  if (channelType === 'facebook') return '#0866FF'
+  if (channelType === 'instagram') return '#C13584'
   return '#06C755'
 }
 
@@ -104,13 +109,13 @@ const ccPrompts = [
     prompt: `現在登録されているチャネルアカウントの設定を確認してください。
 1. 各アカウントのChannel ID・名前・有効/無効ステータスを一覧表示
 2. Provider token/key と webhook secret が正しく設定されているか検証
-3. LINE / WhatsApp / Kakao / WeChat 側の設定整合性をチェック
+3. LINE / WhatsApp / Messenger / Instagram DM / Kakao / WeChat 側の設定整合性をチェック
 結果をレポートしてください。`,
   },
   {
     title: 'アカウント追加手順',
     prompt: `新しいチャネルアカウントを追加する手順をガイドしてください。
-1. LINE / WhatsApp / Kakao / WeChat の各管理画面での作成手順を説明
+1. LINE / WhatsApp / Messenger / Instagram DM / Kakao / WeChat の各管理画面での作成手順を説明
 2. Channel ID、Access Token/API Key、Webhook Secretの取得方法
 3. CRMへの登録手順と初期設定のベストプラクティス
 手順を示してください。`,
@@ -134,6 +139,9 @@ export default function AccountsPage() {
   const [kakaoStatuses, setKakaoStatuses] = useState<Record<string, KakaoStatus>>({})
   const [kakaoStatusErrors, setKakaoStatusErrors] = useState<Record<string, string>>({})
   const [loadingKakaoStatusAccountId, setLoadingKakaoStatusAccountId] = useState<string | null>(null)
+  const [metaStatuses, setMetaStatuses] = useState<Record<string, MetaMessagingStatus>>({})
+  const [metaStatusErrors, setMetaStatusErrors] = useState<Record<string, string>>({})
+  const [loadingMetaStatusAccountId, setLoadingMetaStatusAccountId] = useState<string | null>(null)
   const [wechatStatuses, setWeChatStatuses] = useState<Record<string, WeChatStatus>>({})
   const [wechatStatusErrors, setWeChatStatusErrors] = useState<Record<string, string>>({})
   const [loadingWeChatStatusAccountId, setLoadingWeChatStatusAccountId] = useState<string | null>(null)
@@ -159,7 +167,11 @@ export default function AccountsPage() {
   const isWhatsAppForm = form.channelType === 'whatsapp'
   const isKakaoForm = form.channelType === 'kakao'
   const isWeChatForm = form.channelType === 'wechat'
+  const isFacebookForm = form.channelType === 'facebook'
+  const isInstagramForm = form.channelType === 'instagram'
+  const isMetaForm = isFacebookForm || isInstagramForm
   const kakaoWebhookUrl = `${apiBaseUrl}/webhook/kakao`
+  const metaWebhookUrl = `${apiBaseUrl}/webhook/meta`
 
   const load = async () => {
     setLoading(true)
@@ -355,6 +367,23 @@ export default function AccountsPage() {
     setLoadingKakaoStatusAccountId(null)
   }
 
+  const loadMetaStatus = async (accountId: string) => {
+    setLoadingMetaStatusAccountId(accountId)
+    setMetaStatusErrors((prev) => ({ ...prev, [accountId]: '' }))
+    try {
+      const res = await api.lineAccounts.getMetaStatus(accountId)
+      if (!res.success) throw new Error(res.error || 'Meta接続確認に失敗しました')
+      setMetaStatuses((prev) => ({ ...prev, [accountId]: res.data }))
+    } catch (err) {
+      setMetaStatusErrors((prev) => ({
+        ...prev,
+        [accountId]: err instanceof Error ? err.message : 'Meta接続確認に失敗しました',
+      }))
+    } finally {
+      setLoadingMetaStatusAccountId(null)
+    }
+  }
+
   const loadWeChatStatus = async (accountId: string) => {
     setLoadingWeChatStatusAccountId(accountId)
     setWeChatStatusErrors((prev) => ({ ...prev, [accountId]: '' }))
@@ -498,7 +527,7 @@ export default function AccountsPage() {
     <div>
       <Header
         title="チャネルアカウント管理"
-        description="LINE / WhatsApp / Kakao / WeChat マルチアカウント設定"
+        description="LINE / WhatsApp / Messenger / Instagram DM / Kakao / WeChat マルチアカウント設定"
         action={
           <button
             onClick={() => setShowCreate(!showCreate)}
@@ -528,6 +557,8 @@ export default function AccountsPage() {
               >
                 <option value="line">LINE</option>
                 <option value="whatsapp">WhatsApp</option>
+                <option value="facebook">Facebook Messenger</option>
+                <option value="instagram">Instagram DM</option>
                 <option value="kakao">Kakao</option>
                 <option value="wechat">WeChat</option>
               </select>
@@ -544,18 +575,32 @@ export default function AccountsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isWhatsAppForm ? 'Phone Number ID' : isKakaoForm ? 'KakaoTalk Channel profile ID' : isWeChatForm ? 'AppID' : 'Channel ID'}
+                {isWhatsAppForm
+                  ? 'Phone Number ID'
+                  : isFacebookForm
+                    ? 'Facebook Page ID'
+                    : isInstagramForm
+                      ? 'Instagram Professional Account ID'
+                      : isKakaoForm
+                        ? 'KakaoTalk Channel profile ID'
+                        : isWeChatForm
+                          ? 'AppID'
+                          : 'Channel ID'}
               </label>
               <input
                 value={form.channelId}
                 onChange={(e) => setForm({ ...form, channelId: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                placeholder={isWhatsAppForm ? '123456789012345' : isKakaoForm ? '_ZeUTxl' : isWeChatForm ? 'wx1234567890abcdef' : '123456789'}
+                placeholder={isWhatsAppForm || isMetaForm ? '123456789012345' : isKakaoForm ? '_ZeUTxl' : isWeChatForm ? 'wx1234567890abcdef' : '123456789'}
                 required
               />
               <p className="mt-1 text-xs text-gray-400">
                 {isWhatsAppForm
                   ? 'Meta / Cloud API の Phone Number ID を入力します'
+                  : isFacebookForm
+                    ? 'Messengerを有効化するFacebookページのPage IDを入力します'
+                    : isInstagramForm
+                      ? 'Facebookページに接続したInstagramプロアカウントのIDを入力します'
                   : isKakaoForm
                     ? 'KakaoTalk Channel Manager Center のチャンネルURL末尾を入力します'
                     : isWeChatForm
@@ -565,7 +610,15 @@ export default function AccountsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isWhatsAppForm ? 'Access Token' : isKakaoForm ? 'REST API Key / Admin Key' : isWeChatForm ? 'AppSecret' : 'Channel Access Token'}
+                {isWhatsAppForm
+                  ? 'Access Token'
+                  : isMetaForm
+                    ? 'Page Access Token'
+                    : isKakaoForm
+                      ? 'REST API Key / Admin Key'
+                      : isWeChatForm
+                        ? 'AppSecret'
+                        : 'Channel Access Token'}
               </label>
               <input
                 type="password"
@@ -577,7 +630,15 @@ export default function AccountsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isWhatsAppForm ? 'App Secret（任意）' : isKakaoForm ? 'Primary Admin Key' : isWeChatForm ? 'Token' : 'Channel Secret'}
+                {isWhatsAppForm
+                  ? 'App Secret（任意）'
+                  : isMetaForm
+                    ? 'Meta App Secret'
+                    : isKakaoForm
+                      ? 'Primary Admin Key'
+                      : isWeChatForm
+                        ? 'Token'
+                        : 'Channel Secret'}
               </label>
               <input
                 type="password"
@@ -589,6 +650,8 @@ export default function AccountsPage() {
               <p className="mt-1 text-xs text-gray-400">
                 {isWhatsAppForm
                   ? '未使用なら空欄のままで構いません'
+                  : isMetaForm
+                    ? 'X-Hub-Signature-256によるWebhook署名検証に使います'
                   : isKakaoForm
                     ? 'Kakao Channel Webhook の Authorization 検証に使います'
                     : isWeChatForm
@@ -650,7 +713,7 @@ export default function AccountsPage() {
       ) : accounts.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">
           <p className="mb-2">チャネルアカウントが登録されていません</p>
-          <p className="text-xs text-gray-300">LINE / WhatsApp / Kakao / WeChat の接続情報を取得して登録してください</p>
+          <p className="text-xs text-gray-300">LINE / WhatsApp / Messenger / Instagram DM / Kakao / WeChat の接続情報を取得して登録してください</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -674,6 +737,10 @@ export default function AccountsPage() {
                     >
                       {account.channelType === 'whatsapp'
                         ? 'W'
+                        : account.channelType === 'facebook'
+                          ? 'M'
+                          : account.channelType === 'instagram'
+                            ? 'IG'
                         : account.channelType === 'kakao'
                           ? 'K'
                           : account.channelType === 'wechat'
@@ -688,6 +755,10 @@ export default function AccountsPage() {
                         className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                           account.channelType === 'whatsapp'
                             ? 'bg-emerald-100 text-emerald-700'
+                            : account.channelType === 'facebook'
+                              ? 'bg-blue-100 text-blue-700'
+                              : account.channelType === 'instagram'
+                                ? 'bg-pink-100 text-pink-700'
                             : account.channelType === 'kakao'
                               ? 'bg-yellow-100 text-yellow-800'
                               : account.channelType === 'wechat'
@@ -702,6 +773,10 @@ export default function AccountsPage() {
                       {account.basicId ? `${account.basicId} · ` : ''}
                       {account.channelType === 'whatsapp'
                         ? 'Phone Number ID'
+                        : account.channelType === 'facebook'
+                          ? 'Page ID'
+                          : account.channelType === 'instagram'
+                            ? 'Instagram Account ID'
                         : account.channelType === 'kakao'
                           ? 'Profile ID'
                           : account.channelType === 'wechat'
@@ -926,6 +1001,53 @@ export default function AccountsPage() {
                           {savingProfileAccountId === account.id ? '保存中...' : 'プロフィールを保存'}
                         </button>
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {(account.channelType === 'facebook' || account.channelType === 'instagram') && (
+                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-blue-950">
+                        {account.channelType === 'facebook' ? 'Facebook Messenger' : 'Instagram DM'} 接続
+                      </p>
+                      <p className="mt-1 text-xs text-blue-800">
+                        Meta公式Webhookの受信と、24時間返信枠内のテキスト返信をFlat Harnessへ接続します。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadMetaStatus(account.id)}
+                      className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-900 hover:bg-blue-50"
+                      disabled={loadingMetaStatusAccountId === account.id}
+                    >
+                      {loadingMetaStatusAccountId === account.id ? '確認中...' : 'API接続確認'}
+                    </button>
+                  </div>
+                  <div className="mt-3 rounded-lg border border-blue-100 bg-white p-3 text-xs">
+                    <p className="font-medium text-gray-500">Metaへ登録する共通Webhook URL</p>
+                    <p className="mt-1 break-all font-mono text-gray-700">
+                      {metaStatuses[account.id]?.webhookUrl || metaWebhookUrl}
+                    </p>
+                    <p className="mt-2 text-gray-400">
+                      Verify TokenはWorker secretの `META_VERIFY_TOKEN` と一致させます。App Secretは受信署名の検証だけに使います。
+                    </p>
+                  </div>
+
+                  {(metaStatuses[account.id] || metaStatusErrors[account.id]) && (
+                    <div className="mt-3 rounded-lg border border-blue-100 bg-white p-3 text-xs">
+                      {metaStatusErrors[account.id] ? (
+                        <p className="text-red-600">{metaStatusErrors[account.id]}</p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <p><span className="font-medium text-gray-500">API:</span> 接続済み</p>
+                          <p><span className="font-medium text-gray-500">ID:</span> {metaStatuses[account.id]?.id || account.channelId}</p>
+                          <p><span className="font-medium text-gray-500">名前:</span> {metaStatuses[account.id]?.name || '-'}</p>
+                          <p><span className="font-medium text-gray-500">ユーザー名:</span> {metaStatuses[account.id]?.username ? `@${metaStatuses[account.id]?.username}` : '-'}</p>
+                          <p className="sm:col-span-2"><span className="font-medium text-gray-500">返信ポリシー:</span> お客様の最終受信から{metaStatuses[account.id]?.replyWindowHours || 24}時間以内</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

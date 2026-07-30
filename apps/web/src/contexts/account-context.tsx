@@ -13,7 +13,7 @@ export interface AccountWithStats {
   displayName?: string
   pictureUrl?: string
   basicId?: string
-  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat' | 'facebook' | 'instagram'
   locale?: string
   defaultSlackChannel?: string | null
   isActive: boolean
@@ -44,8 +44,10 @@ function preferredAccountRank(account: AccountWithStats): number {
   if (account.channelType === 'line' && (name.includes('フラット') || name.includes('flat travel'))) return 0
   if (account.channelType === 'line') return 1
   if (account.channelType === 'whatsapp') return 2
-  if (account.channelType === 'wechat') return 3
-  return 4
+  if (account.channelType === 'facebook') return 3
+  if (account.channelType === 'instagram') return 4
+  if (account.channelType === 'wechat') return 5
+  return 6
 }
 
 function findPreferredVisibleAccount(accounts: AccountWithStats[]): AccountWithStats | undefined {

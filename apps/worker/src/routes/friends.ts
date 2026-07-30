@@ -29,6 +29,10 @@ import {
   presentWhatsappDisplayName,
 } from '../services/whatsapp-display.js';
 import { normalizeFutureScheduledAt } from '../services/schedule-validation.js';
+import {
+  isAllowedMetaUndoHold,
+  isMetaMessagingChannel,
+} from '../services/meta-messaging.js';
 
 const friends = new Hono<Env>();
 
@@ -78,6 +82,7 @@ function serializeFriend(row: FriendRowWithChannel) {
   const isWhatsApp = row.channel_type === 'whatsapp'
   const isKakao = row.channel_type === 'kakao'
   const isWeChat = row.channel_type === 'wechat'
+  const isMetaDm = row.channel_type === 'facebook' || row.channel_type === 'instagram'
   const metadata = JSON.parse(row.metadata || '{}') as Record<string, unknown>
   const lineUserId = isWhatsApp
     ? formatWhatsappPhoneForDisplay(row.line_user_id)
@@ -85,6 +90,8 @@ function serializeFriend(row: FriendRowWithChannel) {
       ? metadata.kakaoId
       : isWeChat && typeof metadata.openId === 'string'
         ? metadata.openId
+      : isMetaDm && typeof metadata.recipientId === 'string'
+        ? metadata.recipientId
     : row.line_user_id
   const displayName = isWhatsApp
     ? presentWhatsappDisplayName(row.display_name, row.line_user_id)
@@ -417,6 +424,19 @@ friends.post('/api/friends/:id/messages', async (c) => {
       const normalizedSchedule = normalizeFutureScheduledAt(body.scheduledAt);
       if (!normalizedSchedule.ok) {
         return c.json({ success: false, error: normalizedSchedule.error }, 400);
+      }
+      if (
+        isMetaMessagingChannel(friend.channel_type)
+        && !isAllowedMetaUndoHold({
+          deliveryMode: body.deliveryMode,
+          undoGroupId: body.undoGroupId,
+          scheduledAt: normalizedSchedule.scheduledAt,
+        })
+      ) {
+        return c.json({
+          success: false,
+          error: 'Meta DMは30秒の送信取消待ち以外の予約送信に対応していません',
+        }, 400);
       }
 
       const scheduled = await createScheduledMessage(db, {

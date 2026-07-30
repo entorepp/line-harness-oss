@@ -79,6 +79,17 @@ export type KakaoStatus = {
   }>
 }
 
+export type MetaMessagingStatus = {
+  id: string
+  channelType: 'facebook' | 'instagram'
+  name: string | null
+  username: string | null
+  pictureUrl: string | null
+  connected: boolean
+  webhookUrl: string
+  replyWindowHours: number
+}
+
 export type WeChatStatus = {
   appId: string
   connected: true
@@ -341,7 +352,7 @@ export const api = {
       name: string
       channelAccessToken: string
       channelSecret?: string
-      channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
+      channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat' | 'facebook' | 'instagram'
       locale?: string
       defaultSlackChannel?: string | null
       wechatEncodingAesKey?: string | null
@@ -380,6 +391,8 @@ export const api = {
       fetchApi<ApiResponse<WhatsAppPhoneStatus>>(`/api/line-accounts/${id}/whatsapp-status`),
     getKakaoStatus: (id: string) =>
       fetchApi<ApiResponse<KakaoStatus>>(`/api/line-accounts/${id}/kakao-status`),
+    getMetaStatus: (id: string) =>
+      fetchApi<ApiResponse<MetaMessagingStatus>>(`/api/line-accounts/${id}/meta-status`),
     getWeChatStatus: (id: string) =>
       fetchApi<ApiResponse<WeChatStatus>>(`/api/line-accounts/${id}/wechat-status`),
     generateWeChatQr: (id: string) =>

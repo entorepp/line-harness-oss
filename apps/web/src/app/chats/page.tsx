@@ -107,7 +107,7 @@ interface MessageLog {
 function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onError }: {
   friendId: string
   friend: FriendItem | null
-  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat' | 'facebook' | 'instagram'
   onBack: () => void
   onSent: () => void
   onError: (message: string) => void
@@ -603,8 +603,10 @@ export default function ChatsPage() {
         if (account.channelType === 'line' && (name.includes('フラット') || name.includes('flat travel'))) return 0
         if (account.channelType === 'line') return 1
         if (account.channelType === 'whatsapp') return 2
-        if (account.channelType === 'wechat') return 3
-        return 4
+        if (account.channelType === 'facebook') return 3
+        if (account.channelType === 'instagram') return 4
+        if (account.channelType === 'wechat') return 5
+        return 6
       }
       return rank(left) - rank(right)
     })[0]
@@ -658,6 +660,10 @@ export default function ChatsPage() {
                     ? 'WeChat'
                   : account.channelType === 'whatsapp'
                     ? 'WhatsApp'
+                    : account.channelType === 'facebook'
+                      ? 'Messenger'
+                      : account.channelType === 'instagram'
+                        ? 'Instagram DM'
                     : 'LINE'
                 return (
                   <option key={account.id} value={account.id}>

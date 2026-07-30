@@ -26,6 +26,10 @@ export default function FriendTable({ friends, allTags, onRefresh }: FriendTable
   const lineUserIdLabel =
     selectedAccount?.channelType === 'whatsapp'
       ? 'WhatsApp番号'
+      : selectedAccount?.channelType === 'facebook'
+        ? 'Messenger scoped ID'
+        : selectedAccount?.channelType === 'instagram'
+          ? 'Instagram scoped ID'
       : selectedAccount?.channelType === 'kakao'
         ? 'Kakao ID'
         : selectedAccount?.channelType === 'wechat'
