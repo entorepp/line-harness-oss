@@ -88,13 +88,20 @@ pnpm dev:web
 ### 手動デプロイ
 
 ```bash
-# 1. パッケージビルド
-pnpm -r build
-
-# 2. Worker デプロイ
+# Worker デプロイ（統合ルート検査を含む）
 pnpm deploy:worker
+# => scripts/verify-worker-lead-routes.sh
 # => wrangler deploy (apps/worker/)
 ```
+
+`scripts/verify-worker-lead-routes.sh` は、共有パッケージ・DB・Workerの型検査に加え、見積通知のD1/Slackモック、`/webhook/meta`、`/meta-data-deletion`、公開 `/api/travel/quote-intents` のルート構成、Wrangler dry-runを検証します。Messenger/Instagram、見積通知、WeChatを別ブランチから個別にデプロイして、同じ `line-flattravel` Workerの別機能を消してはいけません。
+
+本番反映後は、少なくとも以下を公開URLで読み戻します。
+
+- `/meta-data-deletion` が200
+- `/webhook/meta` の誤ったVerify Tokenが403（404/401ではない）
+- `/api/travel/quote-intents` の不正Originが403
+- HarnessのInstagram DMとMessengerの「API接続確認」が `API: 接続済み`
 
 ### wrangler.toml 設定
 
