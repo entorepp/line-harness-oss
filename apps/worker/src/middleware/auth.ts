@@ -28,7 +28,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     (method === 'GET' && path.match(/^\/api\/forms\/[^/]+$/)) || // GET form definition (public for LIFF)
     (method === 'GET' && path.match(/^\/api\/form-issues\/[^/]+$/)) ||
     path.startsWith('/api/images/') || // Public image serving for LINE (legacy)
-    path.startsWith('/api/files/') // Public file serving
+    path.startsWith('/api/files/') || // Public file serving
+    path === '/api/travel/quote-intents' // Sanitized, origin-checked Flat Travel estimate notification
   ) {
     return next();
   }

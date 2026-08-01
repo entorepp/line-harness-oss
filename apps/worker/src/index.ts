@@ -39,6 +39,7 @@ import { waWebhook } from './routes/wa-webhook.js';
 import { kakaoWebhook } from './routes/kakao-webhook.js';
 import { wechatWebhook } from './routes/wechat-webhook.js';
 import { wechatKfWebhook } from './routes/wechat-kf-webhook.js';
+import { travelQuoteIntents } from './routes/travel-quote-intents.js';
 
 export type Env = {
   Bindings: {
@@ -129,6 +130,7 @@ app.route('/', waWebhook);
 app.route('/', kakaoWebhook);
 app.route('/', wechatWebhook);
 app.route('/', wechatKfWebhook);
+app.route('/', travelQuoteIntents);
 
 // Short link: /r/:ref → record click with referrer → redirect to LINE add-friend URL
 // Also supports /r/ (no ref) as a universal tracking redirect
