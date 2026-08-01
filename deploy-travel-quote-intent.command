@@ -9,7 +9,7 @@ DRY_RUN_DIR="$(mktemp -d /private/tmp/flat-travel-quote-dry-run.XXXXXX)"
 TEST_BUNDLE="/private/tmp/flat-travel-quote-route-test.mjs"
 
 exec > >(tee "$LOG_FILE") 2>&1
-trap 'status=$?; if (( status == 0 )); then touch "$SUCCESS_FILE"; else print -r -- "$status" > "$FAILURE_FILE"; fi' EXIT
+trap 'exit_code=$?; if (( exit_code == 0 )); then touch "$SUCCESS_FILE"; else print -r -- "$exit_code" > "$FAILURE_FILE"; fi' EXIT
 
 unlink "$SUCCESS_FILE" 2>/dev/null || true
 unlink "$FAILURE_FILE" 2>/dev/null || true
