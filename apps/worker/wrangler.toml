@@ -23,3 +23,15 @@ id = "184a9482110e47eaab42fecd655f00ef"
 
 [triggers]
 crons = ["* * * * *"]
+
+# Keep provider-webhook invocation logs available for production diagnostics.
+# Secrets, request bodies, and authorization headers must never be logged.
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true

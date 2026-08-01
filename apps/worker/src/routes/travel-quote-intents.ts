@@ -7,6 +7,7 @@ import {
   TRAVEL_QUOTE_INTENT_PATH,
   travelQuoteNotificationCopy,
 } from '../services/travel-quote-intent.js';
+import { postToSlack, resolveSlackChannelId } from '../services/slack.js';
 
 const travelQuoteIntents = new Hono<Env>();
 const recentRequests = new Map<string, number[]>();
@@ -49,11 +50,23 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
   const notificationId = `travel-quote:${intent.quoteReference}:${intent.channel}`;
   const inserted = await c.env.DB.prepare(
     `INSERT OR IGNORE INTO notifications (id, event_type, title, body, channel, status, metadata, created_at)
-     VALUES (?, 'travel_quote_intent', ?, ?, 'dashboard', 'sent', ?, datetime('now', '+9 hours'))`,
+     VALUES (?, 'travel_quote_intent', ?, ?, 'slack', 'pending', ?, datetime('now', '+9 hours'))`,
   ).bind(notificationId, copy.title, copy.body, JSON.stringify(intent)).run();
 
   const duplicate = (inserted.meta.changes || 0) === 0;
-  return c.json({ success: true, duplicate, reference: intent.quoteReference }, duplicate ? 200 : 202);
+  let slackNotified: boolean | null = null;
+  if (!duplicate) {
+    slackNotified = Boolean(c.env.SLACK_BOT_TOKEN) && await postToSlack({
+      token: c.env.SLACK_BOT_TOKEN,
+      channel: resolveSlackChannelId(c.env.TRAVEL_QUOTE_SLACK_CHANNEL_ID),
+      text: `${copy.title}\n\n${copy.body}`,
+      username: 'Flat Travel website',
+    });
+    await c.env.DB.prepare(
+      `UPDATE notifications SET status = ? WHERE id = ?`,
+    ).bind(slackNotified ? 'sent' : 'failed', notificationId).run();
+  }
+  return c.json({ success: true, duplicate, slackNotified, reference: intent.quoteReference }, duplicate ? 200 : 202);
 });
 
 export { travelQuoteIntents };

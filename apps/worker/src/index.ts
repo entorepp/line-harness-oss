@@ -41,6 +41,7 @@ import { wechatWebhook } from './routes/wechat-webhook.js';
 import { wechatKfWebhook } from './routes/wechat-kf-webhook.js';
 import { travelQuoteIntents } from './routes/travel-quote-intents.js';
 import { metaWebhook } from './routes/meta-webhook.js';
+import { metaDataDeletion } from './routes/meta-data-deletion.js';
 
 export type Env = {
   Bindings: {
@@ -56,6 +57,7 @@ export type Env = {
     WEB_APP_URL?: string;
     FORMS_APP_URL?: string;
     SLACK_BOT_TOKEN: string;
+    TRAVEL_QUOTE_SLACK_CHANNEL_ID?: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
     GA4_MEASUREMENT_ID: string;
@@ -96,6 +98,11 @@ app.get('/forms/new', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.
 app.get('/forms/edit', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/forms/edit'), 302));
 app.get('/public-form', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/public-form'), 302));
 
+// Public instructions required by Meta for Messenger and Instagram data-deletion requests.
+app.route('/', metaDataDeletion);
+// Public, origin-checked and rate-limited website estimate notification intake.
+app.route('/', travelQuoteIntents);
+
 // Auth middleware — skips /webhook and /docs automatically
 app.use('*', authMiddleware);
 
@@ -132,7 +139,6 @@ app.route('/', waWebhook);
 app.route('/', kakaoWebhook);
 app.route('/', wechatWebhook);
 app.route('/', wechatKfWebhook);
-app.route('/', travelQuoteIntents);
 app.route('/', metaWebhook);
 
 // Short link: /r/:ref → record click with referrer → redirect to LINE add-friend URL

@@ -24,6 +24,9 @@ export type TravelQuoteIntent = {
   route: string[];
   packageTotalJpy: number | null;
   priceStatus: string | null;
+  customerName: string;
+  wheelchairBrand: string;
+  wheelchairModel: string;
   createdAt: string;
 };
 
@@ -54,6 +57,12 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return { ok: false, error: 'Invalid start date' };
   const createdAt = text(body.createdAt, 40);
   if (!createdAt || Number.isNaN(Date.parse(createdAt))) return { ok: false, error: 'Invalid creation time' };
+  const customerName = text(body.customerName, 100);
+  const wheelchairBrand = text(body.wheelchairBrand, 100);
+  const wheelchairModel = text(body.wheelchairModel, 100);
+  if (!customerName) return { ok: false, error: 'Traveller name required' };
+  if (!wheelchairBrand) return { ok: false, error: 'Wheelchair brand required' };
+  if (!wheelchairModel) return { ok: false, error: 'Wheelchair model required' };
 
   return {
     ok: true,
@@ -70,6 +79,9 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       route,
       packageTotalJpy: body.packageTotalJpy == null ? null : integer(body.packageTotalJpy, 0, 100_000_000),
       priceStatus: text(body.priceStatus, 240),
+      customerName,
+      wheelchairBrand,
+      wheelchairModel,
       createdAt: new Date(createdAt).toISOString(),
     },
   };
@@ -85,7 +97,9 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent): { title:
     intent.travellers ? `Party: ${intent.travellers}` : null,
     intent.route.length ? `Route: ${intent.route.join(' → ')}` : null,
     `Estimate: ${total}`,
-    `Customer opened: ${intent.channel}`,
+    `Traveller: ${intent.customerName}`,
+    `Wheelchair: ${intent.wheelchairBrand} ${intent.wheelchairModel}`,
+    `Selected channel: ${intent.channel}`,
   ].filter((value): value is string => Boolean(value));
   return { title: `Flat Travel estimate · ${intent.quoteReference}`, body: details.join('\n') };
 }

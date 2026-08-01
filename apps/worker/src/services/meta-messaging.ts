@@ -1,6 +1,7 @@
 import type { LineAccount } from '@line-crm/db';
 
-const GRAPH_API = 'https://graph.facebook.com/v25.0';
+const FACEBOOK_GRAPH_API = 'https://graph.facebook.com/v25.0';
+const INSTAGRAM_GRAPH_API = 'https://graph.instagram.com/v26.0';
 export const META_REPLY_WINDOW_HOURS = 24;
 const META_UNDO_HOLD_MAX_MS = 2 * 60 * 1000;
 
@@ -24,6 +25,15 @@ type MetaGraphError = {
 
 export function isMetaMessagingChannel(value: string | null | undefined): value is MetaMessagingChannelType {
   return value === 'facebook' || value === 'instagram';
+}
+
+/**
+ * Instagram API with Instagram Login uses graph.instagram.com and the
+ * instagram_business_* permission family. Messenger continues to use the
+ * Facebook Graph host with a Page access token.
+ */
+export function metaGraphApiBase(channelType: MetaMessagingChannelType): string {
+  return channelType === 'instagram' ? INSTAGRAM_GRAPH_API : FACEBOOK_GRAPH_API;
 }
 
 export function isAllowedMetaUndoHold(opts: {
@@ -52,7 +62,7 @@ export async function fetchMetaChannelProfile(account: Pick<LineAccount, 'channe
   const fields = account.channel_type === 'facebook'
     ? 'id,name,picture.type(large){url}'
     : 'id,username,name,profile_picture_url';
-  const res = await fetch(`${GRAPH_API}/${account.channel_id}?fields=${encodeURIComponent(fields)}`, {
+  const res = await fetch(`${metaGraphApiBase(account.channel_type)}/${account.channel_id}?fields=${encodeURIComponent(fields)}`, {
     headers: { Authorization: `Bearer ${account.channel_access_token}` },
   });
   const body = await res.json() as MetaGraphError & {
@@ -84,7 +94,7 @@ export async function fetchMetaCustomerProfile(opts: {
   const fields = opts.channelType === 'facebook'
     ? 'first_name,last_name,profile_pic'
     : 'name,username,profile_pic';
-  const res = await fetch(`${GRAPH_API}/${opts.customerId}?fields=${encodeURIComponent(fields)}`, {
+  const res = await fetch(`${metaGraphApiBase(opts.channelType)}/${opts.customerId}?fields=${encodeURIComponent(fields)}`, {
     headers: { Authorization: `Bearer ${opts.accessToken}` },
   });
   const body = await res.json() as MetaGraphError & {
@@ -142,7 +152,7 @@ export async function dispatchMetaText(opts: {
     body.messaging_type = 'RESPONSE';
   }
 
-  const res = await fetch(`${GRAPH_API}/${opts.channelId}/messages`, {
+  const res = await fetch(`${metaGraphApiBase(opts.channelType)}/${opts.channelId}/messages`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.accessToken}`,
