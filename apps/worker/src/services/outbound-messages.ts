@@ -4,6 +4,11 @@ import { getLineAccountById } from '@line-crm/db';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
 import { dispatchKakaoBizMessage } from './kakao.js';
+import {
+  assertMetaReplyWindow,
+  dispatchMetaText,
+  isMetaMessagingChannel,
+} from './meta-messaging.js';
 import { dispatchWeChatKfText } from './wechat-kf.js';
 import { dispatchWeChatText } from './wechat.js';
 
@@ -387,6 +392,16 @@ function isWeChatKfFriend(friend: MessagingFriendContext): boolean {
   return metadata.provider === 'wechat_kf' || friend.line_user_id.startsWith('wechat-kf:');
 }
 
+function resolveMetaRecipient(friend: MessagingFriendContext): string {
+  const metadata = parseFriendMetadata(friend);
+  if (typeof metadata.recipientId === 'string' && metadata.recipientId.trim()) {
+    return metadata.recipientId.trim();
+  }
+
+  const parts = friend.line_user_id.split(':');
+  return parts.length >= 3 ? parts.slice(2).join(':') : friend.line_user_id;
+}
+
 export function buildWhatsAppMessagePayload(
   to: string,
   input: OutboundMessageInput,
@@ -432,6 +447,26 @@ export async function dispatchOutboundMessage(opts: {
   input: OutboundMessageInput;
 }): Promise<DispatchedMessage> {
   const messageType = opts.input.messageType ?? 'text';
+
+  if (isMetaMessagingChannel(opts.friend.channel_type)) {
+    if (messageType !== 'text') {
+      throw new Error('Facebook Messenger / Instagram DM は現在テキスト返信のみ対応しています');
+    }
+    if (!opts.friend.channel_access_token || !opts.friend.channel_id) {
+      throw new Error('Meta messaging credentials are not configured');
+    }
+
+    await assertMetaReplyWindow(opts.env.DB, opts.friend.id);
+    const content = serializeOutboundContent(opts.input);
+    await dispatchMetaText({
+      channelType: opts.friend.channel_type,
+      channelId: opts.friend.channel_id,
+      accessToken: opts.friend.channel_access_token,
+      recipientId: resolveMetaRecipient(opts.friend),
+      text: content,
+    });
+    return { messageType, storedContent: content };
+  }
 
   if (opts.friend.channel_type === 'whatsapp') {
     const content = serializeOutboundContent(opts.input);

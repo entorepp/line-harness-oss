@@ -9,6 +9,7 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   if (
     path === '/webhook' ||
     path === '/webhook/whatsapp' ||
+    path === '/webhook/meta' ||
     path === '/webhook/kakao' ||
     path === '/webhook/kakao/messages' ||
     path.startsWith('/webhook/wechat/') ||

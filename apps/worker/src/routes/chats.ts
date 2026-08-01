@@ -27,6 +27,10 @@ import {
 } from '../services/whatsapp-display.js';
 import { normalizeFutureScheduledAt } from '../services/schedule-validation.js';
 import { processScheduledMessageById } from '../services/scheduled-messages.js';
+import {
+  isAllowedMetaUndoHold,
+  isMetaMessagingChannel,
+} from '../services/meta-messaging.js';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 
 const chats = new Hono<Env>();
@@ -399,6 +403,19 @@ chats.post('/api/chats/:id/send', async (c) => {
       if (!normalizedSchedule.ok) {
         return c.json({ success: false, error: normalizedSchedule.error }, 400);
       }
+      if (
+        isMetaMessagingChannel(friend.channel_type)
+        && !isAllowedMetaUndoHold({
+          deliveryMode: body.deliveryMode,
+          undoGroupId: body.undoGroupId,
+          scheduledAt: normalizedSchedule.scheduledAt,
+        })
+      ) {
+        return c.json({
+          success: false,
+          error: 'Meta DMは30秒の送信取消待ち以外の予約送信に対応していません',
+        }, 400);
+      }
 
       const scheduled = await createScheduledMessage(c.env.DB, {
         friendId: friend.id,
@@ -542,6 +559,14 @@ chats.put('/api/scheduled-messages/:id', async (c) => {
     const normalizedSchedule = normalizeFutureScheduledAt(body.scheduledAt);
     if (!normalizedSchedule.ok) {
       return c.json({ success: false, error: normalizedSchedule.error }, 400);
+    }
+
+    const friend = await getMessagingFriendContext(c.env.DB, item.friend_id);
+    if (friend && isMetaMessagingChannel(friend.channel_type)) {
+      return c.json({
+        success: false,
+        error: 'Meta DMの送信取消待ちは日時変更できません',
+      }, 400);
     }
 
     const updated = await updateScheduledMessage(c.env.DB, id, {

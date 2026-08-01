@@ -4,7 +4,7 @@ compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
-# API_KEY is set via `wrangler secret put API_KEY`
+# API_KEY and META_VERIFY_TOKEN are set via `wrangler secret put`
 # Do NOT hardcode secrets here
 
 [vars]

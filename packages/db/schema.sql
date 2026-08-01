@@ -133,6 +133,16 @@ CREATE TABLE IF NOT EXISTS messages_log (
 CREATE INDEX IF NOT EXISTS idx_messages_log_friend_id ON messages_log (friend_id);
 CREATE INDEX IF NOT EXISTS idx_messages_log_created_at ON messages_log (created_at);
 
+CREATE TABLE IF NOT EXISTS meta_message_receipts (
+  line_account_id TEXT NOT NULL,
+  message_id      TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now', '+9 hours')),
+  PRIMARY KEY (line_account_id, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_meta_message_receipts_created
+  ON meta_message_receipts(created_at);
+
 -- ============================================================
 -- Auto Replies
 -- ============================================================

@@ -384,7 +384,7 @@ export default function ChatComposer({
 }: {
   friendId: string
   chatId?: string | null
-  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat' | 'facebook' | 'instagram'
   onSent?: () => void | Promise<void>
   onError?: (message: string) => void
 }) {
@@ -413,10 +413,18 @@ export default function ChatComposer({
   const isWhatsApp = channelType === 'whatsapp'
   const isKakao = channelType === 'kakao'
   const isWeChat = channelType === 'wechat'
+  const isMetaDm = channelType === 'facebook' || channelType === 'instagram'
   const supportsUndoSend = !isKakao
-  const attachmentsDisabled = isKakao || isWeChat
+  const attachmentsDisabled = isKakao || isWeChat || isMetaDm
   const attachmentAccept = isWhatsApp ? WHATSAPP_ATTACHMENT_ACCEPT : DEFAULT_ATTACHMENT_ACCEPT
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
+
+  useEffect(() => {
+    if (isMetaDm) {
+      setReserveMode(false)
+      setScheduledAt('')
+    }
+  }, [isMetaDm])
 
   useEffect(() => {
     const textarea = textareaRef.current
@@ -610,7 +618,12 @@ export default function ChatComposer({
 
   function setAttachmentFromFile(file: File) {
     if (attachmentsDisabled) {
-      onError?.(`${isWeChat ? 'WeChat' : 'Kakao'} では現在ファイル・画像送信に未対応です。`)
+      const channelLabel = isWeChat
+        ? 'WeChat'
+        : isMetaDm
+          ? 'Facebook Messenger / Instagram DM'
+          : 'Kakao'
+      onError?.(`${channelLabel} では現在ファイル・画像送信に未対応です。`)
       return
     }
 
@@ -1146,10 +1159,10 @@ export default function ChatComposer({
                   if (!scheduledAt) setScheduledAt(defaultScheduleValue())
                   setReserveMode((current) => !current)
                 }}
-                disabled={sending}
+                disabled={sending || isMetaDm}
                 aria-pressed={reserveMode}
                 aria-label="予約送信を設定"
-                title="予約送信を設定"
+                title={isMetaDm ? 'Meta DMは24時間内の手動返信のみです' : '予約送信を設定'}
                 className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   reserveMode
                     ? 'border-emerald-500 bg-emerald-50 text-emerald-700'

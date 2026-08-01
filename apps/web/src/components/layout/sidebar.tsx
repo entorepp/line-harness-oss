@@ -69,18 +69,30 @@ function AccountAvatar({ account, size = 32 }: { account: AccountWithStats; size
   const isWhatsApp = account.channelType === 'whatsapp'
   const isKakao = account.channelType === 'kakao'
   const isWeChat = account.channelType === 'wechat'
+  const isFacebook = account.channelType === 'facebook'
+  const isInstagram = account.channelType === 'instagram'
   return (
     <div
       className="rounded-full flex items-center justify-center text-white font-bold shrink-0"
       style={{
         width: size,
         height: size,
-        backgroundColor: isWhatsApp ? '#25D366' : isKakao ? '#FEE500' : isWeChat ? '#07C160' : '#06C755',
+        backgroundColor: isWhatsApp
+          ? '#25D366'
+          : isFacebook
+            ? '#0866FF'
+            : isInstagram
+              ? '#C13584'
+              : isKakao
+                ? '#FEE500'
+                : isWeChat
+                  ? '#07C160'
+                  : '#06C755',
         color: isKakao ? '#111827' : '#ffffff',
         fontSize: size * 0.4,
       }}
     >
-      {isWhatsApp ? 'W' : isKakao ? 'K' : isWeChat ? '微' : displayName.charAt(0)}
+      {isWhatsApp ? 'W' : isFacebook ? 'M' : isInstagram ? 'IG' : isKakao ? 'K' : isWeChat ? '微' : displayName.charAt(0)}
     </div>
   )
 }
@@ -177,7 +189,8 @@ export default function Sidebar() {
   const { selectedAccount } = useAccount()
   const isWhatsApp = selectedAccount?.channelType === 'whatsapp'
   const isWeChat = selectedAccount?.channelType === 'wechat'
-  const isLimitedChannel = isWhatsApp || isWeChat
+  const isMetaDm = selectedAccount?.channelType === 'facebook' || selectedAccount?.channelType === 'instagram'
+  const isLimitedChannel = isWhatsApp || isWeChat || isMetaDm
 
   useEffect(() => { setIsOpen(false) }, [pathname])
   useEffect(() => {
