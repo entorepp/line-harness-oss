@@ -447,6 +447,18 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#039;');
 }
 
+function resolveOfficialAccountUrl(value: string | null): URL | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    if (url.hostname !== 'weixin.qq.com') return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 wechatWebhook.get('/wechat/:accountId/qr.png', async (c) => {
   const account = await resolveWeChatAccount(c.env.DB, c.req.param('accountId'));
   if (!account?.wechat_qr_ticket) return c.text('QR code is not ready', 404);
@@ -464,6 +476,15 @@ wechatWebhook.get('/wechat/:accountId/qr.png', async (c) => {
   });
 });
 
+wechatWebhook.get('/wechat/:accountId/follow', async (c) => {
+  const account = await resolveWeChatAccount(c.env.DB, c.req.param('accountId'));
+  if (!account) return c.text('WeChat account not found', 404);
+
+  const destination = resolveOfficialAccountUrl(account.wechat_qr_url);
+  if (!destination) return c.text('Official Account URL is not ready', 404);
+  return c.redirect(destination.toString(), 302);
+});
+
 wechatWebhook.get('/wechat/:accountId', async (c) => {
   const account = await resolveWeChatAccount(c.env.DB, c.req.param('accountId'));
   if (!account || (!account.wechat_kf_contact_url && !account.wechat_qr_ticket)) {
@@ -472,9 +493,10 @@ wechatWebhook.get('/wechat/:accountId', async (c) => {
 
   const name = escapeHtml(account.name);
   const qrUrl = `/wechat/${encodeURIComponent(account.id)}/qr.png`;
+  const followUrl = `/wechat/${encodeURIComponent(account.id)}/follow`;
   const contactUrl = `/wechat/${encodeURIComponent(account.id)}/contact`;
   const hasContactUrl = Boolean(account.wechat_kf_contact_url);
-  const hasQr = Boolean(account.wechat_qr_ticket);
+  const hasQr = Boolean(account.wechat_qr_ticket && resolveOfficialAccountUrl(account.wechat_qr_url));
   return c.html(`<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -483,10 +505,10 @@ wechatWebhook.get('/wechat/:accountId', async (c) => {
   <meta name="robots" content="noindex,nofollow">
   <title>${name} - WeChat</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f7f4;color:#13241a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;padding:24px}.card{width:min(100%,420px);background:#fff;border:1px solid #e2ebe5;border-radius:24px;padding:34px 28px;text-align:center;box-shadow:0 18px 50px rgba(18,55,34,.08)}.mark{width:56px;height:56px;border-radius:18px;background:#07c160;color:#fff;display:grid;place-items:center;font-size:28px;font-weight:800;margin:0 auto 18px}h1{font-size:22px;margin:0 0 10px}.lead{font-size:14px;line-height:1.7;color:#607066;margin:0 0 20px}.qr{width:min(100%,240px);aspect-ratio:1;border:1px solid #e6ece8;border-radius:18px;padding:10px;background:#fff}.button{display:block;margin:0 0 20px;padding:15px 18px;border-radius:12px;background:#07c160;color:#fff;text-decoration:none;font-weight:700}.divider{display:flex;align-items:center;gap:12px;color:#9aa69e;font-size:12px;margin:4px 0 16px}.divider:before,.divider:after{content:"";height:1px;background:#e6ece8;flex:1}.note{font-size:12px;color:#8a978f;line-height:1.6;margin:16px 0 0}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f7f4;color:#13241a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;padding:24px}.card{width:min(100%,420px);background:#fff;border:1px solid #e2ebe5;border-radius:24px;padding:34px 28px;text-align:center;box-shadow:0 18px 50px rgba(18,55,34,.08)}.mark{width:56px;height:56px;border-radius:18px;background:#07c160;color:#fff;display:grid;place-items:center;font-size:28px;font-weight:800;margin:0 auto 18px}h1{font-size:22px;margin:0 0 10px}.lead{font-size:14px;line-height:1.7;color:#607066;margin:0 0 20px}.qr{width:min(100%,240px);aspect-ratio:1;border:1px solid #e6ece8;border-radius:18px;padding:10px;background:#fff}.button{display:block;margin:0 0 12px;padding:15px 18px;border-radius:12px;background:#07c160;color:#fff;text-decoration:none;font-weight:700}.button.secondary{background:#fff;color:#087a43;border:1px solid #9bd9b8}.divider{display:flex;align-items:center;gap:12px;color:#9aa69e;font-size:12px;margin:18px 0 16px}.divider:before,.divider:after{content:"";height:1px;background:#e6ece8;flex:1}.note{font-size:12px;color:#8a978f;line-height:1.6;margin:16px 0 0}
   </style>
 </head>
-<body><main class="card"><div class="mark">微</div><h1>${name}</h1><p class="lead">${hasContactUrl ? '点击下方按钮，可直接进入微信咨询。进入后请按提示关注官方账号，以便继续接收行程和报价通知。' : '使用微信扫描二维码，关注官方账号后即可开始咨询。'}</p>${hasContactUrl ? `<a class="button" href="${contactUrl}">在微信中直接咨询</a>` : ''}${hasContactUrl && hasQr ? '<div class="divider">或扫码关注</div>' : ''}${hasQr ? `<img class="qr" src="${qrUrl}" alt="${name} WeChat QR code">` : ''}<p class="note">${hasContactUrl ? '手机：点击按钮直接打开微信客服<br>电脑：可使用手机微信扫描二维码' : '请使用手机微信扫描二维码'}</p></main></body>
+<body><main class="card"><div class="mark">微</div><h1>${name}</h1><p class="lead">关注 Flat Travel 官方账号，继续接收行程、报价和重要变更通知。</p>${hasQr ? `<a class="button" href="${followUrl}">打开 Flat Travel 官方账号</a>` : ''}${hasContactUrl ? `<a class="button secondary" href="${contactUrl}">先直接咨询客服</a>` : ''}${hasQr ? '<div class="divider">无法打开时请扫码关注</div>' : ''}${hasQr ? `<img class="qr" src="${qrUrl}" alt="${name} WeChat QR code">` : ''}<p class="note">手机：请在 WeChat 内打开本页<br>外部浏览器无法唤起时，请保存二维码后在 WeChat 中识别</p></main></body>
 </html>`);
 });
 

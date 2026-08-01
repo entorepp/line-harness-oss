@@ -65,6 +65,17 @@ WeChat 側で保存・有効化すると、Flat Harness が署名を検証し、
 https://line-flattravel.flat-travel.workers.dev/wechat/<Flat HarnessアカウントID>
 ```
 
+公式 API が返す恒久 QR 内部 URL は、次の Flat Harness ラッパーから開けます。
+
+```text
+https://line-flattravel.flat-travel.workers.dev/wechat/<Flat HarnessアカウントID>/follow
+```
+
+この URL は保存済みの `http://weixin.qq.com/q/...` へ安全に転送します。WeChat
+内で開けば公式アカウントのフォロー／会話導線になります。外部ブラウザでは WeChat
+の自動起動が拒否される場合があるため、公開ページには同じ恒久 QR もフォールバック
+として表示します。
+
 ## 4. QR を使わない「微信客服」の設定
 
 微信客服は Official Account とは別の会話窓口です。外部サイトから微信客服へ直接
