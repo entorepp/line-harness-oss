@@ -8,6 +8,7 @@ import {
   travelQuoteNotificationCopy,
 } from '../services/travel-quote-intent.js';
 import { postToSlack, resolveSlackChannelId } from '../services/slack.js';
+import { syncTravelQuoteToFlatworker } from '../services/flatworker-travel-quote.js';
 
 const travelQuoteIntents = new Hono<Env>();
 const recentRequests = new Map<string, number[]>();
@@ -46,12 +47,13 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
   if (!parsed.ok) return c.json({ success: false, error: parsed.error }, 400);
   const intent = parsed.value;
 
-  const copy = travelQuoteNotificationCopy(intent);
+  const flatworkerDraft = await syncTravelQuoteToFlatworker(intent, c.env);
+  const copy = travelQuoteNotificationCopy(intent, flatworkerDraft);
   const notificationId = `travel-quote:${intent.quoteReference}:${intent.channel}`;
   const inserted = await c.env.DB.prepare(
     `INSERT OR IGNORE INTO notifications (id, event_type, title, body, channel, status, metadata, created_at)
      VALUES (?, 'travel_quote_intent', ?, ?, 'slack', 'pending', ?, datetime('now', '+9 hours'))`,
-  ).bind(notificationId, copy.title, copy.body, JSON.stringify(intent)).run();
+  ).bind(notificationId, copy.title, copy.body, JSON.stringify({ ...intent, flatworkerDraft })).run();
 
   const duplicate = (inserted.meta.changes || 0) === 0;
   let slackNotified: boolean | null = null;
@@ -66,7 +68,7 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
       `UPDATE notifications SET status = ? WHERE id = ?`,
     ).bind(slackNotified ? 'sent' : 'failed', notificationId).run();
   }
-  return c.json({ success: true, duplicate, slackNotified, reference: intent.quoteReference }, duplicate ? 200 : 202);
+  return c.json({ success: true, duplicate, slackNotified, reference: intent.quoteReference, flatworkerDraft }, duplicate ? 200 : 202);
 });
 
 export { travelQuoteIntents };

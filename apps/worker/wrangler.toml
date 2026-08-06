@@ -11,6 +11,7 @@ workers_dev = true
 WORKER_URL = "https://line-flattravel.flat-travel.workers.dev"
 WEB_APP_URL = "https://line-crm-web-2ob.pages.dev"
 FORMS_APP_URL = "https://liffform-studio.pages.dev"
+FLATWORKER_API_BASE_URL = "https://travelworker-api-659208123397.asia-northeast1.run.app"
 
 [[d1_databases]]
 binding = "DB"
