@@ -1,5 +1,6 @@
 export const TRAVEL_QUOTE_INTENT_PATH = '/api/travel/quote-intents';
 export const TRAVEL_QUOTE_INTENT_MAX_BYTES = 48_000;
+export const TRAVEL_PROFILE_CONSENT_VERSION = 'flat-travel-profile-v1';
 
 export const TRAVEL_QUOTE_ALLOWED_ORIGINS = new Set([
   'https://flat-travel-design-preview.flat-travel.workers.dev',
@@ -103,6 +104,10 @@ export type TravelQuoteIntent = {
   wheelchairModel: string;
   mobilityDeviceType: string | null;
   supportNote: string | null;
+  supportNeeds: string[];
+  profileConsentVersion: typeof TRAVEL_PROFILE_CONSENT_VERSION | null;
+  profileConsentedAt: string | null;
+  profileProvided: boolean;
   agreementSnapshot: AgreementSnapshot;
   createdAt: string;
 };
@@ -111,6 +116,7 @@ export type FlatworkerDraftSummary = {
   status: 'created' | 'updated' | 'existing' | 'failed' | 'not_configured';
   caseId: string;
   caseUrl?: string;
+  profileStored?: boolean;
 };
 
 type ParseResult = { ok: true; value: TravelQuoteIntent } | { ok: false; error: string };
@@ -146,8 +152,8 @@ function dateValue(value: unknown): string | null {
 
 function parseChoiceMap(value: unknown): Record<string, string | string[]> {
   const source = objectValue(value);
-  const allowed = new Set(['destinations', 'themes', 'startDate', 'duration', 'partySize', 'budget', 'namedHotels', 'transportPreferences', 'mobility', 'support', 'specialRequest']);
-  const longAnswers = new Set(['namedHotels', 'transportPreferences', 'specialRequest']);
+  const allowed = new Set(['destinations', 'themes', 'startDate', 'duration', 'partySize', 'budget', 'namedHotels', 'transportPreferences']);
+  const longAnswers = new Set(['namedHotels', 'transportPreferences']);
   const result: Record<string, string | string[]> = {};
   for (const [key, item] of Object.entries(source)) {
     if (!allowed.has(key)) continue;
@@ -164,7 +170,6 @@ function parseChoiceMap(value: unknown): Record<string, string | string[]> {
 function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown>): AgreementSnapshot {
   const source = objectValue(value);
   const itinerarySource = objectValue(source.itinerary);
-  const customerSource = objectValue(source.customer);
   const estimateSource = objectValue(source.estimate);
   const tailorMadeSource = objectValue(source.tailorMade);
   const capturedAt = text(source.capturedAt, 40);
@@ -236,11 +241,11 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       route: route.length ? route : textList(fallback.route, 12, 80),
     },
     customer: {
-      name: text(customerSource.name, 100) || text(fallback.customerName, 100) || '',
-      mobilityDeviceType: text(customerSource.mobilityDeviceType, 100) || text(fallback.mobilityDeviceType, 100) || '',
-      wheelchairBrand: text(customerSource.wheelchairBrand, 100) || text(fallback.wheelchairBrand, 100) || '',
-      wheelchairModel: text(customerSource.wheelchairModel, 100) || text(fallback.wheelchairModel, 100) || '',
-      supportNote: text(customerSource.supportNote, 1000) || text(fallback.supportNote, 1000) || '',
+      name: '',
+      mobilityDeviceType: '',
+      wheelchairBrand: '',
+      wheelchairModel: '',
+      supportNote: '',
     },
     hotels,
     railAndTransfers,
@@ -273,9 +278,19 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return { ok: false, error: 'Invalid start date' };
   const createdAt = text(body.createdAt, 40);
   if (!createdAt || Number.isNaN(Date.parse(createdAt))) return { ok: false, error: 'Invalid creation time' };
-  const customerName = text(body.customerName, 100) || `Website enquiry ${quoteReference}`;
-  const wheelchairBrand = text(body.wheelchairBrand, 100) || 'Not collected in operational handoff';
-  const wheelchairModel = text(body.wheelchairModel, 100) || 'Not collected in operational handoff';
+  const customerName = text(body.customerName, 100) || '';
+  const wheelchairBrand = text(body.wheelchairBrand, 100) || '';
+  const wheelchairModel = text(body.wheelchairModel, 100) || '';
+  const mobilityDeviceType = text(body.mobilityDeviceType, 100);
+  const supportNote = text(body.supportNote, 1000);
+  const supportNeeds = textList(body.supportNeeds, 12, 160);
+  const profileProvided = Boolean(customerName || wheelchairBrand || wheelchairModel || mobilityDeviceType || supportNote || supportNeeds.length);
+  const profileConsentVersion = text(body.profileConsentVersion, 80);
+  const consentedAt = text(body.profileConsentedAt, 40);
+  const profileConsentedAt = consentedAt && !Number.isNaN(Date.parse(consentedAt)) ? new Date(consentedAt).toISOString() : null;
+  if (profileProvided && (profileConsentVersion !== TRAVEL_PROFILE_CONSENT_VERSION || !profileConsentedAt)) {
+    return { ok: false, error: 'Traveller profile consent required' };
+  }
 
   const normalizedCreatedAt = new Date(createdAt).toISOString();
   const fallback = { ...body, createdAt: normalizedCreatedAt };
@@ -298,8 +313,12 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       customerName,
       wheelchairBrand,
       wheelchairModel,
-      mobilityDeviceType: text(body.mobilityDeviceType, 100),
-      supportNote: text(body.supportNote, 1000),
+      mobilityDeviceType,
+      supportNote,
+      supportNeeds,
+      profileConsentVersion: profileProvided ? TRAVEL_PROFILE_CONSENT_VERSION : null,
+      profileConsentedAt: profileProvided ? profileConsentedAt : null,
+      profileProvided,
       agreementSnapshot,
       createdAt: normalizedCreatedAt,
     },
@@ -328,8 +347,6 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
   ), 10);
   const selections = compactLines(agreement.selections.map((item) => `・${[item.dayLabel, item.kind, item.title].filter(Boolean).join(' · ')}`), 8);
   const confirmations = compactLines(agreement.openConfirmations.map((item) => `・${item}`), 10);
-  const publicIdentityCollected = !intent.customerName.startsWith('Website enquiry ');
-  const publicDeviceCollected = !intent.wheelchairBrand.startsWith('Not collected') && !intent.wheelchairModel.startsWith('Not collected');
   const flatworkerLine = draft
     ? `FlatWorker: ${draft.status} · ${draft.caseId}${draft.caseUrl ? `\n${draft.caseUrl}` : ''}`
     : 'FlatWorker: 未連携';
@@ -340,9 +357,7 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
     intent.startDate ? `旅行: ${intent.startDate}${intent.days ? ` · ${intent.days}日間` : ''}` : '旅行: 日付要確認',
     intent.travellers ? `人数: ${intent.travellers}名` : '人数: 要確認',
     intent.route.length ? `行き先: ${intent.route.join(' → ')}` : null,
-    publicIdentityCollected ? `顧客名: ${intent.customerName}` : '顧客識別: 受付番号で個別メッセージと突合',
-    publicDeviceCollected ? `車いす: ${intent.wheelchairBrand} ${intent.wheelchairModel}` : null,
-    intent.mobilityDeviceType ? `移動機器: ${intent.mobilityDeviceType}` : null,
+    draft?.profileStored ? '顧客プロフィール: FlatWorkerへ暗号化保存済み' : '顧客プロフィール: FlatWorkerで要確認',
     `連絡CTA: ${intent.channel}`,
     hotels.length ? `【顧客が選択したホテル】\n${hotels.join('\n')}` : null,
     movements.length ? `【合意した移動・時間帯】\n${movements.join('\n')}` : null,
@@ -355,4 +370,26 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
     `【FlatWorker】\n${flatworkerLine}`,
   ].filter((value): value is string => Boolean(value));
   return { title: `Flat Travel 旅行回答 · ${intent.quoteReference}`, body: sections.join('\n\n').slice(0, 11_500) };
+}
+
+export function travelQuoteReceiptMetadata(intent: TravelQuoteIntent, draft: FlatworkerDraftSummary): Record<string, unknown> {
+  return {
+    quoteReference: intent.quoteReference,
+    mode: intent.mode,
+    channel: intent.channel,
+    source: intent.source,
+    tourId: intent.tourId,
+    title: intent.title,
+    startDate: intent.startDate,
+    days: intent.days,
+    travellers: intent.travellers,
+    route: intent.route,
+    packageTotalJpy: intent.packageTotalJpy,
+    priceStatus: intent.priceStatus,
+    agreementSnapshot: intent.agreementSnapshot,
+    profileProvided: intent.profileProvided,
+    profileStored: draft.profileStored === true,
+    flatworkerDraft: draft,
+    createdAt: intent.createdAt,
+  };
 }

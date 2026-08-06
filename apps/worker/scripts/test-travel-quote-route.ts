@@ -34,6 +34,12 @@ function statement(sql: string) {
         if (row) row.status = status;
         return { success: true, meta: { changes: row ? 1 : 0 } };
       }
+      if (sql.startsWith('UPDATE notifications SET title')) {
+        const [title, body, metadata, id] = bindings;
+        const row = rows.find((item) => item.id === id);
+        if (row) Object.assign(row, { title, body, metadata });
+        return { success: true, meta: { changes: row ? 1 : 0 } };
+      }
       throw new Error(`Unexpected run() SQL: ${sql}`);
     },
   };
@@ -50,8 +56,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   if (String(input) === 'https://travelworker.example/api/integrations/travel-quote-intents') {
-    flatworkerPosts.push({ headers: init?.headers, body: JSON.parse(String(init?.body || '{}')) });
-    return new Response(JSON.stringify({ status: flatworkerPosts.length === 1 ? 'created' : 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const requestBody = JSON.parse(String(init?.body || '{}'));
+    flatworkerPosts.push({ headers: init?.headers, body: requestBody });
+    if (requestBody.quoteReference === 'FTQ-20260801-FF12AA34') return new Response(JSON.stringify({ error: 'test failure' }), { status: 503, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify({ status: flatworkerPosts.length === 1 ? 'created' : 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: Boolean(requestBody.customerName) }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   return originalFetch(input, init);
 }) as typeof fetch;
@@ -81,6 +89,10 @@ const payload = {
   wheelchairBrand: 'Permobil',
   wheelchairModel: 'M3 Corpus',
   mobilityDeviceType: 'Power wheelchair',
+  supportNeeds: ['Transfers', 'Bathroom support'],
+  supportNote: 'Transfer board required',
+  profileConsentVersion: 'flat-travel-profile-v1',
+  profileConsentedAt: '2026-08-01T10:00:00.000Z',
   agreementSnapshot: {
     schemaVersion: 'flat-travel-agreement-v1',
     capturedAt: '2026-08-01T10:00:00.000Z',
@@ -102,7 +114,7 @@ const payload = {
 
 const created = await request(payload);
 assert.equal(created.status, 202);
-assert.deepEqual(await created.json(), { success: true, duplicate: false, slackNotified: true, reference: payload.quoteReference, flatworkerDraft: { status: 'created', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34' } });
+assert.deepEqual(await created.json(), { success: true, duplicate: false, slackNotified: true, reference: payload.quoteReference, flatworkerDraft: { status: 'created', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true } });
 assert.equal(rows.length, 1);
 assert.equal(rows[0].event_type, 'travel_quote_intent');
 assert.equal(rows[0].channel, 'slack');
@@ -113,15 +125,22 @@ assert.match(rows[0].body, /Accessible Twin/);
 assert.match(rows[0].body, /8–10 AM/);
 assert.match(rows[0].body, /含まないもの/);
 assert.match(rows[0].body, /FlatWorker: created/);
+assert.match(rows[0].body, /FlatWorkerへ暗号化保存済み/);
+assert.doesNotMatch(rows[0].body, /Alex Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair/);
 assert.equal(JSON.parse(rows[0].metadata).agreementSnapshot.hotels[0].name, 'Tokyo Hotel');
+assert.equal(JSON.parse(rows[0].metadata).profileStored, true);
+assert.doesNotMatch(rows[0].metadata, /Alex Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair/);
 assert.equal(slackPosts.length, 1);
 assert.match(String(slackPosts[0].text), /FTQ-20260801-AB12CD34/);
+assert.doesNotMatch(String(slackPosts[0].text), /Alex Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair/);
 assert.equal(flatworkerPosts.length, 1);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].preferredTimeSlot, '08-10');
+assert.equal(flatworkerPosts[0].body.customerName, 'Alex Traveller');
+assert.deepEqual(flatworkerPosts[0].body.supportNeeds, ['Transfers', 'Bathroom support']);
 
 const duplicate = await request(payload);
 assert.equal(duplicate.status, 200);
-assert.deepEqual(await duplicate.json(), { success: true, duplicate: true, slackNotified: null, reference: payload.quoteReference, flatworkerDraft: { status: 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34' } });
+assert.deepEqual(await duplicate.json(), { success: true, duplicate: true, slackNotified: null, reference: payload.quoteReference, flatworkerDraft: { status: 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true } });
 assert.equal(rows.length, 1);
 assert.equal(slackPosts.length, 1);
 assert.equal(flatworkerPosts.length, 2);
@@ -134,10 +153,21 @@ const malformed = await request({ ...payload, quoteReference: 'bad-reference' })
 assert.equal(malformed.status, 400);
 assert.equal(rows.length, 1);
 
-const missingProfile = await request({ ...payload, quoteReference: 'FTQ-20260801-ZZ12YY34', customerName: '' });
+const missingProfile = await request({ ...payload, quoteReference: 'FTQ-20260801-ZZ12YY34', customerName: '', wheelchairBrand: '', wheelchairModel: '', mobilityDeviceType: '', supportNeeds: [], supportNote: '', profileConsentVersion: '', profileConsentedAt: '', agreementSnapshot: { ...payload.agreementSnapshot, customer: {} } });
 assert.equal(missingProfile.status, 202);
 assert.equal(rows.length, 2);
-assert.match(rows[1].body, /顧客識別: 受付番号で個別メッセージと突合/);
-assert.doesNotMatch(rows[1].body, /車いす: Not collected/);
+assert.match(rows[1].body, /顧客プロフィール: FlatWorkerで要確認/);
+
+const missingConsent = await request({ ...payload, quoteReference: 'FTQ-20260801-CC12DD34', profileConsentVersion: '', profileConsentedAt: '' });
+assert.equal(missingConsent.status, 400);
+
+const failedIntake = await request({ ...payload, quoteReference: 'FTQ-20260801-FF12AA34' });
+assert.equal(failedIntake.status, 503);
+const failedBody = await failedIntake.json() as any;
+assert.equal(failedBody.success, false);
+assert.equal(failedBody.flatworkerDraft.status, 'failed');
+assert.equal(rows.length, 3);
+assert.match(rows[2].id, /^travel-quote-intake-failed:/);
+assert.doesNotMatch(rows[2].metadata, /Alex Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair/);
 
 console.log('travel quote intent route: create, deduplicate, validate, and origin guard passed');

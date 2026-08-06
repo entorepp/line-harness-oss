@@ -39,6 +39,7 @@ export async function syncTravelQuoteToFlatworker(
       status,
       caseId: String(body.caseId || caseId),
       ...(typeof body.caseUrl === 'string' && body.caseUrl ? { caseUrl: body.caseUrl } : {}),
+      profileStored: body.profileStored === true,
     };
   } catch {
     return { status: 'failed', caseId };
