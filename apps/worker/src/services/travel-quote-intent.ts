@@ -146,7 +146,8 @@ function dateValue(value: unknown): string | null {
 
 function parseChoiceMap(value: unknown): Record<string, string | string[]> {
   const source = objectValue(value);
-  const allowed = new Set(['destinations', 'themes', 'startDate', 'duration', 'partySize', 'budget', 'mobility', 'support', 'specialRequest']);
+  const allowed = new Set(['destinations', 'themes', 'startDate', 'duration', 'partySize', 'budget', 'namedHotels', 'transportPreferences', 'mobility', 'support', 'specialRequest']);
+  const longAnswers = new Set(['namedHotels', 'transportPreferences', 'specialRequest']);
   const result: Record<string, string | string[]> = {};
   for (const [key, item] of Object.entries(source)) {
     if (!allowed.has(key)) continue;
@@ -154,7 +155,7 @@ function parseChoiceMap(value: unknown): Record<string, string | string[]> {
       result[key] = textList(item, 12, 160);
       continue;
     }
-    const normalized = text(item, key === 'specialRequest' ? 1000 : 240);
+    const normalized = text(item, longAnswers.has(key) ? 1000 : 240);
     if (normalized) result[key] = normalized;
   }
   return result;
@@ -272,12 +273,9 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return { ok: false, error: 'Invalid start date' };
   const createdAt = text(body.createdAt, 40);
   if (!createdAt || Number.isNaN(Date.parse(createdAt))) return { ok: false, error: 'Invalid creation time' };
-  const customerName = text(body.customerName, 100);
-  const wheelchairBrand = text(body.wheelchairBrand, 100);
-  const wheelchairModel = text(body.wheelchairModel, 100);
-  if (!customerName) return { ok: false, error: 'Traveller name required' };
-  if (!wheelchairBrand) return { ok: false, error: 'Wheelchair brand required' };
-  if (!wheelchairModel) return { ok: false, error: 'Wheelchair model required' };
+  const customerName = text(body.customerName, 100) || `Website enquiry ${quoteReference}`;
+  const wheelchairBrand = text(body.wheelchairBrand, 100) || 'Not collected in operational handoff';
+  const wheelchairModel = text(body.wheelchairModel, 100) || 'Not collected in operational handoff';
 
   const normalizedCreatedAt = new Date(createdAt).toISOString();
   const fallback = { ...body, createdAt: normalizedCreatedAt };

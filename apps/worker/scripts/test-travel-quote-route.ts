@@ -135,7 +135,8 @@ assert.equal(malformed.status, 400);
 assert.equal(rows.length, 1);
 
 const missingProfile = await request({ ...payload, quoteReference: 'FTQ-20260801-ZZ12YY34', customerName: '' });
-assert.equal(missingProfile.status, 400);
-assert.equal(rows.length, 1);
+assert.equal(missingProfile.status, 202);
+assert.equal(rows.length, 2);
+assert.match(rows[1].body, /Website enquiry FTQ-20260801-ZZ12YY34/);
 
 console.log('travel quote intent route: create, deduplicate, validate, and origin guard passed');
