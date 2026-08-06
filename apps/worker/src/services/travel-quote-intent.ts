@@ -328,6 +328,8 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
   ), 10);
   const selections = compactLines(agreement.selections.map((item) => `・${[item.dayLabel, item.kind, item.title].filter(Boolean).join(' · ')}`), 8);
   const confirmations = compactLines(agreement.openConfirmations.map((item) => `・${item}`), 10);
+  const publicIdentityCollected = !intent.customerName.startsWith('Website enquiry ');
+  const publicDeviceCollected = !intent.wheelchairBrand.startsWith('Not collected') && !intent.wheelchairModel.startsWith('Not collected');
   const flatworkerLine = draft
     ? `FlatWorker: ${draft.status} · ${draft.caseId}${draft.caseUrl ? `\n${draft.caseUrl}` : ''}`
     : 'FlatWorker: 未連携';
@@ -338,8 +340,8 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
     intent.startDate ? `旅行: ${intent.startDate}${intent.days ? ` · ${intent.days}日間` : ''}` : '旅行: 日付要確認',
     intent.travellers ? `人数: ${intent.travellers}名` : '人数: 要確認',
     intent.route.length ? `行き先: ${intent.route.join(' → ')}` : null,
-    `顧客名: ${intent.customerName}`,
-    `車いす: ${intent.wheelchairBrand} ${intent.wheelchairModel}`,
+    publicIdentityCollected ? `顧客名: ${intent.customerName}` : '顧客識別: 受付番号で個別メッセージと突合',
+    publicDeviceCollected ? `車いす: ${intent.wheelchairBrand} ${intent.wheelchairModel}` : null,
     intent.mobilityDeviceType ? `移動機器: ${intent.mobilityDeviceType}` : null,
     `連絡CTA: ${intent.channel}`,
     hotels.length ? `【顧客が選択したホテル】\n${hotels.join('\n')}` : null,

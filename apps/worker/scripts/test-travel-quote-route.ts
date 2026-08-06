@@ -137,6 +137,7 @@ assert.equal(rows.length, 1);
 const missingProfile = await request({ ...payload, quoteReference: 'FTQ-20260801-ZZ12YY34', customerName: '' });
 assert.equal(missingProfile.status, 202);
 assert.equal(rows.length, 2);
-assert.match(rows[1].body, /Website enquiry FTQ-20260801-ZZ12YY34/);
+assert.match(rows[1].body, /顧客識別: 受付番号で個別メッセージと突合/);
+assert.doesNotMatch(rows[1].body, /車いす: Not collected/);
 
 console.log('travel quote intent route: create, deduplicate, validate, and origin guard passed');
