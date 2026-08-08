@@ -172,9 +172,13 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
                 <div className="text-sm">
                   <ChatMessageContent messageType={msg.messageType} content={msg.content} />
                 </div>
-                <p className={`text-xs mt-1 ${msg.direction === 'outgoing' ? 'text-green-200' : 'text-gray-400'}`}>
-                  {new Date(msg.createdAt).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                </p>
+                <time
+                  dateTime={msg.createdAt}
+                  title="メッセージ送受信日時"
+                  className={`block text-xs mt-1 ${msg.direction === 'outgoing' ? 'text-green-200' : 'text-gray-400'}`}
+                >
+                  {formatDatetime(msg.createdAt)}
+                </time>
               </div>
             </div>
           ))
@@ -1053,10 +1057,14 @@ export default function ChatsPage() {
                           >
                             <ChatMessageContent messageType={msg.messageType} content={msg.content} />
                           </div>
-                          {/* 時刻 */}
-                          <span className="text-xs text-white/50 mt-0.5 px-1">
-                            {new Date(msg.createdAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                          {/* 日時 */}
+                          <time
+                            dateTime={msg.createdAt}
+                            title="メッセージ送受信日時"
+                            className="text-xs text-white/50 mt-0.5 px-1"
+                          >
+                            {formatDatetime(msg.createdAt)}
+                          </time>
                         </div>
                       </div>
                     )

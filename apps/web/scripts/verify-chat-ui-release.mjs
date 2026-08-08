@@ -41,6 +41,7 @@ const requiredMarkers = [
   '予約送信設定中',
   '日本時間',
   'Slackチャンネルを紐付け',
+  'メッセージ送受信日時',
   'https://line-flattravel.flat-travel.workers.dev',
 ]
 for (const marker of requiredMarkers) {
@@ -52,4 +53,4 @@ if (release.includes('http://localhost:8787')) {
   throw new Error('Live chat bundle still points at the local Worker')
 }
 
-console.log('Verified live Flat Harness scheduling and Slack linking UI')
+console.log('Verified live Flat Harness chat dates, scheduling, and Slack linking UI')
