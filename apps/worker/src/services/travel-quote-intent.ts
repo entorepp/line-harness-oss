@@ -105,6 +105,8 @@ export type TravelQuoteIntent = {
   priceStatus: string | null;
   profileSchemaVersion: typeof TRAVEL_PROFILE_SCHEMA_VERSION | null;
   customerName: string;
+  givenName: string;
+  familyName: string;
   bodyHeightCm: number | null;
   bodyWeightKg: number | null;
   wheelchairBrand: string;
@@ -288,7 +290,11 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return { ok: false, error: 'Invalid start date' };
   const createdAt = text(body.createdAt, 40);
   if (!createdAt || Number.isNaN(Date.parse(createdAt))) return { ok: false, error: 'Invalid creation time' };
-  const customerName = text(body.customerName, 100) || '';
+  const givenName = text(body.givenName, 100) || '';
+  const familyName = text(body.familyName, 100) || '';
+  const legacyCustomerName = text(body.customerName, 100) || '';
+  if (Boolean(givenName) !== Boolean(familyName)) return { ok: false, error: 'Both traveller name fields are required' };
+  const customerName = [givenName, familyName].filter(Boolean).join(' ') || legacyCustomerName;
   const wheelchairBrand = text(body.wheelchairBrand, 100) || '';
   const wheelchairModel = text(body.wheelchairModel, 100) || '';
   const mobilityDeviceType = text(body.mobilityDeviceType, 100);
@@ -302,7 +308,7 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const boardingPreference = text(body.boardingPreference, 160);
   const supportNote = text(body.supportNote, 1000);
   const supportNeeds = textList(body.supportNeeds, 12, 160);
-  const profileProvided = Boolean(customerName || wheelchairBrand || wheelchairModel || mobilityDeviceType || bodyHeightCm || bodyWeightKg || wheelchairWeightKg || assistanceMethod || boardingPreference || supportNote || supportNeeds.length);
+  const profileProvided = Boolean(customerName || givenName || familyName || wheelchairBrand || wheelchairModel || mobilityDeviceType || bodyHeightCm || bodyWeightKg || wheelchairWeightKg || assistanceMethod || boardingPreference || supportNote || supportNeeds.length);
   const profileConsentVersion = text(body.profileConsentVersion, 80);
   const consentedAt = text(body.profileConsentedAt, 40);
   const profileConsentedAt = consentedAt && !Number.isNaN(Date.parse(consentedAt)) ? new Date(consentedAt).toISOString() : null;
@@ -312,7 +318,7 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   if (profileSchemaVersion === TRAVEL_PROFILE_SCHEMA_VERSION) {
     if (!customerName || !mobilityDeviceType || !assistanceMethod || !ASSISTANCE_METHODS.has(assistanceMethod)) return { ok: false, error: 'Required traveller details missing' };
     if (WHEELCHAIR_DEVICES.has(mobilityDeviceType) && (!wheelchairBrand || !wheelchairModel || !boardingPreference)) return { ok: false, error: 'Wheelchair details missing' };
-    if (HEAVY_MOBILITY_DEVICES.has(mobilityDeviceType) && (bodyWeightKg == null || wheelchairWeightKg == null)) return { ok: false, error: 'Power mobility weights missing' };
+    if (HEAVY_MOBILITY_DEVICES.has(mobilityDeviceType) && bodyWeightKg == null) return { ok: false, error: 'Power mobility body weight missing' };
   }
 
   const normalizedCreatedAt = new Date(createdAt).toISOString();
@@ -335,6 +341,8 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       priceStatus: text(body.priceStatus, 240),
       profileSchemaVersion: profileSchemaVersion === TRAVEL_PROFILE_SCHEMA_VERSION ? TRAVEL_PROFILE_SCHEMA_VERSION : null,
       customerName,
+      givenName,
+      familyName,
       bodyHeightCm,
       bodyWeightKg,
       wheelchairBrand,

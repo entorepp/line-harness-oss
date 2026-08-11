@@ -88,6 +88,8 @@ const payload = {
   priceStatus: 'Estimate only',
   profileSchemaVersion: 'flat-travel-traveller-v2',
   customerName: 'Alex Traveller',
+  givenName: 'Alex',
+  familyName: 'Traveller',
   bodyHeightCm: 178.5,
   bodyWeightKg: 81.5,
   wheelchairBrand: 'Permobil',
@@ -133,16 +135,18 @@ assert.match(rows[0].body, /8–10 AM/);
 assert.match(rows[0].body, /含まないもの/);
 assert.match(rows[0].body, /FlatWorker: created/);
 assert.match(rows[0].body, /FlatWorkerへ暗号化保存済み/);
-assert.doesNotMatch(rows[0].body, /Alex Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
+assert.doesNotMatch(rows[0].body, /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 assert.equal(JSON.parse(rows[0].metadata).agreementSnapshot.hotels[0].name, 'Tokyo Hotel');
 assert.equal(JSON.parse(rows[0].metadata).profileStored, true);
-assert.doesNotMatch(rows[0].metadata, /Alex Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
+assert.doesNotMatch(rows[0].metadata, /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 assert.equal(slackPosts.length, 1);
 assert.match(String(slackPosts[0].text), /FTQ-20260801-AB12CD34/);
-assert.doesNotMatch(String(slackPosts[0].text), /Alex Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
+assert.doesNotMatch(String(slackPosts[0].text), /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 assert.equal(flatworkerPosts.length, 1);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].preferredTimeSlot, '08-10');
 assert.equal(flatworkerPosts[0].body.customerName, 'Alex Traveller');
+assert.equal(flatworkerPosts[0].body.givenName, 'Alex');
+assert.equal(flatworkerPosts[0].body.familyName, 'Traveller');
 assert.equal(flatworkerPosts[0].body.bodyHeightCm, 178.5);
 assert.equal(flatworkerPosts[0].body.bodyWeightKg, 81.5);
 assert.equal(flatworkerPosts[0].body.wheelchairWeightKg, 207.4);
@@ -170,6 +174,8 @@ const missingProfile = await request({
   quoteReference: 'FTQ-20260801-ZZ12YY34',
   profileSchemaVersion: '',
   customerName: '',
+  givenName: '',
+  familyName: '',
   bodyHeightCm: null,
   bodyWeightKg: null,
   wheelchairBrand: '',
@@ -193,10 +199,16 @@ assert.equal(missingConsent.status, 400);
 
 const missingPowerWeights = parseTravelQuoteIntent({ ...payload, bodyWeightKg: null, wheelchairWeightKg: null });
 assert.equal(missingPowerWeights.ok, false);
+const powerWithoutWheelchairWeight = parseTravelQuoteIntent({ ...payload, wheelchairWeightKg: null });
+assert.equal(powerWithoutWheelchairWeight.ok, true);
 const manualWithoutWeights = parseTravelQuoteIntent({ ...payload, mobilityDeviceType: 'Manual wheelchair', bodyWeightKg: null, wheelchairWeightKg: null });
 assert.equal(manualWithoutWeights.ok, true);
 const manualWithoutModel = parseTravelQuoteIntent({ ...payload, mobilityDeviceType: 'Manual wheelchair', wheelchairModel: '', bodyWeightKg: null, wheelchairWeightKg: null });
 assert.equal(manualWithoutModel.ok, false);
+const missingFamilyName = parseTravelQuoteIntent({ ...payload, familyName: '' });
+assert.equal(missingFamilyName.ok, false);
+const legacySingleName = parseTravelQuoteIntent({ ...payload, givenName: '', familyName: '' });
+assert.equal(legacySingleName.ok, true);
 
 const failedIntake = await request({ ...payload, quoteReference: 'FTQ-20260801-FF12AA34' });
 assert.equal(failedIntake.status, 503);
@@ -205,6 +217,6 @@ assert.equal(failedBody.success, false);
 assert.equal(failedBody.flatworkerDraft.status, 'failed');
 assert.equal(rows.length, 3);
 assert.match(rows[2].id, /^travel-quote-intake-failed:/);
-assert.doesNotMatch(rows[2].metadata, /Alex Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
+assert.doesNotMatch(rows[2].metadata, /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 
 console.log('travel quote intent route: create, deduplicate, validate, and origin guard passed');
