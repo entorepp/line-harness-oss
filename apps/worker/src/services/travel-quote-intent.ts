@@ -1,6 +1,7 @@
 export const TRAVEL_QUOTE_INTENT_PATH = '/api/travel/quote-intents';
 export const TRAVEL_QUOTE_INTENT_MAX_BYTES = 48_000;
 export const TRAVEL_PROFILE_CONSENT_VERSION = 'flat-travel-profile-v1';
+export const TRAVEL_PROFILE_SCHEMA_VERSION = 'flat-travel-traveller-v2';
 
 export const TRAVEL_QUOTE_ALLOWED_ORIGINS = new Set([
   'https://flat-travel-design-preview.flat-travel.workers.dev',
@@ -11,6 +12,9 @@ export const TRAVEL_QUOTE_ALLOWED_ORIGINS = new Set([
 const REFERENCE_PATTERN = /^(?:FTQ|FT)-\d{8}-[A-Z0-9]{8}$/;
 const MODES = new Set(['journey', 'private', 'agent']);
 const CHANNELS = new Set(['whatsapp', 'instagram', 'messenger', 'email']);
+const ASSISTANCE_METHODS = new Set(['independent', 'companion', 'arrange_support', 'unsure']);
+const WHEELCHAIR_DEVICES = new Set(['Manual wheelchair', 'Power wheelchair', 'Mobility scooter']);
+const HEAVY_MOBILITY_DEVICES = new Set(['Power wheelchair', 'Mobility scooter']);
 
 export type AgreementHotel = {
   stayId: string;
@@ -99,10 +103,16 @@ export type TravelQuoteIntent = {
   route: string[];
   packageTotalJpy: number | null;
   priceStatus: string | null;
+  profileSchemaVersion: typeof TRAVEL_PROFILE_SCHEMA_VERSION | null;
   customerName: string;
+  bodyHeightCm: number | null;
+  bodyWeightKg: number | null;
   wheelchairBrand: string;
   wheelchairModel: string;
+  wheelchairWeightKg: number | null;
   mobilityDeviceType: string | null;
+  assistanceMethod: string | null;
+  boardingPreference: string | null;
   supportNote: string | null;
   supportNeeds: string[];
   profileConsentVersion: typeof TRAVEL_PROFILE_CONSENT_VERSION | null;
@@ -282,14 +292,27 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const wheelchairBrand = text(body.wheelchairBrand, 100) || '';
   const wheelchairModel = text(body.wheelchairModel, 100) || '';
   const mobilityDeviceType = text(body.mobilityDeviceType, 100);
+  const profileSchemaVersion = text(body.profileSchemaVersion, 80);
+  if (profileSchemaVersion && profileSchemaVersion !== TRAVEL_PROFILE_SCHEMA_VERSION) return { ok: false, error: 'Invalid traveller profile schema' };
+  const bodyHeightCm = body.bodyHeightCm == null ? null : numberValue(body.bodyHeightCm, 30, 250);
+  const bodyWeightKg = body.bodyWeightKg == null ? null : numberValue(body.bodyWeightKg, 1, 500);
+  const wheelchairWeightKg = body.wheelchairWeightKg == null ? null : numberValue(body.wheelchairWeightKg, 1, 500);
+  if ((body.bodyHeightCm != null && bodyHeightCm == null) || (body.bodyWeightKg != null && bodyWeightKg == null) || (body.wheelchairWeightKg != null && wheelchairWeightKg == null)) return { ok: false, error: 'Invalid traveller measurement' };
+  const assistanceMethod = text(body.assistanceMethod, 40);
+  const boardingPreference = text(body.boardingPreference, 160);
   const supportNote = text(body.supportNote, 1000);
   const supportNeeds = textList(body.supportNeeds, 12, 160);
-  const profileProvided = Boolean(customerName || wheelchairBrand || wheelchairModel || mobilityDeviceType || supportNote || supportNeeds.length);
+  const profileProvided = Boolean(customerName || wheelchairBrand || wheelchairModel || mobilityDeviceType || bodyHeightCm || bodyWeightKg || wheelchairWeightKg || assistanceMethod || boardingPreference || supportNote || supportNeeds.length);
   const profileConsentVersion = text(body.profileConsentVersion, 80);
   const consentedAt = text(body.profileConsentedAt, 40);
   const profileConsentedAt = consentedAt && !Number.isNaN(Date.parse(consentedAt)) ? new Date(consentedAt).toISOString() : null;
   if (profileProvided && (profileConsentVersion !== TRAVEL_PROFILE_CONSENT_VERSION || !profileConsentedAt)) {
     return { ok: false, error: 'Traveller profile consent required' };
+  }
+  if (profileSchemaVersion === TRAVEL_PROFILE_SCHEMA_VERSION) {
+    if (!customerName || !mobilityDeviceType || !assistanceMethod || !ASSISTANCE_METHODS.has(assistanceMethod)) return { ok: false, error: 'Required traveller details missing' };
+    if (WHEELCHAIR_DEVICES.has(mobilityDeviceType) && (!wheelchairBrand || !wheelchairModel || !boardingPreference)) return { ok: false, error: 'Wheelchair details missing' };
+    if (HEAVY_MOBILITY_DEVICES.has(mobilityDeviceType) && (bodyWeightKg == null || wheelchairWeightKg == null)) return { ok: false, error: 'Power mobility weights missing' };
   }
 
   const normalizedCreatedAt = new Date(createdAt).toISOString();
@@ -310,10 +333,16 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       route,
       packageTotalJpy: body.packageTotalJpy == null ? null : integer(body.packageTotalJpy, 0, 100_000_000),
       priceStatus: text(body.priceStatus, 240),
+      profileSchemaVersion: profileSchemaVersion === TRAVEL_PROFILE_SCHEMA_VERSION ? TRAVEL_PROFILE_SCHEMA_VERSION : null,
       customerName,
+      bodyHeightCm,
+      bodyWeightKg,
       wheelchairBrand,
       wheelchairModel,
+      wheelchairWeightKg,
       mobilityDeviceType,
+      assistanceMethod,
+      boardingPreference,
       supportNote,
       supportNeeds,
       profileConsentVersion: profileProvided ? TRAVEL_PROFILE_CONSENT_VERSION : null,
