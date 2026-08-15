@@ -18,6 +18,8 @@ const HEAVY_MOBILITY_DEVICES = new Set(['Power wheelchair', 'Mobility scooter'])
 
 export type AgreementHotel = {
   stayId: string;
+  sanityId: string;
+  didaHotelId: string;
   city: string;
   nights: number | null;
   checkInDate: string | null;
@@ -25,6 +27,9 @@ export type AgreementHotel = {
   name: string;
   roomType: string;
   mealPlan: string;
+  cancellationPolicy: string;
+  cancellationType: string;
+  cancellationDeadline: string | null;
   roomSizeM2: number | null;
   bathroomInfo: string;
   toiletInfo: string;
@@ -39,6 +44,7 @@ export type AgreementHotel = {
 
 export type AgreementMovement = {
   id: string;
+  sanityId: string;
   dayStart: number | null;
   dayEnd: number | null;
   serviceDate: string | null;
@@ -49,10 +55,12 @@ export type AgreementMovement = {
   preferredTimeLabel: string;
   selectionStatus: string;
   supplierStatus: string;
+  estimateJpy: number | null;
 };
 
 export type AgreementSelection = {
   id: string;
+  sanityId: string;
   title: string;
   dayLabel: string;
   kind: string;
@@ -129,6 +137,10 @@ export type FlatworkerDraftSummary = {
   caseId: string;
   caseUrl?: string;
   profileStored?: boolean;
+  automationReadiness?: {
+    status: 'ready_for_staff_review' | 'needs_data';
+    blockingIssueCount: number;
+  };
 };
 
 type ParseResult = { ok: true; value: TravelQuoteIntent } | { ok: false; error: string };
@@ -191,6 +203,8 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
     const item = objectValue(raw);
     return {
       stayId: text(item.stayId, 100) || '',
+      sanityId: text(item.sanityId ?? item.hotelId ?? item.publicHotelId, 160) || '',
+      didaHotelId: text(item.didaHotelId, 100) || '',
       city: text(item.city, 100) || '',
       nights: item.nights == null ? null : integer(item.nights, 1, 60),
       checkInDate: dateValue(item.checkInDate),
@@ -198,6 +212,9 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       name: text(item.name, 180) || 'Hotel to confirm',
       roomType: text(item.roomType, 240) || 'To confirm',
       mealPlan: text(item.mealPlan, 160) || 'To confirm',
+      cancellationPolicy: text(item.cancellationPolicy ?? item.cancellation, 1000) || '',
+      cancellationType: text(item.cancellationType, 80) || '',
+      cancellationDeadline: dateValue(item.cancellationDeadline),
       roomSizeM2: item.roomSizeM2 == null ? null : numberValue(item.roomSizeM2, 0, 1000),
       bathroomInfo: text(item.bathroomInfo, 500) || 'To confirm',
       toiletInfo: text(item.toiletInfo, 500) || 'To confirm',
@@ -214,6 +231,7 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
     const item = objectValue(raw);
     return {
       id: text(item.id, 100) || '',
+      sanityId: text(item.sanityId ?? item.transportId, 160) || '',
       dayStart: item.dayStart == null ? null : integer(item.dayStart, 1, 60),
       dayEnd: item.dayEnd == null ? null : integer(item.dayEnd, 1, 60),
       serviceDate: dateValue(item.serviceDate),
@@ -224,12 +242,14 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       preferredTimeLabel: text(item.preferredTimeLabel, 120) || 'Time not decided',
       selectionStatus: text(item.selectionStatus, 60) || 'customer_selected',
       supplierStatus: text(item.supplierStatus, 80) || 'requires_confirmation',
+      estimateJpy: item.estimateJpy == null ? null : integer(item.estimateJpy, 0, 100_000_000),
     };
   });
   const selections = (Array.isArray(source.selections) ? source.selections : []).slice(0, 30).map((raw) => {
     const item = objectValue(raw);
     return {
       id: text(item.id, 100) || '',
+      sanityId: text(item.sanityId ?? item.tourId, 160) || '',
       title: text(item.title, 180) || 'Selection',
       dayLabel: text(item.dayLabel, 80) || '',
       kind: text(item.kind, 80) || 'Experience',
@@ -376,7 +396,7 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
   const journey = intent.title || intent.tourId || (intent.mode === 'private' ? 'Tailor-Made Travel' : 'Selected Journey');
   const hotels = compactLines(agreement.hotels.map((hotel) => {
     const stay = [hotel.city, hotel.nights ? `${hotel.nights}泊` : '', hotel.checkInDate && hotel.checkOutDate ? `${hotel.checkInDate}〜${hotel.checkOutDate}` : ''].filter(Boolean).join(' · ');
-    const room = [hotel.roomType, hotel.mealPlan, hotel.roomSizeM2 ? `${hotel.roomSizeM2}m²` : '', hotel.estimateJpy != null ? money(hotel.estimateJpy) : ''].filter(Boolean).join(' / ');
+    const room = [hotel.roomType, hotel.mealPlan, hotel.cancellationType === 'free_cancellation_until' ? '無料キャンセル可能' : '取消条件要確認', hotel.roomSizeM2 ? `${hotel.roomSizeM2}m²` : '', hotel.estimateJpy != null ? money(hotel.estimateJpy) : ''].filter(Boolean).join(' / ');
     return `・${stay} | ${hotel.name}${room ? ` | ${room}` : ''}\n  顧客選択済み · 在庫=${hotel.availabilityStatus} · 身体適合=${hotel.accessibilityStatus} · 価格=${hotel.priceStatus}`;
   }), 8);
   const movements = compactLines(agreement.railAndTransfers.map((movement) =>
@@ -395,6 +415,9 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
     intent.travellers ? `人数: ${intent.travellers}名` : '人数: 要確認',
     intent.route.length ? `行き先: ${intent.route.join(' → ')}` : null,
     draft?.profileStored ? '顧客プロフィール: FlatWorkerへ暗号化保存済み' : '顧客プロフィール: FlatWorkerで要確認',
+    draft?.automationReadiness?.status === 'ready_for_staff_review'
+      ? '自動見積: ルール照合済み・担当者レビュー可能'
+      : `自動見積: データ不足 ${Number(draft?.automationReadiness?.blockingIssueCount || 0)}件`,
     `連絡CTA: ${intent.channel}`,
     hotels.length ? `【顧客が選択したホテル】\n${hotels.join('\n')}` : null,
     movements.length ? `【合意した移動・時間帯】\n${movements.join('\n')}` : null,

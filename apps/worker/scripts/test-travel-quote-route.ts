@@ -60,7 +60,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const requestBody = JSON.parse(String(init?.body || '{}'));
     flatworkerPosts.push({ headers: init?.headers, body: requestBody });
     if (requestBody.quoteReference === 'FTQ-20260801-FF12AA34') return new Response(JSON.stringify({ error: 'test failure' }), { status: 503, headers: { 'content-type': 'application/json' } });
-    return new Response(JSON.stringify({ status: flatworkerPosts.length === 1 ? 'created' : 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: Boolean(requestBody.customerName) }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify({ status: flatworkerPosts.length === 1 ? 'created' : 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: Boolean(requestBody.customerName), automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   return originalFetch(input, init);
 }) as typeof fetch;
@@ -109,9 +109,9 @@ const payload = {
     agreementStatus: 'selected_for_quote',
     itinerary: { title: 'Tokyo 4-day modern tour', tourId: 'C16', startDate: '2026-11-10', days: 4, travellers: 2, route: ['Tokyo'] },
     customer: { name: 'Alex Traveller', mobilityDeviceType: 'Power wheelchair', wheelchairBrand: 'Permobil', wheelchairModel: 'M3 Corpus', supportNote: '' },
-    hotels: [{ stayId: 'tokyo-1', city: 'Tokyo', nights: 3, checkInDate: '2026-11-10', checkOutDate: '2026-11-13', name: 'Tokyo Hotel', roomType: 'Accessible Twin', mealPlan: 'Breakfast included', roomSizeM2: 32, bathroomInfo: 'Roll-in shower', toiletInfo: 'Grab bars', selectionType: 'listed', selectionStatus: 'customer_selected', availabilityStatus: 'priced_for_selected_dates', accessibilityStatus: 'requires_human_confirmation', priceStatus: 'estimate', request: '', estimateJpy: 240000 }],
-    railAndTransfers: [{ id: 'rail-1', dayStart: 2, dayEnd: 2, serviceDate: '2026-11-11', origin: 'Tokyo', destination: 'Kyoto', mode: 'Shinkansen / rail', preferredTimeSlot: '08-10', preferredTimeLabel: '8–10 AM', selectionStatus: 'customer_selected', supplierStatus: 'requires_confirmation' }],
-    selections: [{ id: 'tour-1', title: 'Tokyo Highlights', dayLabel: 'Day 2', kind: 'Experience', selectionStatus: 'customer_selected', estimateJpy: 30000 }],
+    hotels: [{ stayId: 'tokyo-1', sanityId: 'FT-H-TOKYO', didaHotelId: '1588010', city: 'Tokyo', nights: 3, checkInDate: '2026-11-10', checkOutDate: '2026-11-13', name: 'Tokyo Hotel', roomType: 'Accessible Twin', mealPlan: 'Breakfast included', cancellationPolicy: 'Free cancellation until 2026-11-05', cancellationType: 'free_cancellation_until', cancellationDeadline: '2026-11-05', roomSizeM2: 32, bathroomInfo: 'Roll-in shower', toiletInfo: 'Grab bars', selectionType: 'listed', selectionStatus: 'customer_selected', availabilityStatus: 'priced_for_selected_dates', accessibilityStatus: 'requires_human_confirmation', priceStatus: 'estimate', request: '', estimateJpy: 240000 }],
+    railAndTransfers: [{ id: 'rail-1', sanityId: 'FT-M-TOKYO-KYOTO', dayStart: 2, dayEnd: 2, serviceDate: '2026-11-11', origin: 'Tokyo', destination: 'Kyoto', mode: 'Shinkansen / rail', preferredTimeSlot: '08-10', preferredTimeLabel: '8–10 AM', selectionStatus: 'customer_selected', supplierStatus: 'requires_confirmation', estimateJpy: 30000 }],
+    selections: [{ id: 'tour-1', sanityId: 'FT-T-TOKYO', title: 'Tokyo Highlights', dayLabel: 'Day 2', kind: 'Experience', selectionStatus: 'customer_selected', estimateJpy: 30000 }],
     includedItems: ['Hotels', 'Breakfast'],
     excludedItems: ['International flights'],
     estimate: { currency: 'JPY', total: 480000, kind: 'planning_estimate', priceConfirmed: false },
@@ -123,7 +123,7 @@ const payload = {
 
 const created = await request(payload);
 assert.equal(created.status, 202);
-assert.deepEqual(await created.json(), { success: true, duplicate: false, slackNotified: true, reference: payload.quoteReference, flatworkerDraft: { status: 'created', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true } });
+assert.deepEqual(await created.json(), { success: true, duplicate: false, slackNotified: true, reference: payload.quoteReference, flatworkerDraft: { status: 'created', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true, automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } } });
 assert.equal(rows.length, 1);
 assert.equal(rows[0].event_type, 'travel_quote_intent');
 assert.equal(rows[0].channel, 'slack');
@@ -135,6 +135,7 @@ assert.match(rows[0].body, /8–10 AM/);
 assert.match(rows[0].body, /含まないもの/);
 assert.match(rows[0].body, /FlatWorker: created/);
 assert.match(rows[0].body, /FlatWorkerへ暗号化保存済み/);
+assert.match(rows[0].body, /自動見積: データ不足 2件/);
 assert.doesNotMatch(rows[0].body, /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 assert.equal(JSON.parse(rows[0].metadata).agreementSnapshot.hotels[0].name, 'Tokyo Hotel');
 assert.equal(JSON.parse(rows[0].metadata).profileStored, true);
@@ -144,6 +145,10 @@ assert.match(String(slackPosts[0].text), /FTQ-20260801-AB12CD34/);
 assert.doesNotMatch(String(slackPosts[0].text), /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 assert.equal(flatworkerPosts.length, 1);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].preferredTimeSlot, '08-10');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].cancellationType, 'free_cancellation_until');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].sanityId, 'FT-H-TOKYO');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].sanityId, 'FT-M-TOKYO-KYOTO');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.selections[0].sanityId, 'FT-T-TOKYO');
 assert.equal(flatworkerPosts[0].body.customerName, 'Alex Traveller');
 assert.equal(flatworkerPosts[0].body.givenName, 'Alex');
 assert.equal(flatworkerPosts[0].body.familyName, 'Traveller');
@@ -156,7 +161,7 @@ assert.deepEqual(flatworkerPosts[0].body.supportNeeds, ['Transfers', 'Bathroom s
 
 const duplicate = await request(payload);
 assert.equal(duplicate.status, 200);
-assert.deepEqual(await duplicate.json(), { success: true, duplicate: true, slackNotified: null, reference: payload.quoteReference, flatworkerDraft: { status: 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true } });
+assert.deepEqual(await duplicate.json(), { success: true, duplicate: true, slackNotified: null, reference: payload.quoteReference, flatworkerDraft: { status: 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true, automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } } });
 assert.equal(rows.length, 1);
 assert.equal(slackPosts.length, 1);
 assert.equal(flatworkerPosts.length, 2);

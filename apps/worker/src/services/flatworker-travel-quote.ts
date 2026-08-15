@@ -35,11 +35,21 @@ export async function syncTravelQuoteToFlatworker(
     const status = new Set(['created', 'updated', 'existing']).has(String(body.status))
       ? String(body.status) as FlatworkerDraftSummary['status']
       : 'updated';
+    const readiness = body.automationReadiness && typeof body.automationReadiness === 'object'
+      ? body.automationReadiness as Record<string, unknown>
+      : {};
+    const readinessStatus = new Set(['ready_for_staff_review', 'needs_data']).has(String(readiness.status))
+      ? String(readiness.status) as 'ready_for_staff_review' | 'needs_data'
+      : 'needs_data';
     return {
       status,
       caseId: String(body.caseId || caseId),
       ...(typeof body.caseUrl === 'string' && body.caseUrl ? { caseUrl: body.caseUrl } : {}),
       profileStored: body.profileStored === true,
+      automationReadiness: {
+        status: readinessStatus,
+        blockingIssueCount: Math.max(0, Math.min(50, Number(readiness.blockingIssueCount) || 0)),
+      },
     };
   } catch {
     return { status: 'failed', caseId };
