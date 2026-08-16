@@ -110,7 +110,7 @@ const payload = {
     itinerary: { title: 'Tokyo 4-day modern tour', tourId: 'C16', startDate: '2026-11-10', days: 4, travellers: 2, route: ['Tokyo'] },
     customer: { name: 'Alex Traveller', mobilityDeviceType: 'Power wheelchair', wheelchairBrand: 'Permobil', wheelchairModel: 'M3 Corpus', supportNote: '' },
     hotels: [{ stayId: 'tokyo-1', sanityId: 'FT-H-TOKYO', didaHotelId: '1588010', city: 'Tokyo', nights: 3, checkInDate: '2026-11-10', checkOutDate: '2026-11-13', name: 'Tokyo Hotel', roomType: 'Accessible Twin', mealPlan: 'Breakfast included', cancellationPolicy: 'Free cancellation until 2026-11-05', cancellationType: 'free_cancellation_until', cancellationDeadline: '2026-11-05', roomSizeM2: 32, bathroomInfo: 'Roll-in shower', toiletInfo: 'Grab bars', selectionType: 'listed', selectionStatus: 'customer_selected', availabilityStatus: 'priced_for_selected_dates', accessibilityStatus: 'requires_human_confirmation', priceStatus: 'estimate', request: '', estimateJpy: 240000 }],
-    railAndTransfers: [{ id: 'rail-1', sanityId: 'FT-M-TOKYO-KYOTO', dayStart: 2, dayEnd: 2, serviceDate: '2026-11-11', origin: 'Tokyo', destination: 'Kyoto', mode: 'Shinkansen / rail', preferredTimeSlot: '08-10', preferredTimeLabel: '8–10 AM', selectionStatus: 'customer_selected', supplierStatus: 'requires_confirmation', estimateJpy: 30000 }],
+    railAndTransfers: [{ id: 'rail-1', sanityId: 'FT-M-TOKYO-KYOTO', dayStart: 2, dayEnd: 2, serviceDate: '2026-11-11', origin: 'Tokyo', destination: 'Kyoto', mode: 'Shinkansen / rail', preferredTimeSlot: '08-10', preferredTimeLabel: '8–10 AM', selectionStatus: 'customer_selected', supplierStatus: 'requires_confirmation', fixedUnitPriceJpy: 13970, priceBasis: 'perPerson', passengerCapacity: 4, estimateJpy: 27940 }],
     selections: [{ id: 'tour-1', sanityId: 'FT-T-TOKYO', title: 'Tokyo Highlights', dayLabel: 'Day 2', kind: 'Experience', selectionStatus: 'customer_selected', estimateJpy: 30000 }],
     includedItems: ['Hotels', 'Breakfast'],
     excludedItems: ['International flights'],
@@ -148,6 +148,9 @@ assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].prefe
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].cancellationType, 'free_cancellation_until');
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].sanityId, 'FT-H-TOKYO');
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].sanityId, 'FT-M-TOKYO-KYOTO');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].fixedUnitPriceJpy, 13970);
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].priceBasis, 'perPerson');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].passengerCapacity, 4);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.selections[0].sanityId, 'FT-T-TOKYO');
 assert.equal(flatworkerPosts[0].body.customerName, 'Alex Traveller');
 assert.equal(flatworkerPosts[0].body.givenName, 'Alex');

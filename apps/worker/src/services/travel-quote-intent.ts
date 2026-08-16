@@ -55,6 +55,9 @@ export type AgreementMovement = {
   preferredTimeLabel: string;
   selectionStatus: string;
   supplierStatus: string;
+  fixedUnitPriceJpy: number | null;
+  priceBasis: 'perPerson' | 'perVehicle' | 'perGroup' | 'perArrangement';
+  passengerCapacity: number | null;
   estimateJpy: number | null;
 };
 
@@ -242,6 +245,11 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       preferredTimeLabel: text(item.preferredTimeLabel, 120) || 'Time not decided',
       selectionStatus: text(item.selectionStatus, 60) || 'customer_selected',
       supplierStatus: text(item.supplierStatus, 80) || 'requires_confirmation',
+      fixedUnitPriceJpy: item.fixedUnitPriceJpy == null ? null : integer(item.fixedUnitPriceJpy, 0, 100_000_000),
+      priceBasis: ['perPerson', 'perVehicle', 'perGroup', 'perArrangement'].includes(String(item.priceBasis))
+        ? item.priceBasis as AgreementMovement['priceBasis']
+        : 'perArrangement',
+      passengerCapacity: item.passengerCapacity == null ? null : integer(item.passengerCapacity, 1, 30),
       estimateJpy: item.estimateJpy == null ? null : integer(item.estimateJpy, 0, 100_000_000),
     };
   });
