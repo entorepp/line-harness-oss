@@ -26,6 +26,17 @@ export type AgreementHotel = {
   checkOutDate: string | null;
   name: string;
   roomType: string;
+  rooms: Array<{
+    requestedRoomType: 'accessible' | 'universal' | 'standard';
+    adultsPerRoom: number | null;
+    roomCount: number;
+    roomName: string;
+    bedType: string;
+    inventoryCount: number | null;
+    estimateJpy: number | null;
+    availabilityStatus: string;
+    physicalAccessibilityConfirmed: false;
+  }>;
   mealPlan: string;
   cancellationPolicy: string;
   cancellationType: string;
@@ -38,6 +49,9 @@ export type AgreementHotel = {
   availabilityStatus: string;
   accessibilityStatus: string;
   priceStatus: string;
+  rateSource: string;
+  didaSaleAvailable: boolean;
+  liveCheckedAt: string | null;
   request: string;
   estimateJpy: number | null;
 };
@@ -214,6 +228,21 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       checkOutDate: dateValue(item.checkOutDate),
       name: text(item.name, 180) || 'Hotel to confirm',
       roomType: text(item.roomType, 240) || 'To confirm',
+      rooms: (Array.isArray(item.rooms) ? item.rooms : []).slice(0, 8).map((rawRoom) => {
+        const room = objectValue(rawRoom);
+        const requestedRoomType = text(room.requestedRoomType, 40);
+        return {
+          requestedRoomType: (requestedRoomType === 'universal' || requestedRoomType === 'standard' ? requestedRoomType : 'accessible') as 'accessible' | 'universal' | 'standard',
+          adultsPerRoom: room.adultsPerRoom == null ? null : integer(room.adultsPerRoom, 1, 30),
+          roomCount: room.roomCount == null ? 1 : integer(room.roomCount, 1, 30) || 1,
+          roomName: text(room.roomName, 240) || 'To confirm',
+          bedType: text(room.bedType, 160) || 'To confirm',
+          inventoryCount: room.inventoryCount == null ? null : integer(room.inventoryCount, 0, 10_000),
+          estimateJpy: room.estimateJpy == null ? null : integer(room.estimateJpy, 0, 100_000_000),
+          availabilityStatus: text(room.availabilityStatus, 80) || 'requires_supplier_confirmation',
+          physicalAccessibilityConfirmed: false as const,
+        };
+      }),
       mealPlan: text(item.mealPlan, 160) || 'To confirm',
       cancellationPolicy: text(item.cancellationPolicy ?? item.cancellation, 1000) || '',
       cancellationType: text(item.cancellationType, 80) || '',
@@ -225,7 +254,13 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       selectionStatus: text(item.selectionStatus, 60) || 'customer_selected',
       availabilityStatus: text(item.availabilityStatus, 80) || 'requires_supplier_confirmation',
       accessibilityStatus: text(item.accessibilityStatus, 80) || 'requires_human_confirmation',
-      priceStatus: text(item.priceStatus, 60) || 'estimate',
+      priceStatus: text(item.priceStatus, 60) || 'not_quoted',
+      rateSource: text(item.rateSource, 60) || '',
+      didaSaleAvailable: item.didaSaleAvailable === true,
+      liveCheckedAt: (() => {
+        const value = text(item.liveCheckedAt, 40);
+        return value && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : null;
+      })(),
       request: text(item.request, 500) || '',
       estimateJpy: item.estimateJpy == null ? null : integer(item.estimateJpy, 0, 100_000_000),
     };
