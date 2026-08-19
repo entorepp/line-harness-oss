@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>移動事業者様アンケート（東京エリア）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@600&display=swap">
+<style>
+:root{
+  --ink:#1c2b33; --ink-2:#4a5b63; --ink-3:#7d8b91;
+  --ground:#fbfaf8; --card:#ffffff; --rule:#e4e0d9;
+  --accent:#2f6b5f; --accent-soft:#eff4f2; --ku-line:#b9cfc8; --amber:#8a6d3b; --amber-soft:#f7f1e4;
+}
+:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){
+  --ink:#e8e6e1; --ink-2:#b2bcc0; --ink-3:#8b979c;
+  --ground:#14191c; --card:#1b2226; --rule:#2e373c;
+  --accent:#7cc0ae; --accent-soft:#1c2725; --ku-line:#3c5b53; --amber:#d8b478; --amber-soft:#2a241a;
+}}
+:root[data-theme="dark"]{
+  --ink:#e8e6e1; --ink-2:#b2bcc0; --ink-3:#8b979c;
+  --ground:#14191c; --card:#1b2226; --rule:#2e373c;
+  --accent:#7cc0ae; --accent-soft:#1c2725; --ku-line:#3c5b53; --amber:#d8b478; --amber-soft:#2a241a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"Zen Kaku Gothic New",system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
+  font-size:16px;line-height:1.85;-webkit-font-smoothing:antialiased}
+.wrap{max-width:820px;margin:0 auto;padding:48px 20px 96px;display:flex;flex-direction:column;gap:8px}
+.head{border-bottom:2px solid var(--ink);padding-bottom:26px;margin-bottom:8px}
+.eyebrow{margin:0 0 10px;font-size:12.5px;letter-spacing:.14em;color:var(--accent);font-weight:700}
+h1{font-family:"Zen Old Mincho","Zen Kaku Gothic New",serif;font-weight:600;
+  font-size:clamp(26px,4.4vw,36px);line-height:1.35;margin:0 0 16px;text-wrap:balance;letter-spacing:.01em}
+.lead p{margin:0 0 10px;color:var(--ink-2);font-size:15px}
+.lead p:last-child{margin-bottom:0}
+.note{color:var(--amber);font-size:14px;margin:8px 0 2px}
+.sec{margin-top:40px;display:flex;flex-direction:column;gap:16px}
+h2{display:flex;align-items:center;gap:12px;font-size:19px;font-weight:700;margin:0 0 14px;
+  padding-bottom:12px;border-bottom:1px solid var(--rule);letter-spacing:.01em}
+.num{flex:none;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+:root[data-theme="dark"] .num{color:#0f1517}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .num{color:#0f1517}}
+.sub-h{font-size:15px;font-weight:700;color:var(--accent);margin:22px 0 4px;letter-spacing:.02em}
+.q{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:18px 20px;margin:0;
+  display:flex;flex-direction:column;gap:9px}
+.qt{margin:0;font-weight:500;display:flex;gap:11px;align-items:baseline;text-wrap:pretty}
+.qn{flex:none;color:var(--accent);font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums;
+  letter-spacing:.03em;padding-top:2px}
+.body{margin:2px 0;color:var(--ink-2);font-size:15px}
+.sub{margin:0;font-size:13.5px;color:var(--ink-3)}
+.arrow::before{content:"→ "}
+.memo{margin:4px 0 0;font-size:12.5px;color:var(--amber);background:var(--amber-soft);
+  border-radius:6px;padding:6px 10px}
+label.opt{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px;padding:3px 0}
+label.opt input{accent-color:var(--accent);width:17px;height:17px;flex:none;margin:0}
+input.line,textarea{width:100%;font:inherit;font-size:15px;color:var(--ink);background:var(--ground);
+  border:1px solid var(--rule);border-radius:7px;padding:9px 12px}
+textarea{resize:vertical;line-height:1.7}
+.money{display:flex;align-items:center;gap:8px}
+input.amt{width:170px;font:inherit;font-size:16px;text-align:right;font-variant-numeric:tabular-nums;
+  color:var(--ink);background:var(--ground);border:1px solid var(--rule);border-radius:7px;padding:9px 12px}
+.unit{font-size:14px;color:var(--ink-3)}
+input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.course{background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;
+  padding:15px 18px;margin:18px 0 4px}
+.cname{margin:0 0 7px;font-weight:700;font-size:15px}
+.croute{margin:0;font-size:14.5px;color:var(--ink-2);line-height:1.75}
+.cnote{margin:8px 0 0;font-size:13px;color:var(--amber)}
+.tw{overflow-x:auto;margin:4px 0 0;border:1px solid var(--rule);border-radius:9px;background:var(--card)}
+table{border-collapse:collapse;font-size:13.5px;min-width:100%}
+th,td{border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:8px 10px;
+  text-align:center;white-space:nowrap}
+thead th{background:var(--accent-soft);font-weight:700;font-size:12.5px;position:sticky;top:0}
+th.rh{text-align:left;background:var(--card);position:sticky;left:0;z-index:1;font-weight:500;
+  box-shadow:1px 0 0 var(--rule)}
+thead th.rh{background:var(--accent-soft);z-index:2}
+th.ku,th.kuend,td.kuend{border-right:2px solid var(--ku-line)}
+tr.grow td{background:var(--accent-soft)}
+th.sub-rh{font-size:12px;color:var(--ink-3);font-weight:400;background:var(--accent-soft)!important}
+tr.grow td.kugroup{padding:6px 8px}
+th.ku{font-size:13px;letter-spacing:.02em}
+th.hn{font-weight:500;font-size:11.5px;color:var(--ink-2);white-space:normal;
+  min-width:88px;max-width:110px;line-height:1.4;padding:7px 8px}
+thead tr:first-child th.rh{vertical-align:middle}
+tr:last-child th,tr:last-child td{border-bottom:none}
+th:last-child,td:last-child{border-right:none}
+input.cell{width:86px;font:inherit;font-size:14px;text-align:right;font-variant-numeric:tabular-nums;
+  color:var(--ink);background:var(--ground);border:1px solid var(--rule);border-radius:5px;padding:5px 7px}
+input.cell.wide{width:118px;text-align:left}
+.cost-main{display:flex;align-items:center;gap:12px;margin-top:2px}
+.cost-lb-main{font-size:15px;font-weight:700;color:var(--ink);white-space:nowrap}
+.cost-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:0;padding-top:8px}
+.cost-item{display:flex;align-items:center;gap:9px}
+.cost-lb{font-size:13.5px;color:var(--ink-2);white-space:nowrap}
+input.amt.sm{width:120px;font-size:15px}
+.add-row{display:flex;gap:12px}
+.add-lb,.add-lb2{font-size:13px;color:var(--ink-3)}
+.add-lb{flex:1 1 60%}
+.add-lb2{flex:1 1 40%}
+input.add-item,input.add-amt{font:inherit;font-size:15px;color:var(--ink);background:var(--ground);
+  border:1px solid var(--rule);border-radius:7px;padding:9px 12px;min-width:0}
+input.add-item{flex:1 1 60%}
+input.add-amt{flex:1 1 40%}
+@media(max-width:560px){.add-row{gap:8px}}
+.meet-row{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:9px 0;border-bottom:1px solid var(--rule)}
+.meet-row:last-of-type{border-bottom:none}
+.meet-lb{display:flex;flex-direction:column;gap:1px;min-width:0}
+.meet-pl{font-size:15px;font-weight:700}
+.meet-sv{font-size:12.5px;color:var(--ink-3);line-height:1.5}
+@media(max-width:560px){.meet-row{flex-direction:column;align-items:stretch;gap:7px}}
+.add-btn{align-self:flex-start;font:inherit;font-size:13.5px;font-weight:700;color:var(--accent);
+  background:transparent;border:1px dashed var(--accent);border-radius:7px;padding:7px 16px;cursor:pointer}
+.add-btn:hover{background:var(--accent-soft)}
+.add-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.veh-row{display:flex;gap:10px}
+.veh-note{font-size:11.5px;line-height:1.4;display:inline-block}
+.veh-lb{flex:1 1 0;min-width:0;font-size:13px;color:var(--ink-3)}
+input.veh-in{flex:1 1 0;min-width:0;font:inherit;font-size:15px;color:var(--ink);background:var(--ground);
+  border:1px solid var(--rule);border-radius:7px;padding:9px 12px}
+@media(max-width:560px){.veh-row{gap:6px}input.veh-in{font-size:14px;padding:8px 9px}}
+.submit-wrap{margin-top:40px;padding-top:28px;border-top:1px solid var(--rule);
+  display:flex;flex-direction:column;align-items:center;gap:12px}
+button.submit{font:inherit;font-size:16px;font-weight:700;color:#fff;background:var(--accent);
+  border:none;border-radius:8px;padding:14px 56px;cursor:pointer;letter-spacing:.04em}
+button.submit:hover{filter:brightness(1.08)}
+button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+:root[data-theme="dark"] button.submit{color:#0f1517}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) button.submit{color:#0f1517}}
+.submit-note{margin:0;font-size:13px;color:var(--ink-3);text-align:center}
+.foot{margin-top:44px;padding-top:22px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:13.5px}
+@media(max-width:560px){
+  .wrap{padding:32px 14px 72px}
+  .q{padding:15px 14px}
+  input.amt{width:100%}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="head"><h1>移動事業者様アンケート（東京エリア）</h1>
+<div class="lead">
+<p>今後のお見積もり・ご依頼・配車をスムーズに進めるため、よくご依頼する区間・コースの料金をあらかじめ伺えればと存じます。下記の項目につきまして、ご記入いただけますと幸いです。</p>
+<p class="note">※ 金額はすべて税込でご記入ください。</p>
+</div>
+</header>
+<section class="sec"><h2><span class="num">1</span>御社について</h2>
+<div class="q"><p class="qt"><span class="qn">Q1</span>会社名</p>
+<input type="text" class="line" placeholder="株式会社〇〇">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q2</span>ご回答者様のお名前</p>
+<input type="text" class="line" placeholder="山田 太郎">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q3</span>ご連絡先（電話番号）</p>
+<input type="text" class="line" placeholder="03-0000-0000">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q4</span>ご連絡先（メールアドレス）</p>
+<input type="text" class="line" placeholder="info@example.co.jp">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q5</span>ご手配いただける車両の種類をご記入ください</p>
+<p class="sub">リフト付き車両（ハイエースなど）／セレナ／アルファード など</p>
+<textarea rows="3" placeholder="例：ハイエース ウェルキャブ（リフト付き・車椅子2台＋座席6名）／アルファード（車椅子1台＋座席3名）"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q6</span>本アンケートの料金は、どの車両を前提にご記入いただきますでしょうか</p>
+<p class="sub">ご配車いただける車両のうち、価格の高い車両での料金をご記入ください</p>
+<input type="text" class="line" placeholder="例：ハイエース ウェルキャブ（リフト付き）">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q7</span>ご手配いただける車両のタイプをお選びください（複数選択可）</p>
+<label class="opt"><input type="checkbox" name="q7a"><span>リフトタイプ</span></label>
+<label class="opt"><input type="checkbox" name="q7b"><span>スロープタイプ</span></label>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q8</span>車種ごとの同乗可能人数・耐荷重をご記入ください</p>
+<p class="sub">※ 車椅子の方が車椅子のまま1名ご乗車で、車椅子をご利用でない方が100Lのスーツケースを1人1個お持ちになる前提でご記入ください</p>
+<div class="veh-row"><span class="veh-lb">車種</span><span class="veh-lb">同乗可能人数<br><span class="veh-note">（ドライバー・車椅子の方を除く）</span></span><span class="veh-lb">リフト・スロープの耐荷重</span></div>
+<div id="veh-rows">
+<div class="veh-row"><input type="text" class="veh-in"><input type="text" class="veh-in"><input type="text" class="veh-in"></div>
+<div class="veh-row"><input type="text" class="veh-in"><input type="text" class="veh-in"><input type="text" class="veh-in"></div>
+<div class="veh-row"><input type="text" class="veh-in"><input type="text" class="veh-in"><input type="text" class="veh-in"></div>
+</div>
+<button type="button" class="add-btn" id="veh-btn">＋ 車種を追加</button>
+</div>
+</section>
+<section class="sec"><h2><span class="num">2</span>送迎料金について</h2>
+<p class="body">空港・駅・港とホテル間の送迎料金です。</p>
+<p class="body"><strong>ホテルごと（Q9）と区ごと（Q10）のどちらか一方にご記入いただければ結構です。</strong>区ごとに一律の料金を設定されている場合は、Q10のみで問題ございません。</p>
+<p class="note">※ 営業ができない区間は空欄のままで結構です。</p>
+<div class="q"><p class="qt"><span class="qn">Q9</span>ホテルごとの送迎料金（片道・円）　※高速代金込</p>
+<div class="tw"><table><thead><tr><th class="rh" rowspan="2">発着地</th><th class="ku" colspan="3">新宿区</th><th class="ku" colspan="3">港区</th><th class="ku" colspan="2">千代田区</th><th class="ku">中央区</th><th class="ku">渋谷区</th><th class="ku">墨田区</th><th class="ku">豊島区</th></tr><tr><th class="hn">グルーブ新宿</th><th class="hn">京王プラザホテル</th><th class="hn kuend">ホテルサンルート新宿</th><th class="hn">ザ・プリンスパークタワー</th><th class="hn">ホテルオークラ東京</th><th class="hn kuend">グランドニッコー東京台場</th><th class="hn">丸の内ホテル</th><th class="hn kuend">キャピタルホテル東急</th><th class="hn kuend">三井ガーデンホテル東京</th><th class="hn kuend">渋谷ストリームホテル</th><th class="hn kuend">MIMARU錦糸町</th><th class="hn">MIMARU池袋</th></tr></thead><tbody><tr><th class="rh">羽田</th><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td></tr><tr><th class="rh">成田</th><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td></tr><tr><th class="rh">東京駅</th><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td></tr><tr><th class="rh">新宿駅</th><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td></tr><tr><th class="rh">ディズニー</th><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td></tr><tr><th class="rh">東京港</th><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td></tr><tr><th class="rh">横浜港</th><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td class="kuend"><input type="text" class="cell " inputmode="numeric"></td><td><input type="text" class="cell " inputmode="numeric"></td></tr></tbody></table></div></div>
+<div class="q"><p class="qt"><span class="qn">Q10</span>区ごとの送迎料金（片道・円）　※高速代金込</p>
+<div class="tw"><table><thead><tr><th class="rh">発着地</th><th>新宿区</th><th>港区</th><th>千代田区</th><th>中央区</th><th>渋谷区</th><th>墨田区</th><th>豊島区</th></tr></thead><tbody><tr><th class="rh">羽田</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">成田</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">東京駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">新宿駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">ディズニー</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">東京港</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">横浜港</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
+<h3 class="sub-h">その他の区・エリアについて</h3>
+<div class="q"><p class="qt"><span class="qn">Q11</span>上記以外の区・エリアでも料金の設定が可能な場合は、こちらにご記入ください　※高速代金込</p>
+<div class="tw"><table><thead><tr><th class="rh">発着地</th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th></tr></thead><tbody><tr><th class="rh">羽田</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">成田</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">東京駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">新宿駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">ディズニー</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">東京港</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr><tr><th class="rh">横浜港</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
+<div class="q"><p class="qt"><span class="qn">Q12</span>待ち合わせ・お見送り、それぞれの料金をご記入ください　※待機料金・駐車料金込</p>
+<div class="meet-row"><div class="meet-lb"><span class="meet-pl">成田空港</span><span class="meet-sv">到着ロビーでの待ち合わせ・出発ロビーまでのお見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
+<div class="meet-row"><div class="meet-lb"><span class="meet-pl">羽田空港</span><span class="meet-sv">到着ロビーでの待ち合わせ・出発ロビーまでのお見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
+<div class="meet-row"><div class="meet-lb"><span class="meet-pl">東京駅</span><span class="meet-sv">改札での待ち合わせ・お見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
+<div class="meet-row"><div class="meet-lb"><span class="meet-pl">新宿駅</span><span class="meet-sv">改札での待ち合わせ・お見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
+<div class="meet-row"><div class="meet-lb"><span class="meet-pl">ディズニー</span><span class="meet-sv">お出迎え・お見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
+<div class="meet-row"><div class="meet-lb"><span class="meet-pl">東京港</span><span class="meet-sv">お出迎え・お見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
+<div class="meet-row"><div class="meet-lb"><span class="meet-pl">横浜港</span><span class="meet-sv">お出迎え・お見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q13</span>上記の送迎料金について、補足事項があればご記入ください</p>
+<textarea rows="2" placeholder="例：22時以降は割増／2台以上は別途ご相談"></textarea>
+</div>
+</section>
+<section class="sec"><h2><span class="num">3</span>東京都内観光の貸切について</h2>
+<p class="body">料金のご記入とあわせて、行程へのご意見もご記入ください。</p>
+<div class="course"><p class="cname">東京都内観光　6時間</p>
+<p class="croute">MIMARU池袋 → 浅草寺・仲見世 → 築地場外市場（昼食） → 渋谷 → MIMARU池袋</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q14</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q15</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">東京都内観光　8時間</p>
+<p class="croute">MIMARU池袋 → 浅草寺・仲見世 → スカイツリー・ソラマチ（昼食） → 明治神宮 → MIMARU池袋</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q16</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q17</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">東京都内観光　10時間</p>
+<p class="croute">MIMARU池袋 → 明治神宮 → 築地場外市場（昼食） → 浅草寺・仲見世 → スカイツリー・ソラマチ → MIMARU池袋</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q18</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q19</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+</section>
+<section class="sec"><h2><span class="num">4</span>観光の貸切について</h2>
+<p class="body">料金のご記入とあわせて、行程へのご意見もご記入ください。</p>
+<div class="course"><p class="cname">東京→鎌倉→東京　10時間</p>
+<p class="croute">MIMARU錦糸町 → 高徳院（鎌倉大仏） → 小町通り・昼食 → 新江ノ島水族館 → MIMARU錦糸町</p>
+<p class="cnote">※ 車椅子でご案内できる範囲に絞った行程です（江の島の頂上へは上がりません）</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q20</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q21</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">東京→横浜→東京　8時間</p>
+<p class="croute">MIMARU錦糸町 → 赤レンガ倉庫 → 中華街・昼食 → カップヌードルミュージアム → MIMARU錦糸町</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q22</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q23</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">東京→日光→東京　10時間</p>
+<p class="croute">MIMARU錦糸町 → 日光江戸村（昼食） → 日光東照宮 → MIMARU錦糸町</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q24</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q25</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">東京→富士→東京（箱根・三島）　10時間</p>
+<p class="croute">MIMARU錦糸町 → 大涌谷 → 昼食 → 箱根神社 → 芦ノ湖・箱根海賊船 → MIMARU錦糸町</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q26</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q27</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">東京→富士→東京（河口湖・御殿場）　10時間</p>
+<p class="croute">MIMARU錦糸町 → 大石公園 → 忍野八海（昼食） → 御殿場プレミアム・アウトレット → MIMARU錦糸町</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q28</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q29</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<h3 class="sub-h">現地までの片道乗車の場合</h3>
+<p class="body">観光をしながら移動し、そのまま現地のホテルで乗務を終了する形のコースです。</p>
+<p class="note">※ お帰りの回送や乗務員様のご宿泊が必要になる場合がございますので、あわせてご記入ください。</p>
+<div class="course"><p class="cname">東京→箱根・三島着　10時間</p>
+<p class="croute">MIMARU錦糸町 → 大涌谷 → 昼食 → 箱根神社 → 芦ノ湖・箱根海賊船 → 箱根 彫刻の森美術館 → ハイアット リージェンシー箱根リゾート＆スパ</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q30</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q31</span>お帰りの回送分は含まれておりますでしょうか</p>
+<label class="opt"><input type="radio" name="q38a"><span>含まれている</span></label>
+<label class="opt"><input type="radio" name="q38a"><span>別途必要</span></label>
+<p class="sub arrow">別途必要な場合の金額</p>
+<div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q32</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">東京→河口湖・御殿場着　10時間</p>
+<p class="croute">MIMARU錦糸町 → 忍野八海（昼食） → 大石公園 → 大涌谷 → 富士レークホテルにて終了</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q33</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q34</span>お帰りの回送分は含まれておりますでしょうか</p>
+<label class="opt"><input type="radio" name="q38b"><span>含まれている</span></label>
+<label class="opt"><input type="radio" name="q38b"><span>別途必要</span></label>
+<p class="sub arrow">別途必要な場合の金額</p>
+<div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q35</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q36</span>お客様のご都合ではない（交通渋滞など）による超過・延長料金は発生しますでしょうか</p>
+<label class="opt"><input type="radio" name="q70"><span>発生しない</span></label>
+<label class="opt"><input type="radio" name="q70"><span>発生する</span></label>
+<p class="sub arrow">発生する場合はご記入ください</p>
+<textarea rows="2" placeholder="例：30分ごとに〇〇円"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q37</span>現地に乗務員様がご宿泊いただいての連日の手配は可能でしょうか</p>
+<label class="opt"><input type="radio" name="q71"><span>手配可能</span></label>
+<p class="sub arrow">条件などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：乗務員の宿泊費をご負担いただければ可能／連続◯日まで対応可能／繁忙期は難しい"></textarea>
+<label class="opt"><input type="radio" name="q71"><span>手配できない</span></label>
+</div>
+</section>
+
+<section class="sec"><h2><span class="num">5</span>追加料金について</h2>
+<div class="q"><p class="qt"><span class="qn">Q38</span>追加料金が発生する項目と金額</p>
+<p class="sub">例：英会話ドライバーのご指定 1時間あたり 3,000円／看護師の同行 1日あたり 20,000円／休日割増 20%</p>
+<div class="add-row"><span class="add-lb">項目</span><span class="add-lb2">金額</span></div>
+<div id="add-rows">
+<div class="add-row"><input type="text" class="add-item" placeholder=""><input type="text" class="add-amt" placeholder=""></div>
+<div class="add-row"><input type="text" class="add-item" placeholder=""><input type="text" class="add-amt" placeholder=""></div>
+<div class="add-row"><input type="text" class="add-item" placeholder=""><input type="text" class="add-amt" placeholder=""></div>
+</div>
+<button type="button" class="add-btn" id="add-btn">＋ 項目を追加</button>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q39</span>早朝・深夜の割増（時間帯と割増率）</p>
+<textarea rows="2" placeholder="例：22時〜5時は2割増"></textarea>
+</div>
+</section>
+
+<section class="sec"><h2><span class="num">6</span>お支払い・ご契約条件について</h2>
+<div class="q"><p class="qt"><span class="qn">Q40</span>お支払い方法</p>
+<label class="opt"><input type="checkbox" name="q63a"><span>事前振込</span></label>
+<label class="opt"><input type="checkbox" name="q63b"><span>後払い</span></label>
+<label class="opt"><input type="checkbox" name="q63c"><span>全旅クーポン</span></label>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q41</span>お客様（当日払い代金）のお支払い方法</p>
+<label class="opt"><input type="checkbox" name="q64a"><span>現金</span></label>
+<label class="opt"><input type="checkbox" name="q64b"><span>クレジットカード（タッチ決済）</span></label>
+<label class="opt"><input type="checkbox" name="q64c"><span>クレジットカード（端末差込）</span></label>
+<label class="opt"><input type="checkbox" name="q64d"><span>その他</span></label>
+<input type="text" class="line" placeholder="「その他」を選ばれた場合はご記入ください">
+<p class="sub">※ 高速代金・健康上の理由での迂回料金など</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q42</span>コミッション対応可能な場合、対象・条件などの詳細をご記入ください</p>
+<textarea rows="3" placeholder=""></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q43</span>キャンセルポリシー（何日前から何％）</p>
+<textarea rows="2" placeholder="例：7日前20%〜当日100%"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q44</span>その他、ご要望・ご意見がございましたらご記入ください</p>
+<textarea rows="2" placeholder=""></textarea>
+</div>
+</section><div class="submit-wrap">
+<button type="button" class="submit">回答を送信する</button>
+<p class="submit-note">※ こちらは確認用のイメージです。ボタンを押しても送信はされません。</p>
+</div>
+<p class="foot">ご協力ありがとうございました。</p>
+</div>
+<script>
+(function(){
+  var btn=document.getElementById('add-btn'),box=document.getElementById('add-rows');
+  if(!btn||!box)return;
+  btn.addEventListener('click',function(){
+    var r=document.createElement('div');
+    r.className='add-row';
+    r.innerHTML='<input type="text" class="add-item"><input type="text" class="add-amt">';
+    box.appendChild(r);
+    r.querySelector('.add-item').focus();
+  });
+  var vb=document.getElementById('veh-btn'),vx=document.getElementById('veh-rows');
+  if(vb&&vx){vb.addEventListener('click',function(){
+    var r=document.createElement('div');
+    r.className='veh-row';
+    r.innerHTML='<input type="text" class="veh-in"><input type="text" class="veh-in"><input type="text" class="veh-in">';
+    vx.appendChild(r);
+    r.querySelector('.veh-in').focus();
+  });}
+})();
+</script>
+
+<script src="/tokyo-transport-survey.js"></script>
+</body></html>
