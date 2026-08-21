@@ -110,7 +110,7 @@ const payload = {
     itinerary: { title: 'Tokyo 4-day modern tour', tourId: 'C16', startDate: '2026-11-10', days: 4, travellers: 2, route: ['Tokyo'] },
     customer: { name: 'Alex Traveller', mobilityDeviceType: 'Power wheelchair', wheelchairBrand: 'Permobil', wheelchairModel: 'M3 Corpus', supportNote: '' },
     hotels: [{ stayId: 'tokyo-1', sanityId: 'FT-H-TOKYO', didaHotelId: '1588010', city: 'Tokyo', nights: 3, checkInDate: '2026-11-10', checkOutDate: '2026-11-13', name: 'Tokyo Hotel', roomType: 'Accessible Twin', rooms: [{ requestedRoomType: 'accessible', adultsPerRoom: 2, roomCount: 1, roomName: 'Accessible Twin', bedType: 'Twin', inventoryCount: 1, estimateJpy: 240000, availabilityStatus: 'priced_for_selected_dates', physicalAccessibilityConfirmed: false }], mealPlan: 'Breakfast included', cancellationPolicy: 'Free cancellation until 2026-11-05', cancellationType: 'free_cancellation_until', cancellationDeadline: '2026-11-05', roomSizeM2: 32, bathroomInfo: 'Roll-in shower', toiletInfo: 'Grab bars', selectionType: 'listed', selectionStatus: 'customer_selected', availabilityStatus: 'priced_for_selected_dates', accessibilityStatus: 'requires_human_confirmation', priceStatus: 'live_rate', rateSource: 'dida_live', didaSaleAvailable: true, liveCheckedAt: '2026-08-01T10:00:00.000Z', request: '', estimateJpy: 240000 }],
-    railAndTransfers: [{ id: 'rail-1', sanityId: 'FT-M-TOKYO-KYOTO', dayStart: 2, dayEnd: 2, serviceDate: '2026-11-11', origin: 'Tokyo', destination: 'Kyoto', mode: 'Shinkansen / rail', preferredTimeSlot: '08-10', preferredTimeLabel: '8–10 AM', selectionStatus: 'customer_selected', supplierStatus: 'requires_confirmation', fixedUnitPriceJpy: 13970, priceBasis: 'perPerson', passengerCapacity: 4, estimateJpy: 27940 }],
+    railAndTransfers: [{ id: 'rail-1', sanityId: 'FT-M-TOKYO-KYOTO', dayStart: 2, dayEnd: 2, serviceDate: '2026-11-11', origin: 'Tokyo', destination: 'Kyoto', mode: 'Shinkansen / rail', preferredTimeSlot: '08-10', preferredTimeLabel: '8–10 AM', selectionStatus: 'customer_selected', supplierStatus: 'requires_confirmation', unitPriceJpy: 13970, priceBasis: 'perPerson', passengerCapacity: 4, bidirectional: false, estimateJpy: 27940 }],
     selections: [{ id: 'tour-1', sanityId: 'FT-T-TOKYO', title: 'Tokyo Highlights', dayLabel: 'Day 2', kind: 'Experience', selectionStatus: 'customer_selected', estimateJpy: 30000 }],
     includedItems: ['Hotels', 'Breakfast'],
     excludedItems: ['International flights'],
@@ -152,9 +152,11 @@ assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].didaSaleAvailab
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].liveCheckedAt, '2026-08-01T10:00:00.000Z');
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].sanityId, 'FT-H-TOKYO');
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].sanityId, 'FT-M-TOKYO-KYOTO');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].unitPriceJpy, 13970);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].fixedUnitPriceJpy, 13970);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].priceBasis, 'perPerson');
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].passengerCapacity, 4);
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].bidirectional, false);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.selections[0].sanityId, 'FT-T-TOKYO');
 assert.equal(flatworkerPosts[0].body.customerName, 'Alex Traveller');
 assert.equal(flatworkerPosts[0].body.givenName, 'Alex');
@@ -221,6 +223,34 @@ const missingFamilyName = parseTravelQuoteIntent({ ...payload, familyName: '' })
 assert.equal(missingFamilyName.ok, false);
 const legacySingleName = parseTravelQuoteIntent({ ...payload, givenName: '', familyName: '' });
 assert.equal(legacySingleName.ok, true);
+
+const legacyMovementPricePayload = structuredClone(payload);
+delete legacyMovementPricePayload.agreementSnapshot.railAndTransfers[0].unitPriceJpy;
+legacyMovementPricePayload.agreementSnapshot.railAndTransfers[0].fixedUnitPriceJpy = 13970;
+const legacyMovementPrice = parseTravelQuoteIntent(legacyMovementPricePayload);
+assert.equal(legacyMovementPrice.ok, true);
+if (legacyMovementPrice.ok) {
+  assert.equal(legacyMovementPrice.value.agreementSnapshot.railAndTransfers[0].unitPriceJpy, 13970);
+}
+
+for (const [field, expectedError] of [
+  ['unitPriceJpy', 'Journey movement tariff required'],
+  ['priceBasis', 'Journey movement pricing basis required'],
+  ['bidirectional', 'Journey movement direction contract required'],
+] as const) {
+  const invalid = structuredClone(payload);
+  delete invalid.agreementSnapshot.railAndTransfers[0][field];
+  const result = parseTravelQuoteIntent(invalid);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error, expectedError);
+}
+
+const missingCapacity = structuredClone(payload);
+missingCapacity.agreementSnapshot.railAndTransfers[0].priceBasis = 'perVehicle';
+delete missingCapacity.agreementSnapshot.railAndTransfers[0].passengerCapacity;
+const missingCapacityResult = parseTravelQuoteIntent(missingCapacity);
+assert.equal(missingCapacityResult.ok, false);
+if (!missingCapacityResult.ok) assert.equal(missingCapacityResult.error, 'Journey movement capacity required');
 
 const failedIntake = await request({ ...payload, quoteReference: 'FTQ-20260801-FF12AA34' });
 assert.equal(failedIntake.status, 503);

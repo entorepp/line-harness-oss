@@ -69,9 +69,11 @@ export type AgreementMovement = {
   preferredTimeLabel: string;
   selectionStatus: string;
   supplierStatus: string;
+  unitPriceJpy: number | null;
   fixedUnitPriceJpy: number | null;
-  priceBasis: 'perPerson' | 'perVehicle' | 'perGroup' | 'perArrangement';
+  priceBasis: 'perPerson' | 'perVehicle' | 'perGroup' | 'perArrangement' | null;
   passengerCapacity: number | null;
+  bidirectional: boolean | null;
   estimateJpy: number | null;
 };
 
@@ -267,6 +269,11 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
   });
   const railAndTransfers = (Array.isArray(source.railAndTransfers) ? source.railAndTransfers : []).slice(0, 20).map((raw) => {
     const item = objectValue(raw);
+    const submittedUnitPrice = item.unitPriceJpy ?? item.fixedUnitPriceJpy;
+    const unitPriceJpy = submittedUnitPrice == null ? null : integer(submittedUnitPrice, 1, 100_000_000);
+    const priceBasis = ['perPerson', 'perVehicle', 'perGroup', 'perArrangement'].includes(String(item.priceBasis))
+      ? item.priceBasis as Exclude<AgreementMovement['priceBasis'], null>
+      : null;
     return {
       id: text(item.id, 100) || '',
       sanityId: text(item.sanityId ?? item.transportId, 160) || '',
@@ -280,11 +287,13 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       preferredTimeLabel: text(item.preferredTimeLabel, 120) || 'Time not decided',
       selectionStatus: text(item.selectionStatus, 60) || 'customer_selected',
       supplierStatus: text(item.supplierStatus, 80) || 'requires_confirmation',
-      fixedUnitPriceJpy: item.fixedUnitPriceJpy == null ? null : integer(item.fixedUnitPriceJpy, 0, 100_000_000),
-      priceBasis: ['perPerson', 'perVehicle', 'perGroup', 'perArrangement'].includes(String(item.priceBasis))
-        ? item.priceBasis as AgreementMovement['priceBasis']
-        : 'perArrangement',
+      unitPriceJpy,
+      // Keep the old name populated during the compatibility window so an older
+      // TravelWorker revision still receives the same canonical tariff amount.
+      fixedUnitPriceJpy: unitPriceJpy,
+      priceBasis,
       passengerCapacity: item.passengerCapacity == null ? null : integer(item.passengerCapacity, 1, 30),
+      bidirectional: typeof item.bidirectional === 'boolean' ? item.bidirectional : null,
       estimateJpy: item.estimateJpy == null ? null : integer(item.estimateJpy, 0, 100_000_000),
     };
   });
@@ -387,6 +396,28 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const normalizedCreatedAt = new Date(createdAt).toISOString();
   const fallback = { ...body, createdAt: normalizedCreatedAt };
   const agreementSnapshot = parseAgreementSnapshot(body.agreementSnapshot, fallback);
+  if (mode === 'journey') {
+    if (!agreementSnapshot.railAndTransfers.length) {
+      return { ok: false, error: 'Journey movement tariff contract required' };
+    }
+    for (const movement of agreementSnapshot.railAndTransfers) {
+      if (!movement.id || !movement.sanityId) {
+        return { ok: false, error: 'Journey movement identity required' };
+      }
+      if (movement.unitPriceJpy == null) {
+        return { ok: false, error: 'Journey movement tariff required' };
+      }
+      if (!movement.priceBasis) {
+        return { ok: false, error: 'Journey movement pricing basis required' };
+      }
+      if (movement.priceBasis === 'perVehicle' && movement.passengerCapacity == null) {
+        return { ok: false, error: 'Journey movement capacity required' };
+      }
+      if (movement.bidirectional == null) {
+        return { ok: false, error: 'Journey movement direction contract required' };
+      }
+    }
+  }
   return {
     ok: true,
     value: {
