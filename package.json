@@ -21,6 +21,8 @@
     "forms:register-flatcare-domestic-hearing": "node scripts/register-flatcare-hearing-form.mjs",
     "forms:register-flatcare-overseas-hearing": "node scripts/register-flatcare-overseas-hearing-form.mjs",
     "forms:register-flatcare-hearing": "pnpm forms:register-flatcare-domestic-hearing && pnpm forms:register-flatcare-overseas-hearing",
+    "forms:register-transport-surveys": "node scripts/register-transport-survey-forms.mjs",
+    "forms:verify-transport-surveys": "node scripts/verify-transport-survey-assets.mjs",
     "db:migrate": "zsh scripts/cloudflare-wrangler.sh d1 execute line-crm --file=packages/db/schema.sql --config apps/worker/wrangler.toml",
     "db:migrate:local": "wrangler d1 execute line-crm --file=packages/db/schema.sql --local"
   },

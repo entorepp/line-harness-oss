@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>移動事業者様アンケート（広島エリア）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@600&display=swap">
+<style>
+:root{
+  --ink:#1c2b33; --ink-2:#4a5b63; --ink-3:#7d8b91;
+  --ground:#fbfaf8; --card:#ffffff; --rule:#e4e0d9;
+  --accent:#2f6b5f; --accent-soft:#eff4f2; --ku-line:#b9cfc8; --amber:#8a6d3b; --amber-soft:#f7f1e4;
+}
+:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){
+  --ink:#e8e6e1; --ink-2:#b2bcc0; --ink-3:#8b979c;
+  --ground:#14191c; --card:#1b2226; --rule:#2e373c;
+  --accent:#7cc0ae; --accent-soft:#1c2725; --ku-line:#3c5b53; --amber:#d8b478; --amber-soft:#2a241a;
+}}
+:root[data-theme="dark"]{
+  --ink:#e8e6e1; --ink-2:#b2bcc0; --ink-3:#8b979c;
+  --ground:#14191c; --card:#1b2226; --rule:#2e373c;
+  --accent:#7cc0ae; --accent-soft:#1c2725; --ku-line:#3c5b53; --amber:#d8b478; --amber-soft:#2a241a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"Zen Kaku Gothic New",system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
+  font-size:16px;line-height:1.85;-webkit-font-smoothing:antialiased}
+.wrap{max-width:820px;margin:0 auto;padding:48px 20px 96px;display:flex;flex-direction:column;gap:8px}
+.head{border-bottom:2px solid var(--ink);padding-bottom:26px;margin-bottom:8px}
+.eyebrow{margin:0 0 10px;font-size:12.5px;letter-spacing:.14em;color:var(--accent);font-weight:700}
+.nb{white-space:nowrap}
+.nest{margin:2px 0 6px 26px;padding-left:12px;border-left:2px solid #d8ded9}
+h1{font-family:"Zen Old Mincho","Zen Kaku Gothic New",serif;font-weight:600;
+  font-size:clamp(19px,3.6vw,36px);line-height:1.35;margin:0 0 16px;word-break:keep-all;letter-spacing:.01em}
+.lead p{margin:0 0 10px;color:var(--ink-2);font-size:15px}
+.lead p:last-child{margin-bottom:0}
+.note{color:var(--amber);font-size:14px;margin:8px 0 2px}
+.sec{margin-top:40px;display:flex;flex-direction:column;gap:16px}
+h2{display:flex;align-items:center;gap:12px;font-size:19px;font-weight:700;margin:0 0 14px;
+  padding-bottom:12px;border-bottom:1px solid var(--rule);letter-spacing:.01em}
+.num{flex:none;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+:root[data-theme="dark"] .num{color:#0f1517}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .num{color:#0f1517}}
+.sub-h{font-size:15px;font-weight:700;color:var(--accent);margin:22px 0 4px;letter-spacing:.02em}
+.q{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:18px 20px;margin:0;
+  display:flex;flex-direction:column;gap:9px}
+.qt{margin:0;font-weight:500;display:flex;gap:11px;align-items:baseline;text-wrap:pretty}
+.qn{flex:none;color:var(--accent);font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums;
+  letter-spacing:.03em;padding-top:2px}
+.body{margin:2px 0;color:var(--ink-2);font-size:15px}
+.sub{margin:0;font-size:13.5px;color:var(--ink-3)}
+.arrow::before{content:"→ "}
+.memo{margin:4px 0 0;font-size:12.5px;color:var(--amber);background:var(--amber-soft);
+  border-radius:6px;padding:6px 10px}
+label.opt{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px;padding:3px 0}
+label.opt input{accent-color:var(--accent);width:17px;height:17px;flex:none;margin:0}
+input.line,textarea{width:100%;font:inherit;font-size:15px;color:var(--ink);background:var(--ground);
+  border:1px solid var(--rule);border-radius:7px;padding:9px 12px}
+textarea{resize:vertical;line-height:1.7}
+.money{display:flex;align-items:center;gap:8px}
+input.amt{width:170px;font:inherit;font-size:16px;text-align:right;font-variant-numeric:tabular-nums;
+  color:var(--ink);background:var(--ground);border:1px solid var(--rule);border-radius:7px;padding:9px 12px}
+.unit{font-size:14px;color:var(--ink-3)}
+input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.course{background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;
+  padding:15px 18px;margin:18px 0 4px}
+.cname{margin:0 0 7px;font-weight:700;font-size:15px}
+.croute{margin:0;font-size:14.5px;color:var(--ink-2);line-height:1.75}
+.cnote{margin:8px 0 0;font-size:13px;color:var(--amber)}
+.tw{overflow-x:auto;margin:4px 0 0;border:1px solid var(--rule);border-radius:9px;background:var(--card)}
+table{border-collapse:collapse;font-size:13.5px;min-width:100%}
+th,td{border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:8px 10px;
+  text-align:center;white-space:nowrap}
+thead th{background:var(--accent-soft);font-weight:700;font-size:12.5px;position:sticky;top:0}
+th.rh{text-align:left;background:var(--card);position:sticky;left:0;z-index:1;font-weight:500;
+  box-shadow:1px 0 0 var(--rule)}
+thead th.rh{background:var(--accent-soft);z-index:2}
+th.ku,th.kuend,td.kuend{border-right:2px solid var(--ku-line)}
+tr.grow td{background:var(--accent-soft)}
+th.sub-rh{font-size:12px;color:var(--ink-3);font-weight:400;background:var(--accent-soft)!important}
+tr.grow td.kugroup{padding:6px 8px}
+th.ku{font-size:13px;letter-spacing:.02em}
+th.hn{font-weight:500;font-size:11.5px;color:var(--ink-2);white-space:normal;
+  min-width:88px;max-width:110px;line-height:1.4;padding:7px 8px}
+thead tr:first-child th.rh{vertical-align:middle}
+tr:last-child th,tr:last-child td{border-bottom:none}
+th:last-child,td:last-child{border-right:none}
+input.cell{width:86px;font:inherit;font-size:14px;text-align:right;font-variant-numeric:tabular-nums;
+  color:var(--ink);background:var(--ground);border:1px solid var(--rule);border-radius:5px;padding:5px 7px}
+input.cell.wide{width:118px;text-align:left}
+.cost-main{display:flex;align-items:center;gap:12px;margin-top:2px}
+.cost-lb-main{font-size:15px;font-weight:700;color:var(--ink);white-space:nowrap}
+.cost-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:0;padding-top:8px}
+.cost-item{display:flex;align-items:center;gap:9px}
+.cost-lb{font-size:13.5px;color:var(--ink-2);white-space:nowrap}
+input.amt.sm{width:120px;font-size:15px}
+.add-row{display:flex;gap:12px}
+.add-lb,.add-lb2{font-size:13px;color:var(--ink-3)}
+.add-lb{flex:1 1 60%}
+.add-lb2{flex:1 1 40%}
+input.add-item,input.add-amt{font:inherit;font-size:15px;color:var(--ink);background:var(--ground);
+  border:1px solid var(--rule);border-radius:7px;padding:9px 12px;min-width:0}
+input.add-item{flex:1 1 60%}
+input.add-amt{flex:1 1 40%}
+@media(max-width:560px){.add-row{gap:8px}}
+.meet-row{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:9px 0;border-bottom:1px solid var(--rule)}
+.meet-row:last-of-type{border-bottom:none}
+.meet-lb{display:flex;flex-direction:column;gap:1px;min-width:0}
+.meet-pl{font-size:15px;font-weight:700}
+.meet-sv{font-size:12.5px;color:var(--ink-3);line-height:1.5}
+@media(max-width:560px){.meet-row{flex-direction:column;align-items:stretch;gap:7px}}
+.add-btn{align-self:flex-start;font:inherit;font-size:13.5px;font-weight:700;color:var(--accent);
+  background:transparent;border:1px dashed var(--accent);border-radius:7px;padding:7px 16px;cursor:pointer}
+.add-btn:hover{background:var(--accent-soft)}
+.add-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.veh-row{display:flex;gap:10px}
+.veh-note{font-size:11.5px;line-height:1.4;display:inline-block}
+.veh-lb{flex:1 1 0;min-width:0;font-size:13px;color:var(--ink-3)}
+input.veh-in{flex:1 1 0;min-width:0;font:inherit;font-size:15px;color:var(--ink);background:var(--ground);
+  border:1px solid var(--rule);border-radius:7px;padding:9px 12px}
+@media(max-width:560px){.veh-row{gap:6px}input.veh-in{font-size:14px;padding:8px 9px}}
+.done{display:none;background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;
+  padding:28px 24px;text-align:center;margin-top:24px}
+.done h3{margin:0 0 8px;font-size:18px;font-weight:700;color:var(--accent)}
+.done p{margin:0;font-size:14.5px;color:var(--ink-2)}
+.err{color:#b3261e;font-size:14px;margin:8px 0 0;text-align:center;display:none}
+:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){.err{color:#f2b8b5}}}
+:root[data-theme="dark"] .err{color:#f2b8b5}
+.submit-wrap{margin-top:40px;padding-top:28px;border-top:1px solid var(--rule);
+  display:flex;flex-direction:column;align-items:center;gap:12px}
+button.submit{font:inherit;font-size:16px;font-weight:700;color:#fff;background:var(--accent);
+  border:none;border-radius:8px;padding:14px 56px;cursor:pointer;letter-spacing:.04em}
+button.submit:hover{filter:brightness(1.08)}
+button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+:root[data-theme="dark"] button.submit{color:#0f1517}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) button.submit{color:#0f1517}}
+.submit-note{margin:0;font-size:13px;color:var(--ink-3);text-align:center}
+.foot{margin-top:44px;padding-top:22px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:13.5px}
+@media(max-width:560px){
+  .wrap{padding:32px 14px 72px}
+  .q{padding:15px 14px}
+  input.amt{width:100%}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+<header class="head"><h1>移動事業者様アンケート<wbr><span class="nb">（広島エリア）</span></h1>
+<div class="lead">
+<p>今後のお見積もり・ご依頼・配車をスムーズに進めるため、よくご依頼する区間・コースの料金をあらかじめ伺えればと存じます。下記の項目につきまして、ご記入いただけますと幸いです。</p>
+<p class="note">※ 金額はすべて税込でご記入ください。</p>
+</div>
+</header>
+<section class="sec"><h2><span class="num">1</span>御社について</h2>
+<div class="q"><p class="qt"><span class="qn">Q1</span>会社名</p>
+<input type="text" class="line" placeholder="株式会社〇〇">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q2</span>ご回答者様のお名前</p>
+<input type="text" class="line" placeholder="山田 太郎">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q3</span>ご連絡先（電話番号）</p>
+<input type="text" class="line" placeholder="03-0000-0000">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q4</span>ご連絡先（メールアドレス）</p>
+<input type="text" class="line" placeholder="info@example.co.jp">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q5</span>ご手配いただける車両の種類をご記入ください</p>
+<p class="sub">リフト付き車両（ハイエースなど）／セレナ／アルファード など</p>
+<textarea rows="3" placeholder="例：ハイエース ウェルキャブ（リフト付き・車椅子2台＋座席6名）／アルファード（車椅子1台＋座席3名）"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q6</span>本アンケートの料金は、どの車両を前提にご記入いただきますでしょうか</p>
+<p class="sub">ご配車いただける車両のうち、価格の高い車両での料金をご記入ください</p>
+<input type="text" class="line" placeholder="例：ハイエース ウェルキャブ（リフト付き）">
+</div>
+<div class="q"><p class="qt"><span class="qn">Q7</span>ご手配いただける車両のタイプをお選びください（複数選択可）</p>
+<label class="opt"><input type="checkbox" value="リフトタイプ"><span>リフトタイプ</span></label>
+<label class="opt"><input type="checkbox" value="スロープタイプ"><span>スロープタイプ</span></label>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q8</span>車種ごとの同乗可能人数・耐荷重をご記入ください</p>
+<p class="sub">※ 車椅子の方が車椅子のまま1名ご乗車で、車椅子をご利用でない方が100Lのスーツケースを1人1個お持ちになる前提でご記入ください</p>
+<div class="veh-row"><span class="veh-lb">車種</span><span class="veh-lb">同乗可能人数<br><span class="veh-note">（ドライバー・車椅子の方を除く）</span></span><span class="veh-lb">リフト・スロープの耐荷重</span></div>
+<div id="veh-rows">
+<div class="veh-row"><input type="text" class="veh-in"><input type="text" class="veh-in"><input type="text" class="veh-in"></div>
+<div class="veh-row"><input type="text" class="veh-in"><input type="text" class="veh-in"><input type="text" class="veh-in"></div>
+<div class="veh-row"><input type="text" class="veh-in"><input type="text" class="veh-in"><input type="text" class="veh-in"></div>
+</div>
+<button type="button" class="add-btn" id="veh-btn">＋ 車種を追加</button>
+</div>
+</section>
+<section class="sec"><h2><span class="num">2</span>送迎料金について</h2>
+<p class="body">広島駅とホテル間の送迎料金です。</p>
+<p class="body"><strong>ホテルごと（Q9）とエリアごと（Q10）のどちらか一方にご記入いただければ結構です。</strong>エリアごとに一律の料金を設定されている場合は、Q10のみで問題ございません。</p>
+<p class="note">※ 営業ができない区間は空欄のままで結構です。</p>
+<div class="q"><p class="qt"><span class="qn">Q9</span>ホテルごとの送迎料金（片道・円）　※高速代金込</p>
+<div class="tw"><table><thead><tr><th class="rh" rowspan="2">発着地</th><th class="ku" colspan="8">広島市中心部エリア</th><th class="ku">宇品</th><th class="ku">宮島</th><th class="ku">尾道</th></tr><tr><th class="hn">ホテルインターゲート広島</th><th class="hn">ANAクラウンプラザホテル広島</th><th class="hn">ヒルトン広島</th><th class="hn">コンフォートホテル広島大手町</th><th class="hn">東急ステイ メルキュール 広島</th><th class="hn">fav広島平和大通り</th><th class="hn">ネストホテル広島八丁堀</th><th class="hn kuend">ホテルグランヴィア広島サウスゲート</th><th class="hn kuend">グランドプリンスホテル広島</th><th class="hn kuend">宮島 錦水館</th><th class="hn">尾道のおばあちゃんとわたくしホテル</th></tr></thead><tbody><tr><th class="rh">広島駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td class="kuend"><input type="text" class="cell" inputmode="numeric"></td><td class="kuend"><input type="text" class="cell" inputmode="numeric"></td><td class="kuend"><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
+<div class="q"><p class="qt"><span class="qn">Q10</span>エリアごとの送迎料金（片道・円）　※高速代金込</p>
+<div class="tw"><table><thead><tr><th class="rh">発着地</th><th>広島市中心部エリア</th><th>宇品</th><th>宮島</th><th>尾道</th></tr></thead><tbody><tr><th class="rh">広島駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
+<h3 class="sub-h">その他のエリアについて</h3>
+<div class="q"><p class="qt"><span class="qn">Q11</span>上記以外のエリアでも料金の設定が可能な場合は、こちらにご記入ください　※高速代金込</p>
+<div class="tw"><table><thead><tr><th class="rh">発着地</th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th></tr></thead><tbody><tr><th class="rh">広島駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
+<div class="q"><p class="qt"><span class="qn">Q12</span>待ち合わせ・お見送り、それぞれの料金をご記入ください　※待機料金・駐車料金込</p>
+<div class="meet-row"><div class="meet-lb"><span class="meet-pl">広島駅</span><span class="meet-sv">改札での待ち合わせ・お見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q13</span>上記の送迎料金について、補足事項があればご記入ください</p>
+<textarea rows="2" placeholder="例：22時以降は割増／2台以上は別途ご相談"></textarea>
+</div>
+</section>
+<section class="sec"><h2><span class="num">3</span>観光の貸切について</h2>
+<p class="body">料金のご記入とあわせて、行程へのご意見もご記入ください。</p>
+<div class="course"><p class="cname">広島観光　10時間｜世界遺産・宮島＆平和を巡る満喫コース</p>
+<p class="croute">ホテルグランヴィア広島サウスゲート → 平和記念公園・原爆ドーム → 広島平和記念資料館 → 宮島口 → 宮島散策 → 表参道商店街（昼食） → 厳島神社 → おりづるタワー → ホテルグランヴィア広島サウスゲート</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q14</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q15</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
+<p class="sub">※ 段差や車椅子でのご利用可否など、バリアフリーの状況もあわせてお教えいただけますと幸いです。</p>
+<textarea rows="3" placeholder="例：〇〇（店名）／店内フラット・車椅子のまま入店可・多目的トイレあり"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q16</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">広島観光　8時間｜宮島＋平和記念公園 王道コース</p>
+<p class="croute">ホテルグランヴィア広島サウスゲート → 宮島口 → 宮島散策 → 表参道商店街（昼食） → 厳島神社 → 平和記念公園・原爆ドーム → ホテルグランヴィア広島サウスゲート</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q17</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q18</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
+<p class="sub">※ 段差や車椅子でのご利用可否など、バリアフリーの状況もあわせてお教えいただけますと幸いです。</p>
+<textarea rows="3" placeholder="例：〇〇（店名）／店内フラット・車椅子のまま入店可・多目的トイレあり"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q19</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">広島観光　6時間｜平和・歴史を学ぶ市内コース</p>
+<p class="croute">ホテルグランヴィア広島サウスゲート → おりづるタワー → 昼食 → 原爆ドーム → 平和記念公園 → 広島平和記念資料館 → ホテルグランヴィア広島サウスゲート</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q20</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q21</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
+<p class="sub">※ 段差や車椅子でのご利用可否など、バリアフリーの状況もあわせてお教えいただけますと幸いです。</p>
+<textarea rows="3" placeholder="例：〇〇（店名）／店内フラット・車椅子のまま入店可・多目的トイレあり"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q22</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="course"><p class="cname">呉観光　8時間｜海軍・海事歴史を巡るコース</p>
+<p class="croute">ホテルグランヴィア広島サウスゲート → てつのくじら館 → 大和ミュージアム（昼食） → アレイからすこじま → 入船山記念館 → ホテルグランヴィア広島サウスゲート</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q23</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+</div>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q24</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
+<p class="sub">※ 段差や車椅子でのご利用可否など、バリアフリーの状況もあわせてお教えいただけますと幸いです。</p>
+<textarea rows="3" placeholder="例：〇〇（店名）／店内フラット・車椅子のまま入店可・多目的トイレあり"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q25</span>この行程について、気になる内容などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q26</span>お客様のご都合ではない（交通渋滞など）による超過・延長料金は発生しますでしょうか</p>
+<label class="opt"><input type="radio" name="q26" value="発生しない"><span>発生しない</span></label>
+<label class="opt"><input type="radio" name="q26" value="発生する"><span>発生する</span></label>
+<p class="sub arrow">発生する場合はご記入ください</p>
+<textarea rows="2" placeholder="例：30分ごとに〇〇円"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q27</span>現地に乗務員様がご宿泊いただいての連日の手配は可能でしょうか</p>
+<label class="opt"><input type="radio" name="q27" value="手配可能"><span>手配可能</span></label>
+<p class="sub arrow">条件などございましたらご記入ください</p>
+<textarea rows="3" placeholder="例：乗務員の宿泊費をご負担いただければ可能／連続◯日まで対応可能／繁忙期は難しい"></textarea>
+<label class="opt"><input type="radio" name="q27" value="手配できない"><span>手配できない</span></label>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q28</span>ドライバー様のお食事についてお教えください</p>
+<label class="opt"><input type="radio" name="q28" value="同行希望があれば対応可能"><span>同行希望があれば対応可能</span></label>
+<div class="nest">
+<label class="opt"><input type="radio" name="q28_食事代" value="食事代の負担必要"><span>食事代の負担必要</span></label>
+<div class="nest">
+<label class="opt"><input type="radio" name="q28_支払時期" value="当日払い"><span>当日払い</span></label>
+<label class="opt"><input type="radio" name="q28_支払時期" value="事前払い"><span>事前払い</span></label>
+<p class="sub arrow">目安金額</p>
+<div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div>
+</div>
+<label class="opt"><input type="radio" name="q28_食事代" value="食事代の負担不要"><span>食事代の負担不要</span></label>
+</div>
+<label class="opt"><input type="radio" name="q28" value="同行できない"><span>同行できない</span></label>
+<label class="opt"><input type="radio" name="q28" value="同行の有無にかかわらず、食事代の負担は不要"><span>同行の有無にかかわらず、食事代の負担は不要</span></label>
+</div>
+</section>
+
+<section class="sec"><h2><span class="num">4</span>追加料金について</h2>
+<div class="q"><p class="qt"><span class="qn">Q29</span>追加料金が発生する項目と金額</p>
+<p class="sub">例：英会話ドライバーのご指定 1時間あたり 3,000円／看護師の同行 1日あたり 20,000円／休日割増 20%</p>
+<div class="add-row"><span class="add-lb">項目</span><span class="add-lb2">金額</span></div>
+<div id="add-rows">
+<div class="add-row"><input type="text" class="add-item"><input type="text" class="add-amt"></div>
+<div class="add-row"><input type="text" class="add-item"><input type="text" class="add-amt"></div>
+<div class="add-row"><input type="text" class="add-item"><input type="text" class="add-amt"></div>
+</div>
+<button type="button" class="add-btn" id="add-btn">＋ 項目を追加</button>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q30</span>早朝・深夜の割増（時間帯と割増率）</p>
+<textarea rows="2" placeholder="例：22時〜5時は2割増"></textarea>
+</div>
+</section>
+
+<section class="sec"><h2><span class="num">5</span>お支払い・ご契約条件について</h2>
+<div class="q"><p class="qt"><span class="qn">Q31</span>お支払い方法</p>
+<label class="opt"><input type="checkbox" value="事前振込"><span>事前振込</span></label>
+<label class="opt"><input type="checkbox" value="後払い"><span>後払い</span></label>
+<label class="opt"><input type="checkbox" value="全旅クーポン"><span>全旅クーポン</span></label>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q32</span>お客様（当日払い代金）のお支払い方法</p>
+<label class="opt"><input type="checkbox" value="現金"><span>現金</span></label>
+<label class="opt"><input type="checkbox" value="クレジットカード（タッチ決済）"><span>クレジットカード（タッチ決済）</span></label>
+<label class="opt"><input type="checkbox" value="クレジットカード（端末差込）"><span>クレジットカード（端末差込）</span></label>
+<label class="opt"><input type="checkbox" value="その他"><span>その他</span></label>
+<input type="text" class="line" placeholder="「その他」を選ばれた場合はご記入ください">
+<p class="sub">※ 高速代金・健康上の理由での迂回料金など</p>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q33</span>コミッション対応可能な場合、対象・条件などの詳細をご記入ください</p>
+<textarea rows="3" placeholder=""></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q34</span>キャンセルポリシー（何日前から何％）</p>
+<textarea rows="2" placeholder="例：7日前20%〜当日100%"></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q35</span>その他、ご要望・ご意見がございましたらご記入ください</p>
+<textarea rows="2" placeholder=""></textarea>
+</div>
+<div class="q"><p class="qt"><span class="qn">Q36</span>公式サイトに掲載の写真を、お客様へのご提案資料や弊社ウェブサイトでのご紹介などに使用することに同意いただけますでしょうか</p>
+<label class="opt"><input type="radio" name="q36" value="はい"><span>はい</span></label>
+<label class="opt"><input type="radio" name="q36" value="いいえ（要確認）"><span>いいえ（要確認）</span></label>
+</div>
+</section>
+<div class="submit-wrap">
+<button type="button" class="submit">回答を送信する</button>
+<p class="submit-note">※ こちらは確認用のイメージです。ボタンを押しても送信はされません。</p>
+</div>
+<p class="foot">ご協力ありがとうございました。</p>
+</div>
+<script>
+(function(){
+  var btn=document.getElementById('add-btn'),box=document.getElementById('add-rows');
+  if(!btn||!box)return;
+  btn.addEventListener('click',function(){
+    var r=document.createElement('div');
+    r.className='add-row';
+    var k=box.children.length+1;
+    r.innerHTML='<input type="text" class="add-item"><input type="text" class="add-amt">';
+    box.appendChild(r);
+    r.querySelector('.add-item').focus();
+  });
+  var vb=document.getElementById('veh-btn'),vx=document.getElementById('veh-rows');
+  if(vb&&vx){vb.addEventListener('click',function(){
+    var r=document.createElement('div');
+    r.className='veh-row';
+    var k=vx.children.length+1;
+    r.innerHTML='<input type="text" class="veh-in"><input type="text" class="veh-in"><input type="text" class="veh-in">';
+    vx.appendChild(r);
+    r.querySelector('.veh-in').focus();
+  });}
+})();
+</script>
+
+<script src="/transport-survey.js" data-form-id="1528b3da-2966-4c7c-945d-38e9ea322204" data-question-count="36"></script>
+</body>
+</html>
