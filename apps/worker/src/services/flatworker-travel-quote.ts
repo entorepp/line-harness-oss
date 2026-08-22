@@ -5,6 +5,18 @@ type FlatworkerTravelQuoteEnvironment = {
   FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
 };
 
+const SAFE_UPSTREAM_MESSAGES = new Set([
+  'invalid traveller profile schema',
+  'traveller email required',
+  'invalid traveller email',
+  'journey movement tariff contract is required',
+  'journey movement tariff ID is required',
+  'journey movement unit price is required',
+  'journey movement pricing basis is required',
+  'journey movement capacity is required',
+  'journey movement direction contract is required',
+]);
+
 function caseIdFor(reference: string): string {
   return `flat-travel-${reference.toLowerCase()}`;
 }
@@ -30,7 +42,18 @@ export async function syncTravelQuoteToFlatworker(
       body: JSON.stringify(intent),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) return { status: 'failed', caseId };
+    if (!response.ok) {
+      let body: Record<string, unknown> = {};
+      try { body = await response.json() as Record<string, unknown>; } catch { /* response body is optional */ }
+      const message = String(body.message || '').trim().toLowerCase();
+      return {
+        status: 'failed',
+        caseId,
+        upstreamStatus: response.status,
+        ...(typeof body.error === 'string' && body.error ? { errorCode: body.error.slice(0, 80) } : {}),
+        ...(SAFE_UPSTREAM_MESSAGES.has(message) ? { errorMessage: message } : {}),
+      };
+    }
     const body = await response.json() as Record<string, unknown>;
     const status = new Set(['created', 'updated', 'existing']).has(String(body.status))
       ? String(body.status) as FlatworkerDraftSummary['status']

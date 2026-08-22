@@ -1,7 +1,8 @@
 export const TRAVEL_QUOTE_INTENT_PATH = '/api/travel/quote-intents';
 export const TRAVEL_QUOTE_INTENT_MAX_BYTES = 48_000;
 export const TRAVEL_PROFILE_CONSENT_VERSION = 'flat-travel-profile-v1';
-export const TRAVEL_PROFILE_SCHEMA_VERSION = 'flat-travel-traveller-v2';
+export const TRAVEL_PROFILE_SCHEMA_VERSION = 'flat-travel-traveller-v3';
+export const TRAVEL_PROFILE_LEGACY_SCHEMA_VERSION = 'flat-travel-traveller-v2';
 
 export const TRAVEL_QUOTE_ALLOWED_ORIGINS = new Set([
   'https://flat-travel-design-preview.flat-travel.workers.dev',
@@ -15,6 +16,7 @@ const CHANNELS = new Set(['whatsapp', 'instagram', 'messenger', 'email']);
 const ASSISTANCE_METHODS = new Set(['independent', 'companion', 'arrange_support', 'unsure']);
 const WHEELCHAIR_DEVICES = new Set(['Manual wheelchair', 'Power wheelchair', 'Mobility scooter']);
 const HEAVY_MOBILITY_DEVICES = new Set(['Power wheelchair', 'Mobility scooter']);
+const PROFILE_SCHEMA_VERSIONS = new Set([TRAVEL_PROFILE_SCHEMA_VERSION, TRAVEL_PROFILE_LEGACY_SCHEMA_VERSION]);
 
 export type AgreementHotel = {
   stayId: string;
@@ -75,6 +77,12 @@ export type AgreementMovement = {
   passengerCapacity: number | null;
   bidirectional: boolean | null;
   estimateJpy: number | null;
+  displayGroupId: string;
+  displayGroupOrigin: string;
+  displayGroupDestination: string;
+  displayGroupSequence: number | null;
+  displayGroupMemberCount: number | null;
+  timeControlMovement: boolean;
 };
 
 export type AgreementSelection = {
@@ -130,10 +138,11 @@ export type TravelQuoteIntent = {
   route: string[];
   packageTotalJpy: number | null;
   priceStatus: string | null;
-  profileSchemaVersion: typeof TRAVEL_PROFILE_SCHEMA_VERSION | null;
+  profileSchemaVersion: typeof TRAVEL_PROFILE_SCHEMA_VERSION | typeof TRAVEL_PROFILE_LEGACY_SCHEMA_VERSION | null;
   customerName: string;
   givenName: string;
   familyName: string;
+  email: string;
   bodyHeightCm: number | null;
   bodyWeightKg: number | null;
   wheelchairBrand: string;
@@ -160,6 +169,9 @@ export type FlatworkerDraftSummary = {
     status: 'ready_for_staff_review' | 'needs_data';
     blockingIssueCount: number;
   };
+  upstreamStatus?: number;
+  errorCode?: string;
+  errorMessage?: string;
 };
 
 type ParseResult = { ok: true; value: TravelQuoteIntent } | { ok: false; error: string };
@@ -295,6 +307,12 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       passengerCapacity: item.passengerCapacity == null ? null : integer(item.passengerCapacity, 1, 30),
       bidirectional: typeof item.bidirectional === 'boolean' ? item.bidirectional : null,
       estimateJpy: item.estimateJpy == null ? null : integer(item.estimateJpy, 0, 100_000_000),
+      displayGroupId: text(item.displayGroupId, 100) || '',
+      displayGroupOrigin: text(item.displayGroupOrigin, 120) || '',
+      displayGroupDestination: text(item.displayGroupDestination, 120) || '',
+      displayGroupSequence: item.displayGroupSequence == null ? null : integer(item.displayGroupSequence, 1, 20),
+      displayGroupMemberCount: item.displayGroupMemberCount == null ? null : integer(item.displayGroupMemberCount, 2, 20),
+      timeControlMovement: item.timeControlMovement === true,
     };
   });
   const selections = (Array.isArray(source.selections) ? source.selections : []).slice(0, 30).map((raw) => {
@@ -367,11 +385,13 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const legacyCustomerName = text(body.customerName, 100) || '';
   if (Boolean(givenName) !== Boolean(familyName)) return { ok: false, error: 'Both traveller name fields are required' };
   const customerName = [givenName, familyName].filter(Boolean).join(' ') || legacyCustomerName;
+  const email = text(body.email, 320) || '';
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Invalid traveller email' };
   const wheelchairBrand = text(body.wheelchairBrand, 100) || '';
   const wheelchairModel = text(body.wheelchairModel, 100) || '';
   const mobilityDeviceType = text(body.mobilityDeviceType, 100);
   const profileSchemaVersion = text(body.profileSchemaVersion, 80);
-  if (profileSchemaVersion && profileSchemaVersion !== TRAVEL_PROFILE_SCHEMA_VERSION) return { ok: false, error: 'Invalid traveller profile schema' };
+  if (profileSchemaVersion && !PROFILE_SCHEMA_VERSIONS.has(profileSchemaVersion)) return { ok: false, error: 'Invalid traveller profile schema' };
   const bodyHeightCm = body.bodyHeightCm == null ? null : numberValue(body.bodyHeightCm, 30, 250);
   const bodyWeightKg = body.bodyWeightKg == null ? null : numberValue(body.bodyWeightKg, 1, 500);
   const wheelchairWeightKg = body.wheelchairWeightKg == null ? null : numberValue(body.wheelchairWeightKg, 1, 500);
@@ -380,15 +400,16 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const boardingPreference = text(body.boardingPreference, 160);
   const supportNote = text(body.supportNote, 1000);
   const supportNeeds = textList(body.supportNeeds, 12, 160);
-  const profileProvided = Boolean(customerName || givenName || familyName || wheelchairBrand || wheelchairModel || mobilityDeviceType || bodyHeightCm || bodyWeightKg || wheelchairWeightKg || assistanceMethod || boardingPreference || supportNote || supportNeeds.length);
+  const profileProvided = Boolean(customerName || givenName || familyName || email || wheelchairBrand || wheelchairModel || mobilityDeviceType || bodyHeightCm || bodyWeightKg || wheelchairWeightKg || assistanceMethod || boardingPreference || supportNote || supportNeeds.length);
   const profileConsentVersion = text(body.profileConsentVersion, 80);
   const consentedAt = text(body.profileConsentedAt, 40);
   const profileConsentedAt = consentedAt && !Number.isNaN(Date.parse(consentedAt)) ? new Date(consentedAt).toISOString() : null;
   if (profileProvided && (profileConsentVersion !== TRAVEL_PROFILE_CONSENT_VERSION || !profileConsentedAt)) {
     return { ok: false, error: 'Traveller profile consent required' };
   }
-  if (profileSchemaVersion === TRAVEL_PROFILE_SCHEMA_VERSION) {
+  if (PROFILE_SCHEMA_VERSIONS.has(profileSchemaVersion || '')) {
     if (!customerName || !mobilityDeviceType || !assistanceMethod || !ASSISTANCE_METHODS.has(assistanceMethod)) return { ok: false, error: 'Required traveller details missing' };
+    if (profileSchemaVersion === TRAVEL_PROFILE_SCHEMA_VERSION && !email) return { ok: false, error: 'Traveller email required' };
     if (WHEELCHAIR_DEVICES.has(mobilityDeviceType) && (!wheelchairBrand || !wheelchairModel || !boardingPreference)) return { ok: false, error: 'Wheelchair details missing' };
     if (HEAVY_MOBILITY_DEVICES.has(mobilityDeviceType) && bodyWeightKg == null) return { ok: false, error: 'Power mobility body weight missing' };
   }
@@ -433,10 +454,11 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       route,
       packageTotalJpy: body.packageTotalJpy == null ? null : integer(body.packageTotalJpy, 0, 100_000_000),
       priceStatus: text(body.priceStatus, 240),
-      profileSchemaVersion: profileSchemaVersion === TRAVEL_PROFILE_SCHEMA_VERSION ? TRAVEL_PROFILE_SCHEMA_VERSION : null,
+      profileSchemaVersion: PROFILE_SCHEMA_VERSIONS.has(profileSchemaVersion || '') ? profileSchemaVersion as TravelQuoteIntent['profileSchemaVersion'] : null,
       customerName,
       givenName,
       familyName,
+      email,
       bodyHeightCm,
       bodyWeightKg,
       wheelchairBrand,
