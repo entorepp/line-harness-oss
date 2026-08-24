@@ -40,8 +40,11 @@ interface FormField {
   accept?: string;
   multiple?: boolean;
   maxFiles?: number;
+  digitsOnly?: boolean;
   cityPlaceholder?: string;
   datesPlaceholder?: string;
+  startDateLabel?: string;
+  endDateLabel?: string;
   addItemLabel?: string;
   removeItemLabel?: string;
   maxItems?: number;
@@ -267,7 +270,8 @@ function getFlexibleDatePlaceholder(field: FormField): string {
 function renderCityDateRow(field: FormField, rowIndex: number): string {
   const fieldName = escapeAttr(field.name);
   const cityPlaceholder = escapeAttr(field.cityPlaceholder || 'City, e.g. Tokyo');
-  const datesPlaceholder = escapeAttr(field.datesPlaceholder || 'Dates, e.g. Oct 10–14');
+  const startDateLabel = escapeHtml(field.startDateLabel || 'Start date');
+  const endDateLabel = escapeHtml(field.endDateLabel || 'End date');
   const removeLabel = escapeHtml(field.removeItemLabel || 'Remove');
 
   return `<div class="city-date-row" data-city-date-row>
@@ -278,13 +282,24 @@ function renderCityDateRow(field: FormField, rowIndex: number): string {
       data-city-date-role="city"
       placeholder="${cityPlaceholder}"
       aria-label="City ${rowIndex + 1}" />
-    <input
-      type="text"
-      class="form-input city-date-input"
-      name="${fieldName}__dates"
-      data-city-date-role="dates"
-      placeholder="${datesPlaceholder}"
-      aria-label="Dates for city ${rowIndex + 1}" />
+    <label class="city-date-control">
+      <span>${startDateLabel}</span>
+      <input
+        type="date"
+        class="form-input city-date-input"
+        name="${fieldName}__start_date"
+        data-city-date-role="startDate"
+        aria-label="${escapeAttr(field.startDateLabel || 'Start date')} for city ${rowIndex + 1}" />
+    </label>
+    <label class="city-date-control">
+      <span>${endDateLabel}</span>
+      <input
+        type="date"
+        class="form-input city-date-input"
+        name="${fieldName}__end_date"
+        data-city-date-role="endDate"
+        aria-label="${escapeAttr(field.endDateLabel || 'End date')} for city ${rowIndex + 1}" />
+    </label>
     <button type="button" class="city-date-remove" data-city-date-remove>${removeLabel}</button>
   </div>`;
 }
@@ -407,14 +422,20 @@ function renderField(field: FormField, index: number): string {
       break;
     }
 
-    default:
+    default: {
+      const digitsOnly = Boolean(field.digitsOnly);
+      const inputType = digitsOnly ? 'text' : (flexibleTravelDate ? 'text' : escapeHtml(field.type));
+      const numericAttributes = digitsOnly
+        ? ' inputmode="numeric" pattern="[0-9]*" autocomplete="off" data-digits-only'
+        : '';
       inputHtml = `<input
-        type="${flexibleTravelDate ? 'text' : escapeHtml(field.type)}"
+        type="${inputType}"
         name="${fieldName}"
         id="${fieldId}"
         class="form-input"
-        ${placeholder}${required} />`;
+        ${placeholder}${numericAttributes}${required} />`;
       break;
+    }
   }
 
   return `
@@ -460,7 +481,8 @@ function injectStyles(): void {
     .form-file { cursor: pointer; }
     .city-dates { display: flex; flex-direction: column; gap: 10px; }
     .city-date-list { display: flex; flex-direction: column; gap: 10px; }
-    .city-date-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid #e1ece5; border-radius: 10px; background: #f7fbf8; }
+    .city-date-row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; padding: 10px; border: 1px solid #e1ece5; border-radius: 10px; background: #f7fbf8; }
+    .city-date-control { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #5e6b63; font-size: 12px; font-weight: 600; }
     .city-date-row:only-child .city-date-remove { display: none; }
     .city-date-remove { border: 0; background: transparent; color: #68756d; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 9px 6px; }
     .city-date-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #b9d7c4; border-radius: 999px; background: #fff; color: #16723d; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; padding: 9px 14px; }
@@ -614,6 +636,8 @@ function getRawFieldValue(field: FormField): unknown {
     return Array.from(container.querySelectorAll<HTMLElement>('[data-city-date-row]')).map((row) => ({
       city: row.querySelector<HTMLInputElement>('[data-city-date-role="city"]')?.value ?? '',
       dates: row.querySelector<HTMLInputElement>('[data-city-date-role="dates"]')?.value ?? '',
+      startDate: row.querySelector<HTMLInputElement>('[data-city-date-role="startDate"]')?.value ?? '',
+      endDate: row.querySelector<HTMLInputElement>('[data-city-date-role="endDate"]')?.value ?? '',
     }));
   }
 
@@ -685,7 +709,11 @@ function buildSubmissionData(
 
       if (field.type === 'city_dates') {
         result[field.name] = normalizeCityDateEntries(value)
-          .map((entry) => `${entry.city}: ${entry.dates}`);
+          .map((entry) => (
+            entry.startDate || entry.endDate
+              ? `${entry.city}: ${entry.startDate || entry.dates} to ${entry.endDate || entry.dates}`
+              : `${entry.city}: ${entry.dates}`
+          ));
         continue;
       }
 
@@ -774,10 +802,15 @@ function validateForm(): string | null {
 
     if (field.type === 'city_dates') {
       const issue = getCityDateEntriesIssue(value);
+      if (issue === 'invalid_range') {
+        return normalizeLocale(formDef.locale) === 'en'
+          ? 'The end date must be on or after the start date'
+          : '終了日は開始日以降を選択してください';
+      }
       if (issue === 'incomplete') {
         return normalizeLocale(formDef.locale) === 'en'
-          ? 'Enter both a city and dates for each row'
-          : '各行の都市と日程を両方入力してください';
+          ? 'Enter a city, start date and end date for each row'
+          : '各行の都市・開始日・終了日を入力してください';
       }
       if (field.required && issue === 'empty') {
         return normalizeLocale(formDef.locale) === 'en'
@@ -785,6 +818,14 @@ function validateForm(): string | null {
           : `${field.label} は必須項目です`;
       }
       continue;
+    }
+
+    if (field.digitsOnly && value !== undefined && value !== null && String(value).trim()) {
+      if (!/^\d+$/.test(String(value).trim())) {
+        return normalizeLocale(formDef.locale) === 'en'
+          ? `${field.label} must contain digits only`
+          : `${field.label} は数字のみで入力してください`;
+      }
     }
 
     if (field.required) {
@@ -879,7 +920,24 @@ function attachFormEvents(): void {
     e.preventDefault();
     void submitForm();
   });
-  form?.addEventListener('input', updateFieldVisibility);
+  form?.addEventListener('input', (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.matches('[data-digits-only]')) {
+      target.value = target.value.replace(/\D/g, '');
+    }
+
+    if (target instanceof HTMLInputElement && target.matches('[data-city-date-role="startDate"], [data-city-date-role="endDate"]')) {
+      const row = target.closest<HTMLElement>('[data-city-date-row]');
+      const startDate = row?.querySelector<HTMLInputElement>('[data-city-date-role="startDate"]');
+      const endDate = row?.querySelector<HTMLInputElement>('[data-city-date-role="endDate"]');
+      if (startDate && endDate) {
+        endDate.min = startDate.value;
+        startDate.max = endDate.value;
+      }
+    }
+
+    updateFieldVisibility();
+  });
   form?.addEventListener('change', (event) => {
     const target = event.target;
     if (target instanceof HTMLInputElement && target.type === 'file') {

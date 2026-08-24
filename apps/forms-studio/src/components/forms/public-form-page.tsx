@@ -180,7 +180,7 @@ function collectInitialValues(fields: FormField[]): Record<string, unknown> {
       field.defaultValue !== undefined
         ? field.defaultValue
         : field.type === 'city_dates'
-          ? [{ city: '', dates: '' } satisfies CityDateEntry]
+          ? [{ city: '', dates: '', startDate: '', endDate: '' } satisfies CityDateEntry]
         : field.type === 'checkbox' || field.type === 'file'
           ? []
           : '',
@@ -219,10 +219,15 @@ function getMissingReason(
 
   if (field.type === 'city_dates') {
     const issue = getCityDateEntriesIssue(value)
+    if (issue === 'invalid_range') {
+      return normalizedLocale === 'en'
+        ? 'The end date must be on or after the start date'
+        : '終了日は開始日以降を選択してください'
+    }
     if (issue === 'incomplete') {
       return normalizedLocale === 'en'
-        ? 'Enter both a city and dates for each row'
-        : '各行の都市と日程を両方入力してください'
+        ? 'Enter a city, start date and end date for each row'
+        : '各行の都市・開始日・終了日をすべて入力してください'
     }
     if (field.required && issue === 'empty') return requiredMessage
     return null
@@ -235,6 +240,14 @@ function getMissingReason(
       }
     } else if (value === undefined || value === null || String(value).trim() === '') {
       return requiredMessage
+    }
+  }
+
+  if (field.digitsOnly && value !== undefined && value !== null && String(value).trim()) {
+    if (!/^\d+$/.test(String(value))) {
+      return normalizedLocale === 'en'
+        ? `${field.label} must contain digits only`
+        : `${field.label}は数字のみで入力してください`
     }
   }
 
@@ -919,7 +932,11 @@ export default function PublicFormPage() {
 
       if (field.type === 'city_dates') {
         data[field.name] = normalizeCityDateEntries(value)
-          .map((entry) => `${entry.city}: ${entry.dates}`)
+          .map((entry) => (
+            entry.startDate || entry.endDate
+              ? `${entry.city}: ${entry.startDate || entry.dates} to ${entry.endDate || entry.dates}`
+              : `${entry.city}: ${entry.dates}`
+          ))
         continue
       }
 
@@ -1009,7 +1026,8 @@ export default function PublicFormPage() {
   const renderField = (field: FormField, isMissing: boolean) => {
     const value = values[field.name]
     const flexibleTravelDate = isFlexibleTravelDateField(field)
-    const inputType = flexibleTravelDate ? 'text' : field.type
+    const digitsOnly = Boolean(field.digitsOnly)
+    const inputType = digitsOnly || flexibleTravelDate ? 'text' : field.type
     const datePlaceholder = field.name === 'travel_end_date'
       ? localizedTexts.approximateEndDatePlaceholder
       : localizedTexts.approximateStartDatePlaceholder
@@ -1017,15 +1035,21 @@ export default function PublicFormPage() {
     if (field.type === 'city_dates') {
       const entries: CityDateEntry[] = Array.isArray(value)
         ? value.map((item) => {
-          if (!item || typeof item !== 'object' || Array.isArray(item)) return { city: '', dates: '' }
+          if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            return { city: '', dates: '', startDate: '', endDate: '' }
+          }
           const record = item as Record<string, unknown>
           return {
             city: typeof record.city === 'string' ? record.city : '',
             dates: typeof record.dates === 'string' ? record.dates : '',
+            startDate: typeof record.startDate === 'string' ? record.startDate : '',
+            endDate: typeof record.endDate === 'string' ? record.endDate : '',
           }
         })
-        : [{ city: '', dates: '' }]
-      const rows = entries.length > 0 ? entries : [{ city: '', dates: '' }]
+        : [{ city: '', dates: '', startDate: '', endDate: '' }]
+      const rows = entries.length > 0
+        ? entries
+        : [{ city: '', dates: '', startDate: '', endDate: '' }]
       const maxItems = Number.isFinite(field.maxItems) && Number(field.maxItems) > 0
         ? Number(field.maxItems)
         : 12
@@ -1046,7 +1070,7 @@ export default function PublicFormPage() {
                 isMissing ? 'border-rose-200 bg-rose-50/45' : 'border-[#dfe9e2] bg-[#f7fbf8]'
               }`}
             >
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-center">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)_auto] sm:items-end">
                 <input
                   type="text"
                   value={entry.city}
@@ -1056,15 +1080,32 @@ export default function PublicFormPage() {
                   aria-invalid={isMissing}
                   className={fieldControlClass(isMissing)}
                 />
-                <input
-                  type="text"
-                  value={entry.dates}
-                  onChange={(event) => updateEntry(rowIndex, 'dates', event.target.value)}
-                  placeholder={field.datesPlaceholder || 'Dates, e.g. Oct 10–14'}
-                  aria-label={`Dates for city ${rowIndex + 1}`}
-                  aria-invalid={isMissing}
-                  className={fieldControlClass(isMissing)}
-                />
+                <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-slate-500">
+                    <span className="mb-1.5 block">{field.startDateLabel || 'Start date'}</span>
+                    <input
+                      type="date"
+                      value={entry.startDate}
+                      max={entry.endDate || undefined}
+                      onChange={(event) => updateEntry(rowIndex, 'startDate', event.target.value)}
+                      aria-label={`${field.startDateLabel || 'Start date'} for city ${rowIndex + 1}`}
+                      aria-invalid={isMissing}
+                      className={fieldControlClass(isMissing)}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    <span className="mb-1.5 block">{field.endDateLabel || 'End date'}</span>
+                    <input
+                      type="date"
+                      value={entry.endDate}
+                      min={entry.startDate || undefined}
+                      onChange={(event) => updateEntry(rowIndex, 'endDate', event.target.value)}
+                      aria-label={`${field.endDateLabel || 'End date'} for city ${rowIndex + 1}`}
+                      aria-invalid={isMissing}
+                      className={fieldControlClass(isMissing)}
+                    />
+                  </label>
+                </div>
                 {rows.length > 1 && (
                   <button
                     type="button"
@@ -1080,7 +1121,10 @@ export default function PublicFormPage() {
           ))}
           <button
             type="button"
-            onClick={() => setFieldValue(field, [...rows, { city: '', dates: '' }])}
+            onClick={() => setFieldValue(field, [
+              ...rows,
+              { city: '', dates: '', startDate: '', endDate: '' },
+            ])}
             disabled={rows.length >= maxItems}
             className="inline-flex items-center gap-2 rounded-full border border-[#bcd5c5] bg-white px-4 py-2.5 text-sm font-semibold text-[#1d5c47] transition hover:bg-[#f0f8f3] disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -1246,7 +1290,13 @@ export default function PublicFormPage() {
       <input
         type={inputType}
         value={typeof value === 'string' || typeof value === 'number' ? String(value) : ''}
-        onChange={(e) => setFieldValue(field, e.target.value)}
+        onChange={(e) => setFieldValue(
+          field,
+          digitsOnly ? e.target.value.replace(/\D/g, '') : e.target.value,
+        )}
+        inputMode={digitsOnly ? 'numeric' : undefined}
+        pattern={digitsOnly ? '[0-9]*' : undefined}
+        autoComplete={digitsOnly ? 'off' : undefined}
         placeholder={field.placeholder || (flexibleTravelDate ? datePlaceholder : undefined)}
         aria-invalid={isMissing}
         className={fieldControlClass(isMissing)}

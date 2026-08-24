@@ -463,6 +463,10 @@ function normalizeImportedField(value: unknown, index: number): HarnessFormField
     pickValue(value, ['allowOtherOption', 'allow_other_option', 'allowOther', 'other']),
   )
 
+  const digitsOnly = parseBoolean(
+    pickValue(value, ['digitsOnly', 'digits_only', '数字のみ']),
+  )
+
   const visibleWhen = normalizeFormFieldVisibilityCondition(
     pickValue(value, ['visibleWhen', 'visible_when', 'showWhen', 'show_when', 'condition']),
   )
@@ -486,8 +490,11 @@ function normalizeImportedField(value: unknown, index: number): HarnessFormField
     accept: stringifyValue(pickValue(value, ['accept', 'fileTypes', 'mimeTypes', '許可ファイル'])),
     multiple: multiple ?? undefined,
     maxFiles: Number.isFinite(maxFilesRaw) && maxFilesRaw > 0 ? maxFilesRaw : undefined,
+    digitsOnly: digitsOnly ?? false,
     cityPlaceholder: stringifyValue(pickValue(value, ['cityPlaceholder', 'city_placeholder', '都市プレースホルダ'])),
     datesPlaceholder: stringifyValue(pickValue(value, ['datesPlaceholder', 'dates_placeholder', '日程プレースホルダ'])),
+    startDateLabel: stringifyValue(pickValue(value, ['startDateLabel', 'start_date_label', '開始日ラベル'])),
+    endDateLabel: stringifyValue(pickValue(value, ['endDateLabel', 'end_date_label', '終了日ラベル'])),
     addItemLabel: stringifyValue(pickValue(value, ['addItemLabel', 'add_item_label', '追加ボタン'])),
     removeItemLabel: stringifyValue(pickValue(value, ['removeItemLabel', 'remove_item_label', '削除ボタン'])),
     maxItems: Number.isFinite(maxItemsRaw) && maxItemsRaw > 0 ? maxItemsRaw : undefined,
@@ -619,6 +626,9 @@ function sanitizeDraft(draft: FormDraft) {
 
     if (placeholder) nextField.placeholder = placeholder
     if (helperText) nextField.helperText = helperText
+    if ((type === 'text' || type === 'number') && field.digitsOnly) {
+      nextField.digitsOnly = true
+    }
     if (type === 'file') {
       const accept = field.accept?.trim() ?? ''
       const maxFiles = Number(field.maxFiles)
@@ -629,11 +639,15 @@ function sanitizeDraft(draft: FormDraft) {
     if (type === 'city_dates') {
       const cityPlaceholder = field.cityPlaceholder?.trim() ?? ''
       const datesPlaceholder = field.datesPlaceholder?.trim() ?? ''
+      const startDateLabel = field.startDateLabel?.trim() ?? ''
+      const endDateLabel = field.endDateLabel?.trim() ?? ''
       const addItemLabel = field.addItemLabel?.trim() ?? ''
       const removeItemLabel = field.removeItemLabel?.trim() ?? ''
       const maxItems = Number(field.maxItems)
       if (cityPlaceholder) nextField.cityPlaceholder = cityPlaceholder
       if (datesPlaceholder) nextField.datesPlaceholder = datesPlaceholder
+      if (startDateLabel) nextField.startDateLabel = startDateLabel
+      if (endDateLabel) nextField.endDateLabel = endDateLabel
       if (addItemLabel) nextField.addItemLabel = addItemLabel
       if (removeItemLabel) nextField.removeItemLabel = removeItemLabel
       if (Number.isFinite(maxItems) && maxItems > 0) nextField.maxItems = maxItems
@@ -1431,6 +1445,18 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                     />
                   </div>
 
+                  {(field.type === 'text' || field.type === 'number') && (
+                    <label className="mt-4 flex items-center gap-3 text-sm text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(field.digitsOnly)}
+                        onChange={(event) => updateField(index, { digitsOnly: event.target.checked })}
+                        className="h-4 w-4 rounded border-[#cbbbe9] text-[#673ab7] focus:ring-[#673ab7]"
+                      />
+                      数字のみ許可（数字キーボード・スピナーなし）
+                    </label>
+                  )}
+
                   {field.type === 'city_dates' && (
                     <div className="mt-5 grid gap-3 rounded-[20px] bg-[#faf8fe] p-4 md:grid-cols-2">
                       <input
@@ -1440,9 +1466,15 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                         className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
                       />
                       <input
-                        value={field.datesPlaceholder ?? ''}
-                        onChange={(event) => updateField(index, { datesPlaceholder: event.target.value })}
-                        placeholder="日程欄の例（例: Oct 10–14）"
+                        value={field.startDateLabel ?? ''}
+                        onChange={(event) => updateField(index, { startDateLabel: event.target.value })}
+                        placeholder="開始日ラベル（例: Start date）"
+                        className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                      />
+                      <input
+                        value={field.endDateLabel ?? ''}
+                        onChange={(event) => updateField(index, { endDateLabel: event.target.value })}
+                        placeholder="終了日ラベル（例: End date）"
                         className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
                       />
                       <input

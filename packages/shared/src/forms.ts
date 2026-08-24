@@ -1,6 +1,6 @@
 import type { CityDateEntry, FormField, FormFieldVisibilityCondition } from './types';
 
-export type CityDateEntriesIssue = 'empty' | 'incomplete' | null;
+export type CityDateEntriesIssue = 'empty' | 'incomplete' | 'invalid_range' | null;
 
 export function normalizeCityDateEntries(value: unknown): CityDateEntry[] {
   if (!Array.isArray(value)) return [];
@@ -10,16 +10,28 @@ export function normalizeCityDateEntries(value: unknown): CityDateEntry[] {
 
     const record = item as Record<string, unknown>;
     const city = normalizeStringValue(record.city);
-    const dates = normalizeStringValue(record.dates);
+    const legacyDates = normalizeStringValue(record.dates);
+    const startDate = normalizeStringValue(record.startDate);
+    const endDate = normalizeStringValue(record.endDate);
+    const dates = startDate || endDate
+      ? [startDate, endDate].filter(Boolean).join(' to ')
+      : legacyDates;
     if (!city && !dates) return [];
-    return [{ city, dates }];
+    return [{ city, dates, startDate, endDate }];
   });
 }
 
 export function getCityDateEntriesIssue(value: unknown): CityDateEntriesIssue {
   const entries = normalizeCityDateEntries(value);
   if (entries.length === 0) return 'empty';
-  if (entries.some((entry) => !entry.city || !entry.dates)) return 'incomplete';
+  if (entries.some((entry) => (
+    !entry.city
+    || (Boolean(entry.startDate || entry.endDate) && (!entry.startDate || !entry.endDate))
+    || (!entry.startDate && !entry.endDate && !entry.dates)
+  ))) return 'incomplete';
+  if (entries.some((entry) => (
+    entry.startDate && entry.endDate && entry.endDate < entry.startDate
+  ))) return 'invalid_range';
   return null;
 }
 

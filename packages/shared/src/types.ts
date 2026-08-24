@@ -447,6 +447,8 @@ export interface FormFieldVisibilityCondition {
 export interface CityDateEntry {
   city: string;
   dates: string;
+  startDate: string;
+  endDate: string;
 }
 
 export interface FormField {
@@ -463,8 +465,11 @@ export interface FormField {
   accept?: string;
   multiple?: boolean;
   maxFiles?: number;
+  digitsOnly?: boolean;
   cityPlaceholder?: string;
   datesPlaceholder?: string;
+  startDateLabel?: string;
+  endDateLabel?: string;
   addItemLabel?: string;
   removeItemLabel?: string;
   maxItems?: number;
