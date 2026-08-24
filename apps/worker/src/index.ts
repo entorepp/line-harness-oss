@@ -60,6 +60,7 @@ export type Env = {
     TRAVEL_QUOTE_SLACK_CHANNEL_ID?: string;
     FLATWORKER_API_BASE_URL?: string;
     FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
+    QUOTE_CHAT_DELIVERY_ENABLED?: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
     GA4_MEASUREMENT_ID: string;
