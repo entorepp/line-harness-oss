@@ -247,12 +247,15 @@ function renderOtherInput(field: FormField, index: number): string {
   if (!field.allowOtherOption) return '';
 
   const otherLabel = field.otherOptionLabel || 'その他';
+  const otherPlaceholder = normalizeLocale(state.formDef?.locale) === 'en'
+    ? `Type ${otherLabel.toLowerCase()}`
+    : `${otherLabel}の内容`;
   return `<input
     type="text"
     name="${escapeAttr(getOtherFieldName(field))}"
     id="field-${index}-other"
     class="form-input other-input"
-    placeholder="${escapeAttr(`${otherLabel}の内容`)}"
+    placeholder="${escapeAttr(otherPlaceholder)}"
     data-other-for="${escapeAttr(field.name)}"
     hidden
   />`;
@@ -277,14 +280,24 @@ function renderCityDateRow(field: FormField, rowIndex: number): string {
   const endDateLabel = escapeHtml(field.endDateLabel || 'End date');
   const removeLabel = escapeHtml(field.removeItemLabel || 'Remove');
   const cityControl = field.cityOptions && field.cityOptions.length > 0
-    ? `<select
-        class="form-select city-date-input"
-        name="${fieldName}__city"
-        data-city-date-role="city"
-        aria-label="City ${rowIndex + 1}">
-        <option value="">${escapeHtml(field.cityPlaceholder || 'Select a city')}</option>
-        ${field.cityOptions.map((city) => `<option value="${escapeAttr(city)}">${escapeHtml(city)}</option>`).join('')}
-      </select>`
+    ? `<div class="city-date-city">
+        <select
+          class="form-select city-date-input"
+          name="${fieldName}__city"
+          data-city-date-role="city"
+          aria-label="City ${rowIndex + 1}">
+          <option value="">${escapeHtml(field.cityPlaceholder || 'Select a city')}</option>
+          ${field.cityOptions.map((city) => `<option value="${escapeAttr(city)}">${escapeHtml(city)}</option>`).join('')}
+          ${field.allowOtherOption ? `<option value="${OTHER_SENTINEL}">${escapeHtml(field.otherOptionLabel || 'Other city')}</option>` : ''}
+        </select>
+        ${field.allowOtherOption ? `<input
+          type="text"
+          class="form-input city-date-input city-date-other-input"
+          data-city-date-role="otherCity"
+          placeholder="Type the city name"
+          aria-label="Other city ${rowIndex + 1}"
+          hidden />` : ''}
+      </div>`
     : `<input
         type="text"
         class="form-input city-date-input"
@@ -530,6 +543,7 @@ function injectStyles(): void {
     .city-dates { display: flex; flex-direction: column; gap: 10px; }
     .city-date-list { display: flex; flex-direction: column; gap: 10px; }
     .city-date-row { display: grid; gap: 8px; align-items: end; padding: 10px; border: 1px solid #e1ece5; border-radius: 10px; background: #f7fbf8; }
+    .city-date-city { display: grid; gap: 8px; }
     .city-date-row-modal { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) auto; }
     .city-date-row-inline { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
     .city-date-control { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #5e6b63; font-size: 12px; font-weight: 600; }
@@ -698,12 +712,16 @@ function getRawFieldValue(field: FormField): unknown {
   if (field.type === 'city_dates') {
     const container = document.getElementById(`city-dates-${field.name}`);
     if (!container) return [];
-    return Array.from(container.querySelectorAll<HTMLElement>('[data-city-date-row]')).map((row) => ({
-      city: row.querySelector<HTMLInputElement>('[data-city-date-role="city"]')?.value ?? '',
-      dates: row.querySelector<HTMLInputElement>('[data-city-date-role="dates"]')?.value ?? '',
-      startDate: row.querySelector<HTMLInputElement>('[data-city-date-role="startDate"]')?.value ?? '',
-      endDate: row.querySelector<HTMLInputElement>('[data-city-date-role="endDate"]')?.value ?? '',
-    }));
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-city-date-row]')).map((row) => {
+      const cityControl = row.querySelector<HTMLInputElement | HTMLSelectElement>('[data-city-date-role="city"]');
+      const otherCityControl = row.querySelector<HTMLInputElement>('[data-city-date-role="otherCity"]');
+      return {
+        city: cityControl?.value === OTHER_SENTINEL ? otherCityControl?.value ?? '' : cityControl?.value ?? '',
+        dates: row.querySelector<HTMLInputElement>('[data-city-date-role="dates"]')?.value ?? '',
+        startDate: row.querySelector<HTMLInputElement>('[data-city-date-role="startDate"]')?.value ?? '',
+        endDate: row.querySelector<HTMLInputElement>('[data-city-date-role="endDate"]')?.value ?? '',
+      };
+    });
   }
 
   const controls = getNamedControls(field.name);
@@ -831,9 +849,18 @@ function updateFieldVisibility(): void {
     const otherVisible = visible && isOtherSelected(field, rawData[field.name]);
 
     if (field.type === 'city_dates') {
+      wrapper?.querySelectorAll<HTMLElement>('[data-city-date-row]').forEach((row) => {
+        const cityControl = row.querySelector<HTMLInputElement | HTMLSelectElement>('[data-city-date-role="city"]');
+        const otherCityControl = row.querySelector<HTMLInputElement>('[data-city-date-role="otherCity"]');
+        if (!otherCityControl) return;
+        const otherCitySelected = cityControl?.value === OTHER_SENTINEL;
+        otherCityControl.hidden = !otherCitySelected;
+        otherCityControl.disabled = !visible || !otherCitySelected;
+        otherCityControl.required = visible && Boolean(field.required) && otherCitySelected;
+      });
       wrapper?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('.city-date-input, .city-date-open, .city-date-add, .city-date-remove')
         .forEach((control) => {
-          control.disabled = !visible;
+          if (!control.matches('[data-city-date-role="otherCity"]')) control.disabled = !visible;
         });
       return;
     }
@@ -1037,7 +1064,11 @@ function attachFormEvents(): void {
       const list = container?.querySelector<HTMLElement>('[data-city-date-list]');
       const startValue = row?.querySelector<HTMLInputElement>('[data-city-date-role="startDate"]')?.value || '';
       const endValue = row?.querySelector<HTMLInputElement>('[data-city-date-role="endDate"]')?.value || '';
-      const cityValue = row?.querySelector<HTMLInputElement | HTMLSelectElement>('[data-city-date-role="city"]')?.value || 'Select dates';
+      const cityControl = row?.querySelector<HTMLInputElement | HTMLSelectElement>('[data-city-date-role="city"]');
+      const otherCityControl = row?.querySelector<HTMLInputElement>('[data-city-date-role="otherCity"]');
+      const cityValue = cityControl?.value === OTHER_SENTINEL
+        ? otherCityControl?.value || 'Other city'
+        : cityControl?.value || 'Select dates';
       const startInput = dialog?.querySelector<HTMLInputElement>('[data-city-date-modal-role="startDate"]');
       const endInput = dialog?.querySelector<HTMLInputElement>('[data-city-date-modal-role="endDate"]');
       const title = dialog?.querySelector<HTMLElement>('[data-city-date-dialog-title]');

@@ -72,7 +72,7 @@ const FORM_NAME = 'Accessible Japan × Flat Travel Trip Planning Form';
 const payload = {
   id: FORM_ID,
   name: FORM_NAME,
-  description: 'Tell us where and when you want to travel. Flat Travel will propose an accessible package that combines suitable hotels and transportation, with optional experiences, around your route.',
+  description: 'Tell us where and roughly when you want to travel. Exact dates are not required. Flat Travel will propose an accessible package that combines suitable hotels and transportation, with optional experiences, around your route.',
   fields: [
     {
       name: 'first_name',
@@ -137,6 +137,13 @@ const payload = {
       ],
     },
     {
+      name: 'dates_decided',
+      label: 'Have you decided your travel dates?',
+      type: 'radio',
+      required: true,
+      options: ['Yes', 'No'],
+    },
+    {
       name: 'city_schedule',
       label: 'Cities and dates',
       type: 'city_dates',
@@ -144,6 +151,8 @@ const payload = {
       helperText: 'Add every city you would like to visit and select the dates for each stay.',
       cityPlaceholder: 'Select a city',
       cityOptions: ['Tokyo', 'Kyoto', 'Osaka', 'Hiroshima', 'Mt. Fuji / Fuji area', 'Kanazawa'],
+      allowOtherOption: true,
+      otherOptionLabel: 'Other city',
       startDateLabel: 'Start date',
       endDateLabel: 'End date',
       calendarModal: true,
@@ -151,6 +160,38 @@ const payload = {
       addItemLabel: 'Add another city',
       removeItemLabel: 'Remove',
       maxItems: 12,
+      visibleWhen: {
+        field: 'dates_decided',
+        operator: 'equals',
+        value: 'Yes',
+      },
+    },
+    {
+      name: 'preferred_cities',
+      label: 'Cities you would like to visit',
+      type: 'checkbox',
+      required: true,
+      helperText: 'Select all that interest you. You can also add any other city.',
+      options: ['Tokyo', 'Kyoto', 'Osaka', 'Hiroshima', 'Mt. Fuji / Fuji area', 'Kanazawa'],
+      allowOtherOption: true,
+      otherOptionLabel: 'Other city',
+      visibleWhen: {
+        field: 'dates_decided',
+        operator: 'equals',
+        value: 'No',
+      },
+    },
+    {
+      name: 'approximate_timing',
+      label: 'Around when would you like to travel?',
+      type: 'text',
+      required: true,
+      placeholder: 'e.g. Spring 2027, around October, or not sure yet',
+      visibleWhen: {
+        field: 'dates_decided',
+        operator: 'equals',
+        value: 'No',
+      },
     },
     {
       name: 'notes',

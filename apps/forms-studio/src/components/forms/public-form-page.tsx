@@ -1031,12 +1031,17 @@ export default function PublicFormPage() {
   const renderOtherInput = (field: FormField, visible: boolean, isMissing: boolean) => {
     if (!field.allowOtherOption || !visible) return null
 
+    const otherLabel = field.otherOptionLabel || 'その他'
+    const otherPlaceholder = normalizeLocale(form?.locale || issue?.locale) === 'en'
+      ? `Type ${otherLabel.toLowerCase()}`
+      : `${otherLabel}の内容`
+
     return (
       <input
         type="text"
         value={otherValues[field.name] ?? ''}
         onChange={(event) => setOtherFieldValue(field, event.target.value)}
-        placeholder={`${field.otherOptionLabel || 'その他'}の内容`}
+        placeholder={otherPlaceholder}
         aria-invalid={isMissing}
         className={`mt-3 ${fieldControlClass(isMissing)}`}
       />
@@ -1098,36 +1103,61 @@ export default function PublicFormPage() {
 
       return (
         <div className="space-y-3">
-          {rows.map((entry, rowIndex) => (
-            <div
-              key={`${field.name}-${rowIndex}`}
-              className={`rounded-2xl border p-3 ${
-                isMissing ? 'border-rose-200 bg-rose-50/45' : 'border-[#dfe9e2] bg-[#f7fbf8]'
-              }`}
-            >
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)_auto] sm:items-end">
-                {field.cityOptions && field.cityOptions.length > 0 ? (
-                  <select
-                    value={entry.city}
-                    onChange={(event) => updateEntry(rowIndex, 'city', event.target.value)}
-                    aria-label={`City ${rowIndex + 1}`}
-                    aria-invalid={isMissing}
-                    className={fieldControlClass(isMissing)}
-                  >
-                    <option value="">{field.cityPlaceholder || 'Select a city'}</option>
-                    {field.cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={entry.city}
-                    onChange={(event) => updateEntry(rowIndex, 'city', event.target.value)}
-                    placeholder={field.cityPlaceholder || 'City, e.g. Tokyo'}
-                    aria-label={`City ${rowIndex + 1}`}
-                    aria-invalid={isMissing}
-                    className={fieldControlClass(isMissing)}
-                  />
-                )}
+          {rows.map((entry, rowIndex) => {
+            const cityOptions = field.cityOptions || []
+            const customCitySelected = Boolean(
+              field.allowOtherOption
+              && entry.city
+              && !cityOptions.includes(entry.city),
+            )
+            const citySelectValue = customCitySelected ? OTHER_SENTINEL : entry.city
+
+            return (
+              <div
+                key={`${field.name}-${rowIndex}`}
+                className={`rounded-2xl border p-3 ${
+                  isMissing ? 'border-rose-200 bg-rose-50/45' : 'border-[#dfe9e2] bg-[#f7fbf8]'
+                }`}
+              >
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)_auto] sm:items-end">
+                  {cityOptions.length > 0 ? (
+                    <div className="space-y-2">
+                      <select
+                        value={citySelectValue}
+                        onChange={(event) => updateEntry(rowIndex, 'city', event.target.value)}
+                        aria-label={`City ${rowIndex + 1}`}
+                        aria-invalid={isMissing}
+                        className={fieldControlClass(isMissing)}
+                      >
+                        <option value="">{field.cityPlaceholder || 'Select a city'}</option>
+                        {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
+                        {field.allowOtherOption && (
+                          <option value={OTHER_SENTINEL}>{field.otherOptionLabel || 'Other city'}</option>
+                        )}
+                      </select>
+                      {citySelectValue === OTHER_SENTINEL && (
+                        <input
+                          type="text"
+                          value={entry.city === OTHER_SENTINEL ? '' : entry.city}
+                          onChange={(event) => updateEntry(rowIndex, 'city', event.target.value || OTHER_SENTINEL)}
+                          placeholder="Type the city name"
+                          aria-label={`Other city ${rowIndex + 1}`}
+                          aria-invalid={isMissing}
+                          className={fieldControlClass(isMissing)}
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={entry.city}
+                      onChange={(event) => updateEntry(rowIndex, 'city', event.target.value)}
+                      placeholder={field.cityPlaceholder || 'City, e.g. Tokyo'}
+                      aria-label={`City ${rowIndex + 1}`}
+                      aria-invalid={isMissing}
+                      className={fieldControlClass(isMissing)}
+                    />
+                  )}
                 {field.calendarModal ? (
                   <button
                     type="button"
@@ -1173,19 +1203,20 @@ export default function PublicFormPage() {
                     </label>
                   </div>
                 )}
-                {rows.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setFieldValue(field, rows.filter((_, index) => index !== rowIndex))}
-                    className="justify-self-start rounded-full px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-white hover:text-rose-700 sm:justify-self-center"
-                    aria-label={`${field.removeItemLabel || 'Remove'} city ${rowIndex + 1}`}
-                  >
-                    {field.removeItemLabel || 'Remove'}
-                  </button>
-                )}
+                  {rows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setFieldValue(field, rows.filter((_, index) => index !== rowIndex))}
+                      className="justify-self-start rounded-full px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-white hover:text-rose-700 sm:justify-self-center"
+                      aria-label={`${field.removeItemLabel || 'Remove'} city ${rowIndex + 1}`}
+                    >
+                      {field.removeItemLabel || 'Remove'}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
           <button
             type="button"
             onClick={() => setFieldValue(field, [
@@ -1213,7 +1244,9 @@ export default function PublicFormPage() {
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1d5c47]">Travel dates</p>
                     <h3 className="mt-1 text-xl font-semibold text-slate-900">
-                      {rows[cityDateModal.rowIndex]?.city || 'Select dates'}
+                      {rows[cityDateModal.rowIndex]?.city === OTHER_SENTINEL
+                        ? 'Other city'
+                        : rows[cityDateModal.rowIndex]?.city || 'Select dates'}
                     </h3>
                   </div>
                   <button

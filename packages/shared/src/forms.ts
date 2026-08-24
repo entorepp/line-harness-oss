@@ -2,6 +2,8 @@ import type { CityDateEntry, FormField, FormFieldVisibilityCondition } from './t
 
 export type CityDateEntriesIssue = 'empty' | 'incomplete' | 'invalid_range' | null;
 
+const OTHER_CITY_SENTINEL = '__other__';
+
 export function normalizeCityDateEntries(value: unknown): CityDateEntry[] {
   if (!Array.isArray(value)) return [];
 
@@ -9,7 +11,8 @@ export function normalizeCityDateEntries(value: unknown): CityDateEntry[] {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
 
     const record = item as Record<string, unknown>;
-    const city = normalizeStringValue(record.city);
+    const rawCity = normalizeStringValue(record.city);
+    const city = rawCity === OTHER_CITY_SENTINEL ? '' : rawCity;
     const legacyDates = normalizeStringValue(record.dates);
     const startDate = normalizeStringValue(record.startDate);
     const endDate = normalizeStringValue(record.endDate);

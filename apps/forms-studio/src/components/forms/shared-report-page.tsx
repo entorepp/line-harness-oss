@@ -13,7 +13,10 @@ type ReportLead = {
   travellers: string
   roomCount: string
   bedType: string
+  datesDecided: string
   citySchedule: string[]
+  preferredCities: string[]
+  approximateTiming: string
   notes: string
 }
 
@@ -231,7 +234,10 @@ export default function SharedReportPage() {
                         <Detail label="Travellers" value={lead.travellers} />
                         <Detail label="Rooms" value={lead.roomCount} />
                         <Detail label="Bed type" value={lead.bedType} />
-                        <Detail label="Cities & dates" value={lead.citySchedule.join('\n')} />
+                        <Detail label="日程は確定済みか" value={lead.datesDecided} />
+                        <Detail label="都市・確定日程" value={lead.citySchedule.join('\n')} />
+                        <Detail label="行きたい都市（日程未定）" value={lead.preferredCities.join(', ')} />
+                        <Detail label="大まかな時期" value={lead.approximateTiming} />
                         <div className="sm:col-span-2 lg:col-span-3">
                           <Detail label="Notes" value={lead.notes} />
                         </div>

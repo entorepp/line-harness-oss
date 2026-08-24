@@ -42,7 +42,10 @@ type AccessibleJapanReportLead = {
   travellers: string;
   roomCount: string;
   bedType: string;
+  datesDecided: string;
   citySchedule: string[];
+  preferredCities: string[];
+  approximateTiming: string;
   notes: string;
 };
 
@@ -77,6 +80,9 @@ function reportMonth(receivedAt: string): string {
 
 function serializeAccessibleJapanReportLead(row: DbFormSubmission): AccessibleJapanReportLead {
   const data = JSON.parse(row.data || '{}') as Record<string, unknown>;
+  const citySchedule = normalizeReportList(data.city_schedule);
+  const datesDecided = normalizeReportText(data.dates_decided)
+    || (citySchedule.length > 0 ? 'Yes (legacy response)' : '');
   return {
     id: row.id,
     receivedAt: row.created_at,
@@ -88,7 +94,10 @@ function serializeAccessibleJapanReportLead(row: DbFormSubmission): AccessibleJa
     travellers: normalizeReportText(data.travellers),
     roomCount: normalizeReportText(data.room_count),
     bedType: normalizeReportText(data.bed_type),
-    citySchedule: normalizeReportList(data.city_schedule),
+    datesDecided,
+    citySchedule,
+    preferredCities: normalizeReportList(data.preferred_cities),
+    approximateTiming: normalizeReportText(data.approximate_timing),
     notes: normalizeReportText(data.notes),
   };
 }
