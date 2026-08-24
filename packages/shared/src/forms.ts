@@ -1,4 +1,27 @@
-import type { FormField, FormFieldVisibilityCondition } from './types';
+import type { CityDateEntry, FormField, FormFieldVisibilityCondition } from './types';
+
+export type CityDateEntriesIssue = 'empty' | 'incomplete' | null;
+
+export function normalizeCityDateEntries(value: unknown): CityDateEntry[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+
+    const record = item as Record<string, unknown>;
+    const city = normalizeStringValue(record.city);
+    const dates = normalizeStringValue(record.dates);
+    if (!city && !dates) return [];
+    return [{ city, dates }];
+  });
+}
+
+export function getCityDateEntriesIssue(value: unknown): CityDateEntriesIssue {
+  const entries = normalizeCityDateEntries(value);
+  if (entries.length === 0) return 'empty';
+  if (entries.some((entry) => !entry.city || !entry.dates)) return 'incomplete';
+  return null;
+}
 
 function normalizeStringValue(value: unknown): string {
   if (typeof value === 'string') return value.trim();

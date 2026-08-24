@@ -56,6 +56,7 @@ const fieldTypeOptions: Array<{ value: HarnessFormField['type']; label: string }
   { value: 'date', label: '日付' },
   { value: 'time', label: '時刻' },
   { value: 'file', label: 'ファイル添付' },
+  { value: 'city_dates', label: '都市ごとの日程（追加式）' },
 ]
 
 const selectableTypes = new Set<HarnessFormField['type']>(['select', 'radio', 'checkbox'])
@@ -315,6 +316,11 @@ function normalizeFieldType(value: unknown): HarnessFormField['type'] {
     case 'file_upload':
     case 'attachment':
       return 'file'
+    case 'city_dates':
+    case 'city_date':
+    case 'city_schedule':
+    case 'destination_schedule':
+      return 'city_dates'
     default:
       return 'text'
   }
@@ -463,6 +469,7 @@ function normalizeImportedField(value: unknown, index: number): HarnessFormField
 
   const multiple = parseBoolean(pickValue(value, ['multiple', 'allowMultiple', '複数']));
   const maxFilesRaw = Number(stringifyValue(pickValue(value, ['maxFiles', 'max_files', '最大ファイル数'])));
+  const maxItemsRaw = Number(stringifyValue(pickValue(value, ['maxItems', 'max_items', '最大行数'])));
 
   return {
     name: stringifyValue(pickValue(value, ['name', 'key', 'id'])) || slugifyFieldName(label) || `field_${index + 1}`,
@@ -479,6 +486,11 @@ function normalizeImportedField(value: unknown, index: number): HarnessFormField
     accept: stringifyValue(pickValue(value, ['accept', 'fileTypes', 'mimeTypes', '許可ファイル'])),
     multiple: multiple ?? undefined,
     maxFiles: Number.isFinite(maxFilesRaw) && maxFilesRaw > 0 ? maxFilesRaw : undefined,
+    cityPlaceholder: stringifyValue(pickValue(value, ['cityPlaceholder', 'city_placeholder', '都市プレースホルダ'])),
+    datesPlaceholder: stringifyValue(pickValue(value, ['datesPlaceholder', 'dates_placeholder', '日程プレースホルダ'])),
+    addItemLabel: stringifyValue(pickValue(value, ['addItemLabel', 'add_item_label', '追加ボタン'])),
+    removeItemLabel: stringifyValue(pickValue(value, ['removeItemLabel', 'remove_item_label', '削除ボタン'])),
+    maxItems: Number.isFinite(maxItemsRaw) && maxItemsRaw > 0 ? maxItemsRaw : undefined,
     visibleWhen: visibleWhen
       ? {
         ...visibleWhen,
@@ -613,6 +625,18 @@ function sanitizeDraft(draft: FormDraft) {
       if (accept) nextField.accept = accept
       if (typeof field.multiple === 'boolean') nextField.multiple = field.multiple
       if (Number.isFinite(maxFiles) && maxFiles > 0) nextField.maxFiles = maxFiles
+    }
+    if (type === 'city_dates') {
+      const cityPlaceholder = field.cityPlaceholder?.trim() ?? ''
+      const datesPlaceholder = field.datesPlaceholder?.trim() ?? ''
+      const addItemLabel = field.addItemLabel?.trim() ?? ''
+      const removeItemLabel = field.removeItemLabel?.trim() ?? ''
+      const maxItems = Number(field.maxItems)
+      if (cityPlaceholder) nextField.cityPlaceholder = cityPlaceholder
+      if (datesPlaceholder) nextField.datesPlaceholder = datesPlaceholder
+      if (addItemLabel) nextField.addItemLabel = addItemLabel
+      if (removeItemLabel) nextField.removeItemLabel = removeItemLabel
+      if (Number.isFinite(maxItems) && maxItems > 0) nextField.maxItems = maxItems
     }
 
     if (selectableTypes.has(type)) {
@@ -1402,10 +1426,50 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                       value={field.placeholder ?? ''}
                       onChange={(event) => updateField(index, { placeholder: event.target.value })}
                       placeholder={field.type === 'date' ? '日付のプレースホルダは不要です' : 'プレースホルダ'}
-                      disabled={field.type === 'date' || field.type === 'time' || field.type === 'radio' || field.type === 'checkbox' || field.type === 'select'}
+                      disabled={field.type === 'date' || field.type === 'time' || field.type === 'radio' || field.type === 'checkbox' || field.type === 'select' || field.type === 'city_dates'}
                       className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition disabled:cursor-not-allowed disabled:bg-[#f5f3fa] disabled:text-slate-400 focus:border-[#673ab7]"
                     />
                   </div>
+
+                  {field.type === 'city_dates' && (
+                    <div className="mt-5 grid gap-3 rounded-[20px] bg-[#faf8fe] p-4 md:grid-cols-2">
+                      <input
+                        value={field.cityPlaceholder ?? ''}
+                        onChange={(event) => updateField(index, { cityPlaceholder: event.target.value })}
+                        placeholder="都市欄の例（例: Tokyo）"
+                        className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                      />
+                      <input
+                        value={field.datesPlaceholder ?? ''}
+                        onChange={(event) => updateField(index, { datesPlaceholder: event.target.value })}
+                        placeholder="日程欄の例（例: Oct 10–14）"
+                        className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                      />
+                      <input
+                        value={field.addItemLabel ?? ''}
+                        onChange={(event) => updateField(index, { addItemLabel: event.target.value })}
+                        placeholder="追加ボタン（例: Add another city）"
+                        className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                      />
+                      <input
+                        value={field.removeItemLabel ?? ''}
+                        onChange={(event) => updateField(index, { removeItemLabel: event.target.value })}
+                        placeholder="削除ボタン（例: Remove）"
+                        className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                      />
+                      <label className="flex items-center gap-3 text-sm text-slate-600 md:col-span-2">
+                        最大行数
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={field.maxItems ?? 12}
+                          onChange={(event) => updateField(index, { maxItems: Number(event.target.value) || 12 })}
+                          className="w-28 rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                        />
+                      </label>
+                    </div>
+                  )}
 
                   {isSelectable && (
                     <div className="mt-5 space-y-3 rounded-[20px] bg-[#faf8fe] p-4">

@@ -38,6 +38,8 @@ function fieldTypeLabel(type: HarnessForm['fields'][number]['type']): string {
       return '日付'
     case 'time':
       return '時刻'
+    case 'city_dates':
+      return '都市ごとの日程'
     default:
       return type
   }
@@ -52,7 +54,13 @@ function formatSubmissionValue(value: unknown): string {
   }
 
   if (value === undefined || value === null) return ''
-  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record.city === 'string' || typeof record.dates === 'string') {
+      return [record.city, record.dates].filter(Boolean).join(': ')
+    }
+    return JSON.stringify(value)
+  }
   return String(value).trim()
 }
 
@@ -668,6 +676,12 @@ export default function FormsDashboardPage() {
         setForms(formsRes.data)
         setSelectedFormId((current) => {
           if (current && formsRes.data.some((form) => form.id === current)) return current
+          const requestedFormId = typeof window === 'undefined'
+            ? null
+            : new URLSearchParams(window.location.search).get('formId')
+          if (requestedFormId && formsRes.data.some((form) => form.id === requestedFormId)) {
+            return requestedFormId
+          }
           return formsRes.data[0]?.id ?? null
         })
       } else {

@@ -444,20 +444,30 @@ export interface FormFieldVisibilityCondition {
   value?: string | number | boolean;
 }
 
+export interface CityDateEntry {
+  city: string;
+  dates: string;
+}
+
 export interface FormField {
   name: string;
   label: string;
-  type: "text" | "email" | "tel" | "number" | "textarea" | "select" | "radio" | "checkbox" | "date" | "time" | "file";
+  type: "text" | "email" | "tel" | "number" | "textarea" | "select" | "radio" | "checkbox" | "date" | "time" | "file" | "city_dates";
   required?: boolean;
   options?: string[];
   placeholder?: string;
   helperText?: string;
-  defaultValue?: string | number | string[];
+  defaultValue?: string | number | string[] | CityDateEntry[];
   allowOtherOption?: boolean;
   otherOptionLabel?: string;
   accept?: string;
   multiple?: boolean;
   maxFiles?: number;
+  cityPlaceholder?: string;
+  datesPlaceholder?: string;
+  addItemLabel?: string;
+  removeItemLabel?: string;
+  maxItems?: number;
   visibleWhen?: FormFieldVisibilityCondition;
 }
 

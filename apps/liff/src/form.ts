@@ -10,7 +10,7 @@
  * URL format: https://liff.line.me/{LIFF_ID}?page=form&id={FORM_ID}
  */
 
-import { getVisibleFormFields } from '@line-crm/shared';
+import { getCityDateEntriesIssue, getVisibleFormFields, normalizeCityDateEntries } from '@line-crm/shared';
 import type { FormFieldVisibilityCondition } from '@line-crm/shared';
 
 declare const liff: {
@@ -30,7 +30,7 @@ const OTHER_SENTINEL = '__other__';
 interface FormField {
   name: string;
   label: string;
-  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date' | 'time' | 'file';
+  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date' | 'time' | 'file' | 'city_dates';
   required?: boolean;
   options?: string[];
   placeholder?: string;
@@ -40,6 +40,11 @@ interface FormField {
   accept?: string;
   multiple?: boolean;
   maxFiles?: number;
+  cityPlaceholder?: string;
+  datesPlaceholder?: string;
+  addItemLabel?: string;
+  removeItemLabel?: string;
+  maxItems?: number;
   visibleWhen?: FormFieldVisibilityCondition;
 }
 
@@ -259,6 +264,31 @@ function getFlexibleDatePlaceholder(field: FormField): string {
     : texts.approximateStartDatePlaceholder;
 }
 
+function renderCityDateRow(field: FormField, rowIndex: number): string {
+  const fieldName = escapeAttr(field.name);
+  const cityPlaceholder = escapeAttr(field.cityPlaceholder || 'City, e.g. Tokyo');
+  const datesPlaceholder = escapeAttr(field.datesPlaceholder || 'Dates, e.g. Oct 10–14');
+  const removeLabel = escapeHtml(field.removeItemLabel || 'Remove');
+
+  return `<div class="city-date-row" data-city-date-row>
+    <input
+      type="text"
+      class="form-input city-date-input"
+      name="${fieldName}__city"
+      data-city-date-role="city"
+      placeholder="${cityPlaceholder}"
+      aria-label="City ${rowIndex + 1}" />
+    <input
+      type="text"
+      class="form-input city-date-input"
+      name="${fieldName}__dates"
+      data-city-date-role="dates"
+      placeholder="${datesPlaceholder}"
+      aria-label="Dates for city ${rowIndex + 1}" />
+    <button type="button" class="city-date-remove" data-city-date-remove>${removeLabel}</button>
+  </div>`;
+}
+
 function renderField(field: FormField, index: number): string {
   const required = field.required ? ' required' : '';
   const flexibleTravelDate = isFlexibleTravelDateField(field);
@@ -275,6 +305,25 @@ function renderField(field: FormField, index: number): string {
   let inputHtml = '';
 
   switch (field.type) {
+    case 'city_dates': {
+      const maxItems = Number.isFinite(field.maxItems) && Number(field.maxItems) > 0
+        ? Number(field.maxItems)
+        : 12;
+      inputHtml = `<div
+        class="city-dates"
+        id="city-dates-${fieldName}"
+        data-city-dates-field="${fieldName}"
+        data-max-items="${maxItems}">
+        <div class="city-date-list" data-city-date-list>
+          ${renderCityDateRow(field, 0)}
+        </div>
+        <button type="button" class="city-date-add" data-city-date-add>
+          <span aria-hidden="true">＋</span>${escapeHtml(field.addItemLabel || 'Add another city')}
+        </button>
+      </div>`;
+      break;
+    }
+
     case 'file': {
       const accept = field.accept ? ` accept="${escapeAttr(field.accept)}"` : '';
       const multiple = field.multiple === false ? '' : ' multiple';
@@ -409,6 +458,17 @@ function injectStyles(): void {
       outline: none; border-color: #06C755; background: #fff;
     }
     .form-file { cursor: pointer; }
+    .city-dates { display: flex; flex-direction: column; gap: 10px; }
+    .city-date-list { display: flex; flex-direction: column; gap: 10px; }
+    .city-date-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid #e1ece5; border-radius: 10px; background: #f7fbf8; }
+    .city-date-row:only-child .city-date-remove { display: none; }
+    .city-date-remove { border: 0; background: transparent; color: #68756d; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 9px 6px; }
+    .city-date-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #b9d7c4; border-radius: 999px; background: #fff; color: #16723d; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; padding: 9px 14px; }
+    .city-date-add:disabled { cursor: not-allowed; opacity: 0.45; }
+    @media (max-width: 520px) {
+      .city-date-row { grid-template-columns: 1fr; }
+      .city-date-remove { justify-self: start; padding-left: 2px; }
+    }
     .file-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
     .file-item { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; background: #f4fbf7; border-radius: 8px; font-size: 13px; color: #333; }
     .file-size { color: #777; white-space: nowrap; }
@@ -548,6 +608,15 @@ function getNamedControls(name: string): NamedFormControl[] {
 }
 
 function getRawFieldValue(field: FormField): unknown {
+  if (field.type === 'city_dates') {
+    const container = document.getElementById(`city-dates-${field.name}`);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-city-date-row]')).map((row) => ({
+      city: row.querySelector<HTMLInputElement>('[data-city-date-role="city"]')?.value ?? '',
+      dates: row.querySelector<HTMLInputElement>('[data-city-date-role="dates"]')?.value ?? '',
+    }));
+  }
+
   const controls = getNamedControls(field.name);
 
   if (field.type === 'file') {
@@ -614,6 +683,12 @@ function buildSubmissionData(
         continue;
       }
 
+      if (field.type === 'city_dates') {
+        result[field.name] = normalizeCityDateEntries(value)
+          .map((entry) => `${entry.city}: ${entry.dates}`);
+        continue;
+      }
+
       if (field.type === 'checkbox') {
         const selected = Array.isArray(value)
           ? value.filter((item) => item !== OTHER_SENTINEL)
@@ -662,6 +737,14 @@ function updateFieldVisibility(): void {
     const otherControls = getNamedControls(getOtherFieldName(field));
     const otherVisible = visible && isOtherSelected(field, rawData[field.name]);
 
+    if (field.type === 'city_dates') {
+      wrapper?.querySelectorAll<HTMLInputElement | HTMLButtonElement>('.city-date-input, .city-date-add, .city-date-remove')
+        .forEach((control) => {
+          control.disabled = !visible;
+        });
+      return;
+    }
+
     for (const control of [...fieldControls, ...otherControls]) {
       control.disabled = !visible;
       control.required = false;
@@ -688,6 +771,21 @@ function validateForm(): string | null {
 
   for (const field of visibleFields) {
     const value = rawData[field.name];
+
+    if (field.type === 'city_dates') {
+      const issue = getCityDateEntriesIssue(value);
+      if (issue === 'incomplete') {
+        return normalizeLocale(formDef.locale) === 'en'
+          ? 'Enter both a city and dates for each row'
+          : '各行の都市と日程を両方入力してください';
+      }
+      if (field.required && issue === 'empty') {
+        return normalizeLocale(formDef.locale) === 'en'
+          ? `${field.label} is required`
+          : `${field.label} は必須項目です`;
+      }
+      continue;
+    }
 
     if (field.required) {
       if (field.type === 'checkbox' || field.type === 'file') {
@@ -788,6 +886,40 @@ function attachFormEvents(): void {
       updateFileList(target);
     }
     updateFieldVisibility();
+  });
+  form?.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const addButton = target.closest<HTMLButtonElement>('[data-city-date-add]');
+    if (addButton) {
+      const container = addButton.closest<HTMLElement>('[data-city-dates-field]');
+      const fieldName = container?.dataset.cityDatesField;
+      const field = state.formDef?.fields.find((candidate) => candidate.name === fieldName);
+      const list = container?.querySelector<HTMLElement>('[data-city-date-list]');
+      if (!container || !field || !list) return;
+
+      const rowCount = list.querySelectorAll('[data-city-date-row]').length;
+      const maxItems = Number(container.dataset.maxItems || 12);
+      if (rowCount >= maxItems) return;
+      list.insertAdjacentHTML('beforeend', renderCityDateRow(field, rowCount));
+      addButton.disabled = rowCount + 1 >= maxItems;
+      list.querySelectorAll<HTMLInputElement>('[data-city-date-role="city"]')[rowCount]?.focus();
+      updateFieldVisibility();
+      return;
+    }
+
+    const removeButton = target.closest<HTMLButtonElement>('[data-city-date-remove]');
+    if (removeButton) {
+      const container = removeButton.closest<HTMLElement>('[data-city-dates-field]');
+      const list = container?.querySelector<HTMLElement>('[data-city-date-list]');
+      const row = removeButton.closest<HTMLElement>('[data-city-date-row]');
+      if (!container || !list || !row || list.children.length <= 1) return;
+      row.remove();
+      const addButtonForList = container.querySelector<HTMLButtonElement>('[data-city-date-add]');
+      if (addButtonForList) addButtonForList.disabled = false;
+      updateFieldVisibility();
+    }
   });
 }
 

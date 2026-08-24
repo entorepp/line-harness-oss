@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { getVisibleFormFields } from '@line-crm/shared'
-import type { Form as HarnessForm, FormField, FormIssue } from '@line-crm/shared'
+import { getCityDateEntriesIssue, getVisibleFormFields, normalizeCityDateEntries } from '@line-crm/shared'
+import type { CityDateEntry, Form as HarnessForm, FormField, FormIssue } from '@line-crm/shared'
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL
 const API_URL = configuredApiUrl !== undefined
@@ -179,6 +179,8 @@ function collectInitialValues(fields: FormField[]): Record<string, unknown> {
       field.name,
       field.defaultValue !== undefined
         ? field.defaultValue
+        : field.type === 'city_dates'
+          ? [{ city: '', dates: '' } satisfies CityDateEntry]
         : field.type === 'checkbox' || field.type === 'file'
           ? []
           : '',
@@ -207,16 +209,32 @@ function getMissingReason(
   field: FormField,
   value: unknown,
   otherValue: string | undefined,
+  locale: string | null | undefined,
 ): string | null {
   const otherText = otherValue?.trim() || ''
+  const normalizedLocale = normalizeLocale(locale)
+  const requiredMessage = normalizedLocale === 'en'
+    ? `${field.label} is required`
+    : `${field.label} を入力してください`
+
+  if (field.type === 'city_dates') {
+    const issue = getCityDateEntriesIssue(value)
+    if (issue === 'incomplete') {
+      return normalizedLocale === 'en'
+        ? 'Enter both a city and dates for each row'
+        : '各行の都市と日程を両方入力してください'
+    }
+    if (field.required && issue === 'empty') return requiredMessage
+    return null
+  }
 
   if (field.required) {
     if (field.type === 'checkbox' || field.type === 'file') {
       if (!Array.isArray(value) || value.length === 0) {
-        return `${field.label} を入力してください`
+        return requiredMessage
       }
     } else if (value === undefined || value === null || String(value).trim() === '') {
-      return `${field.label} を入力してください`
+      return requiredMessage
     }
   }
 
@@ -783,7 +801,12 @@ export default function PublicFormPage() {
 
     return visibleFields
       .map((field) => {
-        const reason = getMissingReason(field, values[field.name], otherValues[field.name])
+        const reason = getMissingReason(
+          field,
+          values[field.name],
+          otherValues[field.name],
+          form.locale || issue?.locale,
+        )
         if (!reason) return null
         return {
           name: field.name,
@@ -792,7 +815,7 @@ export default function PublicFormPage() {
         }
       })
       .filter((field): field is MissingField => field !== null)
-  }, [form, otherValues, values, visibleFields])
+  }, [form, issue?.locale, otherValues, values, visibleFields])
 
   const missingReasonByName = useMemo(
     () => new Map(missingFields.map((field) => [field.name, field.reason])),
@@ -894,6 +917,12 @@ export default function PublicFormPage() {
         continue
       }
 
+      if (field.type === 'city_dates') {
+        data[field.name] = normalizeCityDateEntries(value)
+          .map((entry) => `${entry.city}: ${entry.dates}`)
+        continue
+      }
+
       if (field.type === 'checkbox') {
         const selected = Array.isArray(value) ? value.filter((item) => item !== OTHER_SENTINEL) : []
         if (Array.isArray(value) && value.includes(OTHER_SENTINEL) && otherValue) {
@@ -984,6 +1013,83 @@ export default function PublicFormPage() {
     const datePlaceholder = field.name === 'travel_end_date'
       ? localizedTexts.approximateEndDatePlaceholder
       : localizedTexts.approximateStartDatePlaceholder
+
+    if (field.type === 'city_dates') {
+      const entries: CityDateEntry[] = Array.isArray(value)
+        ? value.map((item) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) return { city: '', dates: '' }
+          const record = item as Record<string, unknown>
+          return {
+            city: typeof record.city === 'string' ? record.city : '',
+            dates: typeof record.dates === 'string' ? record.dates : '',
+          }
+        })
+        : [{ city: '', dates: '' }]
+      const rows = entries.length > 0 ? entries : [{ city: '', dates: '' }]
+      const maxItems = Number.isFinite(field.maxItems) && Number(field.maxItems) > 0
+        ? Number(field.maxItems)
+        : 12
+
+      const updateEntry = (rowIndex: number, key: keyof CityDateEntry, nextValue: string) => {
+        const next = rows.map((entry, index) => (
+          index === rowIndex ? { ...entry, [key]: nextValue } : entry
+        ))
+        setFieldValue(field, next)
+      }
+
+      return (
+        <div className="space-y-3">
+          {rows.map((entry, rowIndex) => (
+            <div
+              key={`${field.name}-${rowIndex}`}
+              className={`rounded-2xl border p-3 ${
+                isMissing ? 'border-rose-200 bg-rose-50/45' : 'border-[#dfe9e2] bg-[#f7fbf8]'
+              }`}
+            >
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_auto] sm:items-center">
+                <input
+                  type="text"
+                  value={entry.city}
+                  onChange={(event) => updateEntry(rowIndex, 'city', event.target.value)}
+                  placeholder={field.cityPlaceholder || 'City, e.g. Tokyo'}
+                  aria-label={`City ${rowIndex + 1}`}
+                  aria-invalid={isMissing}
+                  className={fieldControlClass(isMissing)}
+                />
+                <input
+                  type="text"
+                  value={entry.dates}
+                  onChange={(event) => updateEntry(rowIndex, 'dates', event.target.value)}
+                  placeholder={field.datesPlaceholder || 'Dates, e.g. Oct 10–14'}
+                  aria-label={`Dates for city ${rowIndex + 1}`}
+                  aria-invalid={isMissing}
+                  className={fieldControlClass(isMissing)}
+                />
+                {rows.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setFieldValue(field, rows.filter((_, index) => index !== rowIndex))}
+                    className="justify-self-start rounded-full px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-white hover:text-rose-700 sm:justify-self-center"
+                    aria-label={`${field.removeItemLabel || 'Remove'} city ${rowIndex + 1}`}
+                  >
+                    {field.removeItemLabel || 'Remove'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setFieldValue(field, [...rows, { city: '', dates: '' }])}
+            disabled={rows.length >= maxItems}
+            className="inline-flex items-center gap-2 rounded-full border border-[#bcd5c5] bg-white px-4 py-2.5 text-sm font-semibold text-[#1d5c47] transition hover:bg-[#f0f8f3] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span aria-hidden="true" className="text-lg leading-none">＋</span>
+            {field.addItemLabel || 'Add another city'}
+          </button>
+        </div>
+      )
+    }
 
     if (field.type === 'textarea') {
       return (
