@@ -492,9 +492,12 @@ function normalizeImportedField(value: unknown, index: number): HarnessFormField
     maxFiles: Number.isFinite(maxFilesRaw) && maxFilesRaw > 0 ? maxFilesRaw : undefined,
     digitsOnly: digitsOnly ?? false,
     cityPlaceholder: stringifyValue(pickValue(value, ['cityPlaceholder', 'city_placeholder', '都市プレースホルダ'])),
+    cityOptions: normalizeOptions(pickValue(value, ['cityOptions', 'city_options', '都市選択肢'])),
     datesPlaceholder: stringifyValue(pickValue(value, ['datesPlaceholder', 'dates_placeholder', '日程プレースホルダ'])),
     startDateLabel: stringifyValue(pickValue(value, ['startDateLabel', 'start_date_label', '開始日ラベル'])),
     endDateLabel: stringifyValue(pickValue(value, ['endDateLabel', 'end_date_label', '終了日ラベル'])),
+    calendarModal: parseBoolean(pickValue(value, ['calendarModal', 'calendar_modal', 'カレンダーモーダル'])) ?? false,
+    dateButtonLabel: stringifyValue(pickValue(value, ['dateButtonLabel', 'date_button_label', '日付ボタンラベル'])),
     addItemLabel: stringifyValue(pickValue(value, ['addItemLabel', 'add_item_label', '追加ボタン'])),
     removeItemLabel: stringifyValue(pickValue(value, ['removeItemLabel', 'remove_item_label', '削除ボタン'])),
     maxItems: Number.isFinite(maxItemsRaw) && maxItemsRaw > 0 ? maxItemsRaw : undefined,
@@ -638,16 +641,21 @@ function sanitizeDraft(draft: FormDraft) {
     }
     if (type === 'city_dates') {
       const cityPlaceholder = field.cityPlaceholder?.trim() ?? ''
+      const cityOptions = normalizeOptions(field.cityOptions)
       const datesPlaceholder = field.datesPlaceholder?.trim() ?? ''
       const startDateLabel = field.startDateLabel?.trim() ?? ''
       const endDateLabel = field.endDateLabel?.trim() ?? ''
+      const dateButtonLabel = field.dateButtonLabel?.trim() ?? ''
       const addItemLabel = field.addItemLabel?.trim() ?? ''
       const removeItemLabel = field.removeItemLabel?.trim() ?? ''
       const maxItems = Number(field.maxItems)
       if (cityPlaceholder) nextField.cityPlaceholder = cityPlaceholder
+      if (cityOptions.length > 0) nextField.cityOptions = cityOptions
       if (datesPlaceholder) nextField.datesPlaceholder = datesPlaceholder
       if (startDateLabel) nextField.startDateLabel = startDateLabel
       if (endDateLabel) nextField.endDateLabel = endDateLabel
+      if (field.calendarModal) nextField.calendarModal = true
+      if (dateButtonLabel) nextField.dateButtonLabel = dateButtonLabel
       if (addItemLabel) nextField.addItemLabel = addItemLabel
       if (removeItemLabel) nextField.removeItemLabel = removeItemLabel
       if (Number.isFinite(maxItems) && maxItems > 0) nextField.maxItems = maxItems
@@ -1477,6 +1485,21 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                         placeholder="終了日ラベル（例: End date）"
                         className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
                       />
+                      <textarea
+                        value={(field.cityOptions ?? []).join('\n')}
+                        onChange={(event) => updateField(index, {
+                          cityOptions: event.target.value.split('\n').map((item) => item.trim()).filter(Boolean),
+                        })}
+                        placeholder={'都市選択肢（1行1都市）\nTokyo\nKyoto'}
+                        rows={4}
+                        className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                      />
+                      <input
+                        value={field.dateButtonLabel ?? ''}
+                        onChange={(event) => updateField(index, { dateButtonLabel: event.target.value })}
+                        placeholder="日付ボタン（例: Select dates）"
+                        className="rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
+                      />
                       <input
                         value={field.addItemLabel ?? ''}
                         onChange={(event) => updateField(index, { addItemLabel: event.target.value })}
@@ -1499,6 +1522,15 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                           onChange={(event) => updateField(index, { maxItems: Number(event.target.value) || 12 })}
                           className="w-28 rounded-2xl border border-[#ddd6f0] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#673ab7]"
                         />
+                      </label>
+                      <label className="flex items-center gap-3 text-sm text-slate-600 md:col-span-2">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(field.calendarModal)}
+                          onChange={(event) => updateField(index, { calendarModal: event.target.checked })}
+                          className="h-4 w-4 rounded border-[#cbbbe9] text-[#673ab7] focus:ring-[#673ab7]"
+                        />
+                        日程をモーダルで選択
                       </label>
                     </div>
                   )}

@@ -42,9 +42,12 @@ interface FormField {
   maxFiles?: number;
   digitsOnly?: boolean;
   cityPlaceholder?: string;
+  cityOptions?: string[];
   datesPlaceholder?: string;
   startDateLabel?: string;
   endDateLabel?: string;
+  calendarModal?: boolean;
+  dateButtonLabel?: string;
   addItemLabel?: string;
   removeItemLabel?: string;
   maxItems?: number;
@@ -273,33 +276,54 @@ function renderCityDateRow(field: FormField, rowIndex: number): string {
   const startDateLabel = escapeHtml(field.startDateLabel || 'Start date');
   const endDateLabel = escapeHtml(field.endDateLabel || 'End date');
   const removeLabel = escapeHtml(field.removeItemLabel || 'Remove');
+  const cityControl = field.cityOptions && field.cityOptions.length > 0
+    ? `<select
+        class="form-select city-date-input"
+        name="${fieldName}__city"
+        data-city-date-role="city"
+        aria-label="City ${rowIndex + 1}">
+        <option value="">${escapeHtml(field.cityPlaceholder || 'Select a city')}</option>
+        ${field.cityOptions.map((city) => `<option value="${escapeAttr(city)}">${escapeHtml(city)}</option>`).join('')}
+      </select>`
+    : `<input
+        type="text"
+        class="form-input city-date-input"
+        name="${fieldName}__city"
+        data-city-date-role="city"
+        placeholder="${cityPlaceholder}"
+        aria-label="City ${rowIndex + 1}" />`;
+  const dateControl = field.calendarModal
+    ? `<button
+        type="button"
+        class="form-input city-date-open"
+        data-city-date-open
+        aria-label="${escapeAttr(field.dateButtonLabel || 'Select dates')} for city ${rowIndex + 1}">
+        <span data-city-date-summary>${escapeHtml(field.dateButtonLabel || 'Select dates')}</span>
+      </button>
+      <input type="hidden" name="${fieldName}__start_date" data-city-date-role="startDate" />
+      <input type="hidden" name="${fieldName}__end_date" data-city-date-role="endDate" />`
+    : `<label class="city-date-control">
+        <span>${startDateLabel}</span>
+        <input
+          type="date"
+          class="form-input city-date-input"
+          name="${fieldName}__start_date"
+          data-city-date-role="startDate"
+          aria-label="${escapeAttr(field.startDateLabel || 'Start date')} for city ${rowIndex + 1}" />
+      </label>
+      <label class="city-date-control">
+        <span>${endDateLabel}</span>
+        <input
+          type="date"
+          class="form-input city-date-input"
+          name="${fieldName}__end_date"
+          data-city-date-role="endDate"
+          aria-label="${escapeAttr(field.endDateLabel || 'End date')} for city ${rowIndex + 1}" />
+      </label>`;
 
-  return `<div class="city-date-row" data-city-date-row>
-    <input
-      type="text"
-      class="form-input city-date-input"
-      name="${fieldName}__city"
-      data-city-date-role="city"
-      placeholder="${cityPlaceholder}"
-      aria-label="City ${rowIndex + 1}" />
-    <label class="city-date-control">
-      <span>${startDateLabel}</span>
-      <input
-        type="date"
-        class="form-input city-date-input"
-        name="${fieldName}__start_date"
-        data-city-date-role="startDate"
-        aria-label="${escapeAttr(field.startDateLabel || 'Start date')} for city ${rowIndex + 1}" />
-    </label>
-    <label class="city-date-control">
-      <span>${endDateLabel}</span>
-      <input
-        type="date"
-        class="form-input city-date-input"
-        name="${fieldName}__end_date"
-        data-city-date-role="endDate"
-        aria-label="${escapeAttr(field.endDateLabel || 'End date')} for city ${rowIndex + 1}" />
-    </label>
+  return `<div class="city-date-row ${field.calendarModal ? 'city-date-row-modal' : 'city-date-row-inline'}" data-city-date-row>
+    ${cityControl}
+    ${dateControl}
     <button type="button" class="city-date-remove" data-city-date-remove>${removeLabel}</button>
   </div>`;
 }
@@ -335,6 +359,30 @@ function renderField(field: FormField, index: number): string {
         <button type="button" class="city-date-add" data-city-date-add>
           <span aria-hidden="true">＋</span>${escapeHtml(field.addItemLabel || 'Add another city')}
         </button>
+        ${field.calendarModal ? `<dialog class="city-date-dialog" data-city-date-dialog>
+          <div class="city-date-dialog-header">
+            <div>
+              <p>TRAVEL DATES</p>
+              <h3 data-city-date-dialog-title>Select dates</h3>
+            </div>
+            <button type="button" class="city-date-dialog-close" data-city-date-dialog-cancel>Close</button>
+          </div>
+          <div class="city-date-dialog-grid">
+            <label class="city-date-control">
+              <span>${escapeHtml(field.startDateLabel || 'Start date')}</span>
+              <input type="date" class="form-input" data-city-date-modal-role="startDate" />
+            </label>
+            <label class="city-date-control">
+              <span>${escapeHtml(field.endDateLabel || 'End date')}</span>
+              <input type="date" class="form-input" data-city-date-modal-role="endDate" />
+            </label>
+          </div>
+          <p class="city-date-dialog-error" data-city-date-dialog-error hidden>The end date must be on or after the start date.</p>
+          <div class="city-date-dialog-actions">
+            <button type="button" class="city-date-dialog-secondary" data-city-date-dialog-cancel>Cancel</button>
+            <button type="button" class="city-date-dialog-primary" data-city-date-dialog-apply disabled>Apply dates</button>
+          </div>
+        </dialog>` : ''}
       </div>`;
       break;
     }
@@ -481,15 +529,32 @@ function injectStyles(): void {
     .form-file { cursor: pointer; }
     .city-dates { display: flex; flex-direction: column; gap: 10px; }
     .city-date-list { display: flex; flex-direction: column; gap: 10px; }
-    .city-date-row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; padding: 10px; border: 1px solid #e1ece5; border-radius: 10px; background: #f7fbf8; }
+    .city-date-row { display: grid; gap: 8px; align-items: end; padding: 10px; border: 1px solid #e1ece5; border-radius: 10px; background: #f7fbf8; }
+    .city-date-row-modal { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) auto; }
+    .city-date-row-inline { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
     .city-date-control { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #5e6b63; font-size: 12px; font-weight: 600; }
+    .city-date-open { color: #26352c; text-align: left; cursor: pointer; }
     .city-date-row:only-child .city-date-remove { display: none; }
     .city-date-remove { border: 0; background: transparent; color: #68756d; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 9px 6px; }
     .city-date-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #b9d7c4; border-radius: 999px; background: #fff; color: #16723d; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; padding: 9px 14px; }
     .city-date-add:disabled { cursor: not-allowed; opacity: 0.45; }
+    .city-date-dialog { width: min(92vw, 520px); border: 0; border-radius: 20px; padding: 24px; box-shadow: 0 24px 80px rgba(0,0,0,0.28); }
+    .city-date-dialog::backdrop { background: rgba(15,23,42,0.58); backdrop-filter: blur(2px); }
+    .city-date-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+    .city-date-dialog-header p { margin: 0; color: #16723d; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+    .city-date-dialog-header h3 { margin: 5px 0 0; color: #1c2720; font-size: 21px; }
+    .city-date-dialog-close { border: 0; border-radius: 999px; background: transparent; color: #68756d; font: inherit; font-size: 13px; font-weight: 600; padding: 8px 10px; cursor: pointer; }
+    .city-date-dialog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 22px; }
+    .city-date-dialog-error { margin: 12px 0 0; color: #b42318; font-size: 13px; font-weight: 600; }
+    .city-date-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+    .city-date-dialog-secondary, .city-date-dialog-primary { border-radius: 999px; font: inherit; font-size: 14px; font-weight: 700; padding: 10px 16px; cursor: pointer; }
+    .city-date-dialog-secondary { border: 1px solid #ced8d1; background: #fff; color: #405148; }
+    .city-date-dialog-primary { border: 1px solid #16723d; background: #16723d; color: #fff; }
+    .city-date-dialog-primary:disabled { cursor: not-allowed; opacity: 0.45; }
     @media (max-width: 520px) {
       .city-date-row { grid-template-columns: 1fr; }
       .city-date-remove { justify-self: start; padding-left: 2px; }
+      .city-date-dialog-grid { grid-template-columns: 1fr; }
     }
     .file-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
     .file-item { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; background: #f4fbf7; border-radius: 8px; font-size: 13px; color: #333; }
@@ -766,7 +831,7 @@ function updateFieldVisibility(): void {
     const otherVisible = visible && isOtherSelected(field, rawData[field.name]);
 
     if (field.type === 'city_dates') {
-      wrapper?.querySelectorAll<HTMLInputElement | HTMLButtonElement>('.city-date-input, .city-date-add, .city-date-remove')
+      wrapper?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('.city-date-input, .city-date-open, .city-date-add, .city-date-remove')
         .forEach((control) => {
           control.disabled = !visible;
         });
@@ -936,6 +1001,21 @@ function attachFormEvents(): void {
       }
     }
 
+    if (target instanceof HTMLInputElement && target.matches('[data-city-date-modal-role="startDate"], [data-city-date-modal-role="endDate"]')) {
+      const dialog = target.closest<HTMLDialogElement>('[data-city-date-dialog]');
+      const startDate = dialog?.querySelector<HTMLInputElement>('[data-city-date-modal-role="startDate"]');
+      const endDate = dialog?.querySelector<HTMLInputElement>('[data-city-date-modal-role="endDate"]');
+      const applyButton = dialog?.querySelector<HTMLButtonElement>('[data-city-date-dialog-apply]');
+      const error = dialog?.querySelector<HTMLElement>('[data-city-date-dialog-error]');
+      if (startDate && endDate && applyButton && error) {
+        endDate.min = startDate.value;
+        startDate.max = endDate.value;
+        const invalidRange = Boolean(startDate.value && endDate.value && endDate.value < startDate.value);
+        error.hidden = !invalidRange;
+        applyButton.disabled = !startDate.value || !endDate.value || invalidRange;
+      }
+    }
+
     updateFieldVisibility();
   });
   form?.addEventListener('change', (event) => {
@@ -948,6 +1028,68 @@ function attachFormEvents(): void {
   form?.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+
+    const openDateButton = target.closest<HTMLButtonElement>('[data-city-date-open]');
+    if (openDateButton) {
+      const row = openDateButton.closest<HTMLElement>('[data-city-date-row]');
+      const container = openDateButton.closest<HTMLElement>('[data-city-dates-field]');
+      const dialog = container?.querySelector<HTMLDialogElement>('[data-city-date-dialog]');
+      const list = container?.querySelector<HTMLElement>('[data-city-date-list]');
+      const startValue = row?.querySelector<HTMLInputElement>('[data-city-date-role="startDate"]')?.value || '';
+      const endValue = row?.querySelector<HTMLInputElement>('[data-city-date-role="endDate"]')?.value || '';
+      const cityValue = row?.querySelector<HTMLInputElement | HTMLSelectElement>('[data-city-date-role="city"]')?.value || 'Select dates';
+      const startInput = dialog?.querySelector<HTMLInputElement>('[data-city-date-modal-role="startDate"]');
+      const endInput = dialog?.querySelector<HTMLInputElement>('[data-city-date-modal-role="endDate"]');
+      const title = dialog?.querySelector<HTMLElement>('[data-city-date-dialog-title]');
+      const error = dialog?.querySelector<HTMLElement>('[data-city-date-dialog-error]');
+      const applyButton = dialog?.querySelector<HTMLButtonElement>('[data-city-date-dialog-apply]');
+      if (!row || !dialog || !list || !startInput || !endInput || !title || !error || !applyButton) return;
+
+      dialog.dataset.activeRowIndex = String(Array.from(list.children).indexOf(row));
+      startInput.value = startValue;
+      endInput.value = endValue;
+      endInput.min = startValue;
+      startInput.max = endValue;
+      title.textContent = cityValue || 'Select dates';
+      error.hidden = true;
+      applyButton.disabled = !startValue || !endValue || endValue < startValue;
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+      startInput.focus();
+      return;
+    }
+
+    const cancelDateButton = target.closest<HTMLButtonElement>('[data-city-date-dialog-cancel]');
+    if (cancelDateButton) {
+      const dialog = cancelDateButton.closest<HTMLDialogElement>('[data-city-date-dialog]');
+      if (dialog && typeof dialog.close === 'function') dialog.close();
+      else dialog?.removeAttribute('open');
+      return;
+    }
+
+    const applyDateButton = target.closest<HTMLButtonElement>('[data-city-date-dialog-apply]');
+    if (applyDateButton) {
+      const dialog = applyDateButton.closest<HTMLDialogElement>('[data-city-date-dialog]');
+      const container = dialog?.closest<HTMLElement>('[data-city-dates-field]');
+      const list = container?.querySelector<HTMLElement>('[data-city-date-list]');
+      const rowIndex = Number(dialog?.dataset.activeRowIndex ?? -1);
+      const row = list?.querySelectorAll<HTMLElement>('[data-city-date-row]')[rowIndex];
+      const startInput = dialog?.querySelector<HTMLInputElement>('[data-city-date-modal-role="startDate"]');
+      const endInput = dialog?.querySelector<HTMLInputElement>('[data-city-date-modal-role="endDate"]');
+      const storedStart = row?.querySelector<HTMLInputElement>('[data-city-date-role="startDate"]');
+      const storedEnd = row?.querySelector<HTMLInputElement>('[data-city-date-role="endDate"]');
+      const summary = row?.querySelector<HTMLElement>('[data-city-date-summary]');
+      if (!dialog || !row || !startInput || !endInput || !storedStart || !storedEnd || !summary) return;
+      if (!startInput.value || !endInput.value || endInput.value < startInput.value) return;
+
+      storedStart.value = startInput.value;
+      storedEnd.value = endInput.value;
+      summary.textContent = `${startInput.value} – ${endInput.value}`;
+      if (typeof dialog.close === 'function') dialog.close();
+      else dialog.removeAttribute('open');
+      updateFieldVisibility();
+      return;
+    }
 
     const addButton = target.closest<HTMLButtonElement>('[data-city-date-add]');
     if (addButton) {
@@ -962,7 +1104,7 @@ function attachFormEvents(): void {
       if (rowCount >= maxItems) return;
       list.insertAdjacentHTML('beforeend', renderCityDateRow(field, rowCount));
       addButton.disabled = rowCount + 1 >= maxItems;
-      list.querySelectorAll<HTMLInputElement>('[data-city-date-role="city"]')[rowCount]?.focus();
+      list.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-city-date-role="city"]')[rowCount]?.focus();
       updateFieldVisibility();
       return;
     }

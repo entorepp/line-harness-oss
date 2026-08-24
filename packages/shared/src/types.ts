@@ -467,9 +467,12 @@ export interface FormField {
   maxFiles?: number;
   digitsOnly?: boolean;
   cityPlaceholder?: string;
+  cityOptions?: string[];
   datesPlaceholder?: string;
   startDateLabel?: string;
   endDateLabel?: string;
+  calendarModal?: boolean;
+  dateButtonLabel?: string;
   addItemLabel?: string;
   removeItemLabel?: string;
   maxItems?: number;

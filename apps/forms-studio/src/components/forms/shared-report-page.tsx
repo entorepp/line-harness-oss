@@ -8,8 +8,11 @@ type ReportLead = {
   firstName: string
   lastName: string
   email: string
-  budget: string
+  hotelGrade: string
+  legacyBudget: string
   travellers: string
+  roomCount: string
+  bedType: string
   citySchedule: string[]
   notes: string
 }
@@ -223,8 +226,11 @@ export default function SharedReportPage() {
                         )}
                       </div>
                       <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                        <Detail label="Budget" value={lead.budget} />
+                        <Detail label="Hotel grade" value={lead.hotelGrade} />
+                        {lead.legacyBudget && <Detail label="Legacy total budget" value={lead.legacyBudget} />}
                         <Detail label="Travellers" value={lead.travellers} />
+                        <Detail label="Rooms" value={lead.roomCount} />
+                        <Detail label="Bed type" value={lead.bedType} />
                         <Detail label="Cities & dates" value={lead.citySchedule.join('\n')} />
                         <div className="sm:col-span-2 lg:col-span-3">
                           <Detail label="Notes" value={lead.notes} />

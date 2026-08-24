@@ -37,8 +37,11 @@ type AccessibleJapanReportLead = {
   firstName: string;
   lastName: string;
   email: string;
-  budget: string;
+  hotelGrade: string;
+  legacyBudget: string;
   travellers: string;
+  roomCount: string;
+  bedType: string;
   citySchedule: string[];
   notes: string;
 };
@@ -80,8 +83,11 @@ function serializeAccessibleJapanReportLead(row: DbFormSubmission): AccessibleJa
     firstName: normalizeReportText(data.first_name),
     lastName: normalizeReportText(data.last_name),
     email: normalizeReportText(data.email),
-    budget: normalizeReportText(data.budget),
+    hotelGrade: normalizeReportText(data.hotel_grade),
+    legacyBudget: normalizeReportText(data.budget),
     travellers: normalizeReportText(data.travellers),
+    roomCount: normalizeReportText(data.room_count),
+    bedType: normalizeReportText(data.bed_type),
     citySchedule: normalizeReportList(data.city_schedule),
     notes: normalizeReportText(data.notes),
   };

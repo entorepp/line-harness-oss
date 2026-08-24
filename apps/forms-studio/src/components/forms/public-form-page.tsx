@@ -24,6 +24,13 @@ type PublicIssue = FormIssue & {
   liffUrl: string | null
 }
 
+type CityDateModalState = {
+  fieldName: string
+  rowIndex: number
+  startDate: string
+  endDate: string
+}
+
 type MissingField = {
   name: string
   label: string
@@ -198,6 +205,18 @@ function collectInitialOtherValues(fields: FormField[]): Record<string, string> 
 
 function helperText(field: FormField) {
   return field.helperText?.trim() || null
+}
+
+function calendarDateLabel(value: string) {
+  const matched = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!matched) return value
+  const date = new Date(Date.UTC(Number(matched[1]), Number(matched[2]) - 1, Number(matched[3])))
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
 }
 
 function isFlexibleTravelDateField(field: FormField) {
@@ -745,6 +764,7 @@ export default function PublicFormPage() {
   const [error, setError] = useState('')
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false)
   const [hearingTemplateCopied, setHearingTemplateCopied] = useState(false)
+  const [cityDateModal, setCityDateModal] = useState<CityDateModalState | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -1061,6 +1081,21 @@ export default function PublicFormPage() {
         setFieldValue(field, next)
       }
 
+      const applyModalDates = () => {
+        if (!cityDateModal || cityDateModal.fieldName !== field.name) return
+        const next = rows.map((entry, index) => (
+          index === cityDateModal.rowIndex
+            ? {
+              ...entry,
+              startDate: cityDateModal.startDate,
+              endDate: cityDateModal.endDate,
+            }
+            : entry
+        ))
+        setFieldValue(field, next)
+        setCityDateModal(null)
+      }
+
       return (
         <div className="space-y-3">
           {rows.map((entry, rowIndex) => (
@@ -1071,41 +1106,73 @@ export default function PublicFormPage() {
               }`}
             >
               <div className="grid gap-3 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)_auto] sm:items-end">
-                <input
-                  type="text"
-                  value={entry.city}
-                  onChange={(event) => updateEntry(rowIndex, 'city', event.target.value)}
-                  placeholder={field.cityPlaceholder || 'City, e.g. Tokyo'}
-                  aria-label={`City ${rowIndex + 1}`}
-                  aria-invalid={isMissing}
-                  className={fieldControlClass(isMissing)}
-                />
-                <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 sm:grid-cols-2">
-                  <label className="text-xs font-semibold text-slate-500">
-                    <span className="mb-1.5 block">{field.startDateLabel || 'Start date'}</span>
-                    <input
-                      type="date"
-                      value={entry.startDate}
-                      max={entry.endDate || undefined}
-                      onChange={(event) => updateEntry(rowIndex, 'startDate', event.target.value)}
-                      aria-label={`${field.startDateLabel || 'Start date'} for city ${rowIndex + 1}`}
-                      aria-invalid={isMissing}
-                      className={fieldControlClass(isMissing)}
-                    />
-                  </label>
-                  <label className="text-xs font-semibold text-slate-500">
-                    <span className="mb-1.5 block">{field.endDateLabel || 'End date'}</span>
-                    <input
-                      type="date"
-                      value={entry.endDate}
-                      min={entry.startDate || undefined}
-                      onChange={(event) => updateEntry(rowIndex, 'endDate', event.target.value)}
-                      aria-label={`${field.endDateLabel || 'End date'} for city ${rowIndex + 1}`}
-                      aria-invalid={isMissing}
-                      className={fieldControlClass(isMissing)}
-                    />
-                  </label>
-                </div>
+                {field.cityOptions && field.cityOptions.length > 0 ? (
+                  <select
+                    value={entry.city}
+                    onChange={(event) => updateEntry(rowIndex, 'city', event.target.value)}
+                    aria-label={`City ${rowIndex + 1}`}
+                    aria-invalid={isMissing}
+                    className={fieldControlClass(isMissing)}
+                  >
+                    <option value="">{field.cityPlaceholder || 'Select a city'}</option>
+                    {field.cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={entry.city}
+                    onChange={(event) => updateEntry(rowIndex, 'city', event.target.value)}
+                    placeholder={field.cityPlaceholder || 'City, e.g. Tokyo'}
+                    aria-label={`City ${rowIndex + 1}`}
+                    aria-invalid={isMissing}
+                    className={fieldControlClass(isMissing)}
+                  />
+                )}
+                {field.calendarModal ? (
+                  <button
+                    type="button"
+                    onClick={() => setCityDateModal({
+                      fieldName: field.name,
+                      rowIndex,
+                      startDate: entry.startDate,
+                      endDate: entry.endDate,
+                    })}
+                    aria-label={`${field.dateButtonLabel || 'Select dates'} for city ${rowIndex + 1}`}
+                    aria-invalid={isMissing}
+                    className={`${fieldControlClass(isMissing)} text-left font-medium`}
+                  >
+                    {entry.startDate && entry.endDate
+                      ? `${calendarDateLabel(entry.startDate)} – ${calendarDateLabel(entry.endDate)}`
+                      : field.dateButtonLabel || 'Select dates'}
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 sm:grid-cols-2">
+                    <label className="text-xs font-semibold text-slate-500">
+                      <span className="mb-1.5 block">{field.startDateLabel || 'Start date'}</span>
+                      <input
+                        type="date"
+                        value={entry.startDate}
+                        max={entry.endDate || undefined}
+                        onChange={(event) => updateEntry(rowIndex, 'startDate', event.target.value)}
+                        aria-label={`${field.startDateLabel || 'Start date'} for city ${rowIndex + 1}`}
+                        aria-invalid={isMissing}
+                        className={fieldControlClass(isMissing)}
+                      />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-500">
+                      <span className="mb-1.5 block">{field.endDateLabel || 'End date'}</span>
+                      <input
+                        type="date"
+                        value={entry.endDate}
+                        min={entry.startDate || undefined}
+                        onChange={(event) => updateEntry(rowIndex, 'endDate', event.target.value)}
+                        aria-label={`${field.endDateLabel || 'End date'} for city ${rowIndex + 1}`}
+                        aria-invalid={isMissing}
+                        className={fieldControlClass(isMissing)}
+                      />
+                    </label>
+                  </div>
+                )}
                 {rows.length > 1 && (
                   <button
                     type="button"
@@ -1131,6 +1198,88 @@ export default function PublicFormPage() {
             <span aria-hidden="true" className="text-lg leading-none">＋</span>
             {field.addItemLabel || 'Add another city'}
           </button>
+          {field.calendarModal && cityDateModal?.fieldName === field.name && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Select travel dates"
+              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-[2px]"
+              onMouseDown={(event) => {
+                if (event.currentTarget === event.target) setCityDateModal(null)
+              }}
+            >
+              <div className="w-full max-w-lg rounded-[24px] bg-white p-6 shadow-2xl sm:p-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1d5c47]">Travel dates</p>
+                    <h3 className="mt-1 text-xl font-semibold text-slate-900">
+                      {rows[cityDateModal.rowIndex]?.city || 'Select dates'}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCityDateModal(null)}
+                    className="rounded-full px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    <span className="mb-2 block">{field.startDateLabel || 'Start date'}</span>
+                    <input
+                      type="date"
+                      value={cityDateModal.startDate}
+                      max={cityDateModal.endDate || undefined}
+                      onChange={(event) => setCityDateModal((current) => current ? {
+                        ...current,
+                        startDate: event.target.value,
+                      } : current)}
+                      className={fieldControlClass(false)}
+                      autoFocus
+                    />
+                  </label>
+                  <label className="text-sm font-semibold text-slate-700">
+                    <span className="mb-2 block">{field.endDateLabel || 'End date'}</span>
+                    <input
+                      type="date"
+                      value={cityDateModal.endDate}
+                      min={cityDateModal.startDate || undefined}
+                      onChange={(event) => setCityDateModal((current) => current ? {
+                        ...current,
+                        endDate: event.target.value,
+                      } : current)}
+                      className={fieldControlClass(false)}
+                    />
+                  </label>
+                </div>
+                {cityDateModal.startDate && cityDateModal.endDate && cityDateModal.endDate < cityDateModal.startDate && (
+                  <p className="mt-3 text-sm font-medium text-rose-700">The end date must be on or after the start date.</p>
+                )}
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCityDateModal(null)}
+                    className="rounded-full border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyModalDates}
+                    disabled={
+                      !cityDateModal.startDate
+                      || !cityDateModal.endDate
+                      || cityDateModal.endDate < cityDateModal.startDate
+                    }
+                    className="rounded-full bg-[#1d5c47] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#174a39] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Apply dates
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )
     }
