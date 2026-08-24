@@ -93,6 +93,34 @@ export type AgreementSelection = {
   kind: string;
   selectionStatus: string;
   estimateJpy: number | null;
+  bundleId: string;
+  customerBundleLabel: string;
+  customerPriceJpy: number | null;
+  componentTariffs: Array<{
+    tariffId: string;
+    role: string;
+    label: string;
+    category: 'charter' | 'activity' | 'equipment_rental' | 'care' | null;
+    unitPriceJpy: number | null;
+    priceBasis: 'perArrangement' | 'perGroup' | 'perDay' | 'perHour' | null;
+    quantity: number | null;
+  }>;
+};
+
+export type AgreementSupportSelection = {
+  tariffId: string;
+  sanityId: string;
+  title: string;
+  category: 'equipment_rental' | 'care' | null;
+  pricingModel: 'durationBand' | 'areaBand' | 'hourlyMinimum' | 'manualQuote' | null;
+  durationDays: number | null;
+  areaCount: number | null;
+  minimumHoursPerDay: number | null;
+  minimumDays: number | null;
+  customerPriceJpy: number | null;
+  priceStatus: string;
+  hotelBookingRequired: boolean;
+  deliveryAndPickupIncluded: boolean;
 };
 
 export type AgreementSnapshot = {
@@ -118,6 +146,7 @@ export type AgreementSnapshot = {
   hotels: AgreementHotel[];
   railAndTransfers: AgreementMovement[];
   selections: AgreementSelection[];
+  supportSelections: AgreementSupportSelection[];
   includedItems: string[];
   excludedItems: string[];
   estimate: { currency: 'JPY'; total: number | null; kind: string; priceConfirmed: false };
@@ -317,6 +346,24 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
   });
   const selections = (Array.isArray(source.selections) ? source.selections : []).slice(0, 30).map((raw) => {
     const item = objectValue(raw);
+    const componentTariffs = (Array.isArray(item.componentTariffs) ? item.componentTariffs : []).slice(0, 6).map((rawComponent) => {
+      const component = objectValue(rawComponent);
+      const category = ['charter', 'activity', 'equipment_rental', 'care'].includes(String(component.category))
+        ? component.category as Exclude<AgreementSelection['componentTariffs'][number]['category'], null>
+        : null;
+      const priceBasis = ['perArrangement', 'perGroup', 'perDay', 'perHour'].includes(String(component.priceBasis))
+        ? component.priceBasis as Exclude<AgreementSelection['componentTariffs'][number]['priceBasis'], null>
+        : null;
+      return {
+        tariffId: (text(component.tariffId, 100) || '').toUpperCase(),
+        role: text(component.role, 40) || '',
+        label: text(component.label, 180) || '',
+        category,
+        unitPriceJpy: component.unitPriceJpy == null ? null : integer(component.unitPriceJpy, 1, 100_000_000),
+        priceBasis,
+        quantity: component.quantity == null ? 1 : integer(component.quantity, 1, 50),
+      };
+    });
     return {
       id: text(item.id, 100) || '',
       sanityId: text(item.sanityId ?? item.tourId, 160) || '',
@@ -325,6 +372,34 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       kind: text(item.kind, 80) || 'Experience',
       selectionStatus: text(item.selectionStatus, 60) || 'customer_selected',
       estimateJpy: item.estimateJpy == null ? null : integer(item.estimateJpy, 0, 100_000_000),
+      bundleId: text(item.bundleId, 120) || '',
+      customerBundleLabel: text(item.customerBundleLabel, 180) || '',
+      customerPriceJpy: item.customerPriceJpy == null ? null : integer(item.customerPriceJpy, 1, 100_000_000),
+      componentTariffs,
+    };
+  });
+  const supportSelections = (Array.isArray(source.supportSelections) ? source.supportSelections : []).slice(0, 20).map((raw) => {
+    const item = objectValue(raw);
+    const category = ['equipment_rental', 'care'].includes(String(item.category))
+      ? item.category as Exclude<AgreementSupportSelection['category'], null>
+      : null;
+    const pricingModel = ['durationBand', 'areaBand', 'hourlyMinimum', 'manualQuote'].includes(String(item.pricingModel))
+      ? item.pricingModel as Exclude<AgreementSupportSelection['pricingModel'], null>
+      : null;
+    return {
+      tariffId: (text(item.tariffId ?? item.id, 100) || '').toUpperCase(),
+      sanityId: text(item.sanityId, 160) || '',
+      title: text(item.title, 180) || 'Journey support',
+      category,
+      pricingModel,
+      durationDays: item.durationDays == null ? null : integer(item.durationDays, 1, 60),
+      areaCount: item.areaCount == null ? null : integer(item.areaCount, 1, 20),
+      minimumHoursPerDay: item.minimumHoursPerDay == null ? null : integer(item.minimumHoursPerDay, 1, 24),
+      minimumDays: item.minimumDays == null ? null : integer(item.minimumDays, 1, 60),
+      customerPriceJpy: item.customerPriceJpy == null ? null : integer(item.customerPriceJpy, 1, 100_000_000),
+      priceStatus: text(item.priceStatus, 40) || '',
+      hotelBookingRequired: item.hotelBookingRequired !== false,
+      deliveryAndPickupIncluded: item.deliveryAndPickupIncluded === true,
     };
   });
   const choices = parseChoiceMap(tailorMadeSource.choices);
@@ -352,6 +427,7 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
     hotels,
     railAndTransfers,
     selections,
+    supportSelections,
     includedItems: textList(source.includedItems, 30, 220),
     excludedItems: textList(source.excludedItems, 30, 220),
     estimate: {
@@ -436,6 +512,42 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       }
       if (movement.bidirectional == null) {
         return { ok: false, error: 'Journey movement direction contract required' };
+      }
+    }
+    for (const selection of agreementSnapshot.selections) {
+      if (!selection.componentTariffs.length) continue;
+      if (!selection.bundleId || !selection.customerBundleLabel || selection.customerPriceJpy == null) {
+        return { ok: false, error: 'Journey bundle identity and customer price required' };
+      }
+      if (selection.componentTariffs.some((component) => (
+        !/^FT-(?:CHARTER|GUIDE|SUPPORT)-[A-Z0-9-]+$/.test(component.tariffId)
+        || !component.label
+        || !component.category
+        || component.unitPriceJpy == null
+        || !component.priceBasis
+        || component.quantity == null
+      ))) {
+        return { ok: false, error: 'Journey bundle component tariff contract invalid' };
+      }
+      const componentTotal = selection.componentTariffs.reduce(
+        (total, component) => total + Number(component.unitPriceJpy) * Number(component.quantity),
+        0,
+      );
+      if (componentTotal !== selection.customerPriceJpy) {
+        return { ok: false, error: 'Journey bundle customer price must equal component tariffs' };
+      }
+    }
+    for (const support of agreementSnapshot.supportSelections) {
+      if (
+        !/^FT-SUPPORT-[A-Z0-9-]+$/.test(support.tariffId)
+        || !support.sanityId
+        || !support.category
+        || !support.pricingModel
+        || support.durationDays == null
+        || support.areaCount == null
+        || (support.pricingModel !== 'manualQuote' && support.customerPriceJpy == null)
+      ) {
+        return { ok: false, error: 'Journey support tariff contract invalid' };
       }
     }
   }

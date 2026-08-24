@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, toJstString, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
+import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 
 const waWebhook = new Hono<Env>();
 const GRAPH_API = 'https://graph.facebook.com/v25.0';
@@ -714,6 +715,15 @@ async function persistWaMessage(
                 ? '📍 位置情報を送信'
                 : `[${msg.type}]`
     );
+
+    const quoteHandled = await tryDeliverCustomerQuote({
+      env,
+      friendId: friend.id,
+      channel: 'whatsapp',
+      providerMessageId: msg.messageId,
+      text: msg.text?.trim() || '',
+    });
+    if (quoteHandled) return;
 
     await fireEvent(
       db,

@@ -116,7 +116,17 @@ const payload = {
       { id: 'rail-1', sanityId: 'FT-M-TOKYO-KYOTO', dayStart: 2, dayEnd: 2, serviceDate: '2026-11-11', origin: 'Tokyo Station', destination: 'Kyoto Station', mode: 'Shinkansen / rail', preferredTimeSlot: '08-10', preferredTimeLabel: '8–10 AM', selectionStatus: 'customer_selected', supplierStatus: 'requires_confirmation', unitPriceJpy: 13970, priceBasis: 'perPerson', passengerCapacity: 4, bidirectional: false, estimateJpy: 27940, displayGroupId: 'tokyo-kyoto', displayGroupOrigin: 'Tokyo', displayGroupDestination: 'Kyoto', displayGroupSequence: 2, displayGroupMemberCount: 3, timeControlMovement: true },
       { id: 'transfer-2', sanityId: 'FT-M-KYOTO-STATION', dayStart: 2, dayEnd: 2, serviceDate: '2026-11-11', origin: 'Kyoto Station', destination: 'Kyoto hotel', mode: 'Taxi / private vehicle', preferredTimeSlot: '08-10', preferredTimeLabel: '8–10 AM', selectionStatus: 'customer_selected', supplierStatus: 'requires_confirmation', unitPriceJpy: 35000, priceBasis: 'perVehicle', passengerCapacity: 4, bidirectional: true, estimateJpy: 35000, displayGroupId: 'tokyo-kyoto', displayGroupOrigin: 'Tokyo', displayGroupDestination: 'Kyoto', displayGroupSequence: 3, displayGroupMemberCount: 3, timeControlMovement: false },
     ],
-    selections: [{ id: 'tour-1', sanityId: 'FT-T-TOKYO', title: 'Tokyo Highlights', dayLabel: 'Day 2', kind: 'Experience', selectionStatus: 'customer_selected', estimateJpy: 30000 }],
+    selections: [{
+      id: 'tour-1', sanityId: 'FT-T-TOKYO', title: 'Tokyo Highlights', dayLabel: 'Day 2', kind: 'Experience', selectionStatus: 'customer_selected', estimateJpy: 100000,
+      bundleId: 'tokyo-guide-bundle', customerBundleLabel: 'Tokyo Highlights — charter with guide', customerPriceJpy: 100000,
+      componentTariffs: [
+        { tariffId: 'FT-CHARTER-TOKYO-1D', role: 'charter', label: 'Tokyo accessible charter', category: 'charter', unitPriceJpy: 60000, priceBasis: 'perArrangement', quantity: 1 },
+        { tariffId: 'FT-GUIDE-EN-TOKYO-1D', role: 'guide', label: 'English-speaking guide', category: 'activity', unitPriceJpy: 40000, priceBasis: 'perArrangement', quantity: 1 },
+      ],
+    }],
+    supportSelections: [
+      { tariffId: 'FT-SUPPORT-WHILL-F', sanityId: 'journey-support-whill-model-f', title: 'WHILL Model F rental', category: 'equipment_rental', pricingModel: 'durationBand', durationDays: 4, areaCount: 1, customerPriceJpy: 50000, priceStatus: 'calculated', hotelBookingRequired: true, deliveryAndPickupIncluded: true },
+    ],
     includedItems: ['Hotels', 'Breakfast'],
     excludedItems: ['International flights'],
     estimate: { currency: 'JPY', total: 480000, kind: 'planning_estimate', priceConfirmed: false },
@@ -166,6 +176,10 @@ assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[1].price
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[1].passengerCapacity, 4);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[1].bidirectional, false);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.selections[0].sanityId, 'FT-T-TOKYO');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.selections[0].componentTariffs[1].tariffId, 'FT-GUIDE-EN-TOKYO-1D');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.selections[0].customerPriceJpy, 100000);
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.supportSelections[0].tariffId, 'FT-SUPPORT-WHILL-F');
+assert.equal(flatworkerPosts[0].body.agreementSnapshot.supportSelections[0].customerPriceJpy, 50000);
 assert.equal(flatworkerPosts[0].body.customerName, 'Alex Traveller');
 assert.equal(flatworkerPosts[0].body.givenName, 'Alex');
 assert.equal(flatworkerPosts[0].body.familyName, 'Traveller');
@@ -262,6 +276,18 @@ delete missingCapacity.agreementSnapshot.railAndTransfers[0].passengerCapacity;
 const missingCapacityResult = parseTravelQuoteIntent(missingCapacity);
 assert.equal(missingCapacityResult.ok, false);
 if (!missingCapacityResult.ok) assert.equal(missingCapacityResult.error, 'Journey movement capacity required');
+
+const bundleMismatch = structuredClone(payload);
+bundleMismatch.agreementSnapshot.selections[0].customerPriceJpy = 99999;
+const bundleMismatchResult = parseTravelQuoteIntent(bundleMismatch);
+assert.equal(bundleMismatchResult.ok, false);
+if (!bundleMismatchResult.ok) assert.equal(bundleMismatchResult.error, 'Journey bundle customer price must equal component tariffs');
+
+const missingSupportPrice = structuredClone(payload);
+delete missingSupportPrice.agreementSnapshot.supportSelections[0].customerPriceJpy;
+const missingSupportPriceResult = parseTravelQuoteIntent(missingSupportPrice);
+assert.equal(missingSupportPriceResult.ok, false);
+if (!missingSupportPriceResult.ok) assert.equal(missingSupportPriceResult.error, 'Journey support tariff contract invalid');
 
 const failedIntake = await request({ ...payload, quoteReference: 'FTQ-20260801-FF12AA34' });
 assert.equal(failedIntake.status, 503);

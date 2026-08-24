@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
+import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 import {
   fetchMetaCustomerProfile,
   type MetaMessagingChannelType,
@@ -372,6 +373,14 @@ async function persistMetaMessage(
     await updateMetaChat(env.DB, friend.id, message.direction, message.occurredAt);
 
     if (message.direction === 'incoming') {
+      const quoteHandled = await tryDeliverCustomerQuote({
+        env,
+        friendId: friend.id,
+        channel: account.channel_type,
+        providerMessageId: message.messageId,
+        text: message.text,
+      });
+      if (quoteHandled) return;
       await fireEvent(
         env.DB,
         'message_received',

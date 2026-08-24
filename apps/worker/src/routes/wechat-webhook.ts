@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, toJstString, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
+import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 import {
   decryptWeChatPayload,
   dispatchWeChatText,
@@ -329,6 +330,14 @@ async function persistWeChatMessage(
   }
 
   if (!duplicate) {
+    const quoteHandled = await tryDeliverCustomerQuote({
+      env,
+      friendId: friend.id,
+      channel: 'wechat',
+      providerMessageId: message.messageId || '',
+      text: message.metadata.rawMessageType === 'text' ? message.eventText : '',
+    });
+    if (quoteHandled) return;
     await fireEvent(
       env.DB,
       'message_received',
