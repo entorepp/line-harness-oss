@@ -29,6 +29,83 @@ import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
 
 const forms = new Hono<Env>();
+const ACCESSIBLE_JAPAN_FORM_ID = '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477';
+
+type AccessibleJapanReportLead = {
+  id: string;
+  receivedAt: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  budget: string;
+  travellers: string;
+  citySchedule: string[];
+  notes: string;
+};
+
+const PRIVATE_REPORT_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0',
+  Pragma: 'no-cache',
+  'Referrer-Policy': 'no-referrer',
+  'X-Robots-Tag': 'noindex, nofollow, noarchive',
+};
+
+function normalizeReportText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeReportText(item)).filter(Boolean).join(', ');
+  }
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value).trim();
+}
+
+function normalizeReportList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    const normalized = normalizeReportText(value);
+    return normalized ? [normalized] : [];
+  }
+  return value.map((item) => normalizeReportText(item)).filter(Boolean);
+}
+
+function reportMonth(receivedAt: string): string {
+  const matched = receivedAt.match(/^(\d{4})-(\d{2})/);
+  return matched ? `${matched[1]}-${matched[2]}` : jstNow().slice(0, 7);
+}
+
+function serializeAccessibleJapanReportLead(row: DbFormSubmission): AccessibleJapanReportLead {
+  const data = JSON.parse(row.data || '{}') as Record<string, unknown>;
+  return {
+    id: row.id,
+    receivedAt: row.created_at,
+    firstName: normalizeReportText(data.first_name),
+    lastName: normalizeReportText(data.last_name),
+    email: normalizeReportText(data.email),
+    budget: normalizeReportText(data.budget),
+    travellers: normalizeReportText(data.travellers),
+    citySchedule: normalizeReportList(data.city_schedule),
+    notes: normalizeReportText(data.notes),
+  };
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
+function readBearerToken(headerValue: string | undefined): string {
+  if (!headerValue?.startsWith('Bearer ')) return '';
+  return headerValue.slice('Bearer '.length).trim();
+}
 
 type FormField = SharedFormField;
 
@@ -385,6 +462,73 @@ forms.get('/api/forms', async (c) => {
   } catch (err) {
     console.error('GET /api/forms error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// GET /api/shared-reports/accessible-japan — read-only, form-scoped partner report
+forms.get('/api/shared-reports/accessible-japan', async (c) => {
+  try {
+    const token = readBearerToken(c.req.header('Authorization'));
+    const expectedHash = c.env.ACCESSIBLE_JAPAN_REPORT_TOKEN_SHA256?.trim().toLowerCase() || '';
+    const authorized = token.length >= 32
+      && expectedHash.length === 64
+      && constantTimeEqual(await sha256Hex(token), expectedHash);
+
+    if (!authorized) {
+      return c.json(
+        { success: false, error: 'This report link is invalid or has expired' },
+        401,
+        PRIVATE_REPORT_HEADERS,
+      );
+    }
+
+    const form = await getFormById(c.env.DB, ACCESSIBLE_JAPAN_FORM_ID);
+    if (!form) {
+      return c.json(
+        { success: false, error: 'Report not found' },
+        404,
+        PRIVATE_REPORT_HEADERS,
+      );
+    }
+
+    const rows = await getFormSubmissions(c.env.DB, ACCESSIBLE_JAPAN_FORM_ID);
+    const leads = rows.map(serializeAccessibleJapanReportLead);
+    const grouped = new Map<string, AccessibleJapanReportLead[]>();
+
+    for (const lead of leads) {
+      const month = reportMonth(lead.receivedAt);
+      const monthLeads = grouped.get(month) || [];
+      monthLeads.push(lead);
+      grouped.set(month, monthLeads);
+    }
+
+    const currentMonth = jstNow().slice(0, 7);
+    if (!grouped.has(currentMonth)) grouped.set(currentMonth, []);
+
+    const months = Array.from(grouped.entries())
+      .sort(([left], [right]) => right.localeCompare(left))
+      .map(([month, monthLeads]) => ({
+        month,
+        count: monthLeads.length,
+        leads: monthLeads,
+      }));
+
+    return c.json({
+      success: true,
+      data: {
+        reportName: 'Accessible Japan × Flat Travel Leads',
+        totalCount: leads.length,
+        generatedAt: jstNow(),
+        months,
+      },
+    }, 200, PRIVATE_REPORT_HEADERS);
+  } catch (err) {
+    console.error('GET /api/shared-reports/accessible-japan error:', err);
+    return c.json(
+      { success: false, error: 'Internal server error' },
+      500,
+      PRIVATE_REPORT_HEADERS,
+    );
   }
 });
 

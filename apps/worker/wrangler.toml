@@ -10,6 +10,7 @@ workers_dev = true
 WORKER_URL = "https://line-flattravel.flat-travel.workers.dev"
 WEB_APP_URL = "https://line-crm-web-2ob.pages.dev"
 FORMS_APP_URL = "https://liffform-studio.pages.dev"
+ACCESSIBLE_JAPAN_REPORT_TOKEN_SHA256 = "95c1325d3505286b60b17605200dc738d9f553e35f1d41bdf46bc3e1231da30b"
 
 [[d1_databases]]
 binding = "DB"

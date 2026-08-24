@@ -51,6 +51,7 @@ export type Env = {
     WORKER_URL: string;
     WEB_APP_URL?: string;
     FORMS_APP_URL?: string;
+    ACCESSIBLE_JAPAN_REPORT_TOKEN_SHA256?: string;
     SLACK_BOT_TOKEN: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
