@@ -157,6 +157,7 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <div class="lead">
 <p>今後のお見積もり・ご依頼・配車をスムーズに進めるため、よくご依頼する区間・コースの料金をあらかじめ伺えればと存じます。下記の項目につきまして、ご記入いただけますと幸いです。</p>
 <p class="note">※ 金額はすべて税込でご記入ください。</p>
+<p class="note">※ 送迎料金・観光貸切の車両代金には、基本介助料金・乗降料金を含めてご記入ください。</p>
 </div>
 </header>
 <section class="sec"><h2><span class="num">1</span>御社について</h2>
@@ -199,12 +200,26 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <p class="body">金沢駅とホテル間の送迎料金です。</p>
 <p class="body"><strong>ホテルごと（Q9）とエリアごと（Q10）のどちらか一方にご記入いただければ結構です。</strong>エリアごとに一律の料金を設定されている場合は、Q10のみで問題ございません。</p>
 <p class="note">※ 営業ができない区間は空欄のままで結構です。</p>
-<div class="q"><p class="qt"><span class="qn">Q9</span>ホテルごとの送迎料金（片道・円）　※高速代金込</p>
+<div class="q"><p class="qt"><span class="qn">Q9</span>ホテルごとの送迎料金（片道・円）　※高速代金・基本介助料金・乗降料金込</p>
 <div class="tw"><table><thead><tr><th class="rh" rowspan="2">発着地</th><th class="ku" colspan="10">金沢市内中心部エリア</th><th class="ku">辰口温泉エリア</th></tr><tr><th class="hn">雨庵 金沢</th><th class="hn">KOKO HOTEL Premier Kanazawa Korinbo</th><th class="hn">SOKI KANAZAWA</th><th class="hn">Hotel INTERGATE KANAZAWA</th><th class="hn">金沢白鳥路 ホテル山楽</th><th class="hn">金沢 彩の庭ホテル</th><th class="hn">Yuyaruru Saisai</th><th class="hn">森町壱番丁</th><th class="hn">ハイアットセントリック金沢</th><th class="hn kuend">ハイアット ハウス 金沢</th><th class="hn">旅亭 萬葉</th></tr></thead><tbody><tr><th class="rh">金沢駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td class="kuend"><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
-<div class="q"><p class="qt"><span class="qn">Q10</span>エリアごとの送迎料金（片道・円）　※高速代金込</p>
+<div class="q"><p class="qt"><span class="qn">Q10</span>エリアごとの送迎料金（片道・円）　※高速代金・基本介助料金・乗降料金込</p>
 <div class="tw"><table><thead><tr><th class="rh">発着地</th><th>金沢市内中心部エリア</th><th>辰口温泉エリア</th></tr></thead><tbody><tr><th class="rh">金沢駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
-<h3 class="sub-h">その他のエリアについて</h3>
-<div class="q"><p class="qt"><span class="qn">Q11</span>上記以外のエリアでも料金の設定が可能な場合は、こちらにご記入ください　※高速代金込</p>
+<h3 class="sub-h">富士レークホテル・その他エリアについて</h3>
+<div class="q" data-required-question="true"><p class="qt"><span class="qn">Q11</span>金沢から富士レークホテルまでの送迎と、その他エリアの料金をご記入ください</p>
+<p class="sub"><strong>金沢市内中心部のホテル → 富士レークホテル</strong>の送迎に対応可能かお選びください。（必須）</p>
+<label class="opt"><input type="radio" name="kanazawa_fuji_transfer" value="対応可能" data-required-choice="kanazawa-fuji-transfer"><span>対応可能</span></label>
+<label class="opt"><input type="radio" name="kanazawa_fuji_transfer" value="対応不可" data-required-choice="kanazawa-fuji-transfer"><span>対応不可</span></label>
+<p class="sub arrow">対応可能な場合は、各金額を分けてご記入ください。高速代金・駐車場代金は、発生しない場合は0円、未確定の場合は現時点の概算額をご記入ください。</p>
+<div class="cost-main"><span class="cost-lb-main">送迎車両代金（基本介助料金・乗降料金込／回送料金を除く）</span><div class="money"><input type="text" inputmode="numeric" class="amt" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">お帰りの回送料金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">高速代金（送迎・回送合計／必須）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
+</div>
+<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">駐車場代金（必須）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
+</div>
+<h3 class="sub-h">その他のエリア</h3>
+<p class="sub">上記以外のエリアでも料金の設定が可能な場合は、こちらにご記入ください。料金には高速代金・基本介助料金・乗降料金を含めてください。</p>
 <div class="tw"><table><thead><tr><th class="rh">発着地</th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th></tr></thead><tbody><tr><th class="rh">金沢駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
 <div class="q"><p class="qt"><span class="qn">Q12</span>待ち合わせ・お見送り、それぞれの料金をご記入ください　※待機料金・駐車料金込</p>
 <div class="meet-row"><div class="meet-lb"><span class="meet-pl">金沢駅</span><span class="meet-sv">改札での待ち合わせ・お見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
@@ -218,12 +233,12 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <div class="course"><p class="cname">金沢観光　8時間｜兼六園・城下町満喫コース</p>
 <p class="croute">ハイアットセントリック金沢 → 兼六園 → 近江町市場（昼食） → 石川県観光物産館 → 金沢城公園 → ひがし茶屋街 → ハイアットセントリック金沢</p>
 </div>
-<div class="q"><p class="qt"><span class="qn">Q14</span>この行程の料金をご記入ください</p>
-<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
-<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="q" data-required-question="true"><p class="qt"><span class="qn">Q14</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金（基本介助料金・乗降料金込）</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">高速代金・駐車場代金は必ずご記入ください。発生しない場合は0円、未確定の場合は現時点の概算額をご記入ください。</p>
 <div class="cost-row">
-<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
-<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">高速代金（必須）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" required aria-required="true" data-required-cost="true" placeholder="0"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金（必須）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" required aria-required="true" data-required-cost="true" placeholder="0"><span class="unit">円</span></div></div>
 </div>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q15</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
@@ -233,15 +248,15 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <div class="q"><p class="qt"><span class="qn">Q16</span>この行程について、気になる内容などございましたらご記入ください</p>
 <textarea rows="3" placeholder="例：車椅子のお客様をご案内するうえで注意すべき点／駐車・乗降がしづらい施設／行程の時間配分について"></textarea>
 </div>
-<div class="course"><p class="cname">白川郷観光　8時間｜世界遺産・合掌造り満喫コース</p>
-<p class="croute">ハイアットセントリック金沢 → 白川郷・合掌造り集落 → 昼食 → 白川郷散策・展望 → ハイアットセントリック金沢</p>
+<div class="course"><p class="cname">兼六園・白川郷観光　8時間｜名園と世界遺産・合掌造りコース</p>
+<p class="croute">ハイアットセントリック金沢 → 兼六園 → 白川郷・合掌造り集落 → 昼食 → 白川郷散策・展望 → ハイアットセントリック金沢</p>
 </div>
-<div class="q"><p class="qt"><span class="qn">Q17</span>この行程の料金をご記入ください</p>
-<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
-<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
+<div class="q" data-required-question="true"><p class="qt"><span class="qn">Q17</span>この行程の料金をご記入ください</p>
+<div class="cost-main"><span class="cost-lb-main">車両代金（基本介助料金・乗降料金込）</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<p class="sub">高速代金・駐車場代金は必ずご記入ください。発生しない場合は0円、未確定の場合は現時点の概算額をご記入ください。</p>
 <div class="cost-row">
-<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
-<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">高速代金（必須）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" required aria-required="true" data-required-cost="true" placeholder="0"><span class="unit">円</span></div></div>
+<div class="cost-item"><span class="cost-lb">駐車場代金（必須）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" required aria-required="true" data-required-cost="true" placeholder="0"><span class="unit">円</span></div></div>
 </div>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q18</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
