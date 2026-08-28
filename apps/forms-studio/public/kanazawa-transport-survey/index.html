@@ -209,13 +209,10 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <p class="sub"><strong>金沢市内中心部のホテル → 富士レークホテル</strong>の送迎に対応可能かお選びください。（必須）</p>
 <label class="opt"><input type="radio" name="kanazawa_fuji_transfer" value="対応可能" data-required-choice="kanazawa-fuji-transfer"><span>対応可能</span></label>
 <label class="opt"><input type="radio" name="kanazawa_fuji_transfer" value="対応不可" data-required-choice="kanazawa-fuji-transfer"><span>対応不可</span></label>
-<p class="sub arrow">対応可能な場合は、各金額を分けてご記入ください。高速代金・駐車場代金は、発生しない場合は0円、未確定の場合は現時点の概算額をご記入ください。</p>
-<div class="cost-main"><span class="cost-lb-main">送迎車両代金（基本介助料金・乗降料金込／回送料金を除く）</span><div class="money"><input type="text" inputmode="numeric" class="amt" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
+<p class="sub arrow">対応可能な場合は、送迎料金と回送料金をそれぞれ高速代金込みでご記入ください。駐車場代金は、発生しない場合は0円、未確定の場合は現時点の概算額をご記入ください。</p>
+<div class="cost-main"><span class="cost-lb-main">送迎料金（高速代金・基本介助料金・乗降料金込／回送料金・駐車場代金を除く）</span><div class="money"><input type="text" inputmode="numeric" class="amt" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
 <div class="cost-row">
-<div class="cost-item"><span class="cost-lb">お帰りの回送料金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
-<div class="cost-item"><span class="cost-lb">高速代金（送迎・回送合計／必須）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
-</div>
-<div class="cost-row">
+<div class="cost-item"><span class="cost-lb">お帰りの回送料金（高速代金込）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
 <div class="cost-item"><span class="cost-lb">駐車場代金（必須）</span><div class="money"><input type="text" inputmode="numeric" class="amt sm" data-required-cost-group="kanazawa-fuji-transfer" placeholder="0"><span class="unit">円</span></div></div>
 </div>
 <h3 class="sub-h">その他のエリア</h3>

@@ -85,8 +85,8 @@ for (const [sourceSlug, targetSlug, formId, expectedCount] of definitions) {
   if (sourceSlug === 'kanazawa') {
     const requiredKanazawaCopy = [
       '金沢市内中心部のホテル → 富士レークホテル',
-      'お帰りの回送料金',
-      '高速代金（送迎・回送合計／必須）',
+      '送迎料金（高速代金・基本介助料金・乗降料金込／回送料金・駐車場代金を除く）',
+      'お帰りの回送料金（高速代金込）',
       '兼六園・白川郷観光　8時間｜名園と世界遺産・合掌造りコース',
       'ハイアットセントリック金沢 → 兼六園 → 白川郷・合掌造り集落',
     ]
@@ -95,8 +95,11 @@ for (const [sourceSlug, targetSlug, formId, expectedCount] of definitions) {
         throw new Error('kanazawa: missing required route/cost copy: ' + copy)
       }
     }
-    if (Array.from(artifact.matchAll(/data-required-cost-group="kanazawa-fuji-transfer"/g)).length !== 4) {
+    if (Array.from(artifact.matchAll(/data-required-cost-group="kanazawa-fuji-transfer"/g)).length !== 3) {
       throw new Error('kanazawa: Fuji Lake Hotel conditional costs mismatch')
+    }
+    if (artifact.includes('高速代金（送迎・回送合計／必須）')) {
+      throw new Error('kanazawa: transfer toll must not be collected separately')
     }
   }
 
