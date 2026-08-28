@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(scriptDir, '..')
 const publicRoot = path.join(repoRoot, 'apps/forms-studio/public')
-const referenceOrigin = 'https://flatcare-survey.vercel.app'
 
 const definitions = [
   ['tokyo', 'tokyo-transport-survey', '96ff4bc9-40df-4b10-a3db-486f82374b30', 56],
@@ -19,12 +18,11 @@ const definitions = [
 ]
 
 const workerSource = fs.readFileSync(path.join(publicRoot, '_worker.js'), 'utf8')
-const compareReference = process.argv.includes('--reference')
 
-function stripIntegrationHook(html) {
-  return html.replace(
-    /<script src="\/transport-survey\.js" data-form-id="[^"]+" data-question-count="\d+"><\/script>\n/,
-    '',
+if (process.argv.includes('--reference')) {
+  throw new Error(
+    '--reference is no longer valid after the intentional 2026-08-29 survey wording changes; ' +
+    'run this verifier without that flag.',
   )
 }
 
@@ -54,14 +52,51 @@ for (const [sourceSlug, targetSlug, formId, expectedCount] of definitions) {
     throw new Error(sourceSlug + ': canonical route missing')
   }
 
-  if (compareReference) {
-    const response = await fetch(referenceOrigin + '/' + sourceSlug + '/')
-    if (!response.ok) {
-      throw new Error(sourceSlug + ': reference returned ' + response.status)
+  const inclusionNote = '送迎料金・観光貸切の車両代金には、' +
+    '基本介助料金・乗降料金を含めてご記入ください。'
+  if (!artifact.includes(inclusionNote)) {
+    throw new Error(sourceSlug + ': assistance/boarding inclusion note missing')
+  }
+
+  const courseQuestionCount = Array.from(
+    artifact.matchAll(/<div class="q" data-required-question="true"><p class="qt"><span class="qn">Q\d+<\/span>この行程の料金をご記入ください<\/p>/g),
+  ).length
+  const requiredCostCount = Array.from(
+    artifact.matchAll(/data-required-cost="true"/g),
+  ).length
+  if (!courseQuestionCount || requiredCostCount !== courseQuestionCount * 2) {
+    throw new Error(sourceSlug + ': required toll/parking controls mismatch')
+  }
+  const includedVehicleLabels = Array.from(
+    artifact.matchAll(/車両代金（基本介助料金・乗降料金込）/g),
+  ).length
+  if (includedVehicleLabels !== courseQuestionCount) {
+    throw new Error(sourceSlug + ': sightseeing vehicle inclusion labels mismatch')
+  }
+
+  const transferInclusionLabels = Array.from(
+    artifact.matchAll(/※高速代金・基本介助料金・乗降料金込/g),
+  ).length
+  const expectedTransferInclusionLabels = sourceSlug === 'kanazawa' ? 2 : 3
+  if (transferInclusionLabels !== expectedTransferInclusionLabels) {
+    throw new Error(sourceSlug + ': transfer inclusion labels mismatch')
+  }
+
+  if (sourceSlug === 'kanazawa') {
+    const requiredKanazawaCopy = [
+      '金沢市内中心部のホテル → 富士レークホテル',
+      'お帰りの回送料金',
+      '高速代金（送迎・回送合計／必須）',
+      '兼六園・白川郷観光　8時間｜名園と世界遺産・合掌造りコース',
+      'ハイアットセントリック金沢 → 兼六園 → 白川郷・合掌造り集落',
+    ]
+    for (const copy of requiredKanazawaCopy) {
+      if (!artifact.includes(copy)) {
+        throw new Error('kanazawa: missing required route/cost copy: ' + copy)
+      }
     }
-    const reference = await response.text()
-    if (stripIntegrationHook(artifact) !== reference) {
-      throw new Error(sourceSlug + ': local UI/content differs from reference')
+    if (Array.from(artifact.matchAll(/data-required-cost-group="kanazawa-fuji-transfer"/g)).length !== 4) {
+      throw new Error('kanazawa: Fuji Lake Hotel conditional costs mismatch')
     }
   }
 

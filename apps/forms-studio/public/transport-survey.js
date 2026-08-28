@@ -166,16 +166,84 @@
     error.textContent = message
   }
 
+  const amountPattern = /^[¥￥]?\s*(?:\d{1,3}(?:,\d{3})*|\d+)\s*(?:円)?\s*$/
+
+  function isValidAmount(control) {
+    return amountPattern.test(valueOf(control))
+  }
+
+  function setInvalid(control, invalid) {
+    if (invalid) {
+      control.setAttribute('aria-invalid', 'true')
+      control.style.outline = '2px solid #b42318'
+      control.style.outlineOffset = '2px'
+      return
+    }
+    control.removeAttribute('aria-invalid')
+    control.style.removeProperty('outline')
+    control.style.removeProperty('outline-offset')
+  }
+
+  function validateRequiredAnswers() {
+    const invalidControls = []
+    let missingChoice = false
+
+    const choiceControls = Array.from(
+      document.querySelectorAll('[data-required-choice]'),
+    )
+    const choiceGroups = new Set(
+      choiceControls.map((control) => control.dataset.requiredChoice),
+    )
+    for (const group of choiceGroups) {
+      const controls = choiceControls.filter(
+        (control) => control.dataset.requiredChoice === group,
+      )
+      const selected = controls.find((control) => control.checked)
+      for (const control of controls) setInvalid(control, !selected)
+      if (!selected) {
+        missingChoice = true
+        invalidControls.push(controls[0])
+      }
+    }
+
+    for (const control of document.querySelectorAll('[data-required-cost="true"]')) {
+      const invalid = !isValidAmount(control)
+      setInvalid(control, invalid)
+      if (invalid) invalidControls.push(control)
+    }
+
+    for (const control of document.querySelectorAll('[data-required-cost-group]')) {
+      const group = control.dataset.requiredCostGroup
+      const selected = choiceControls.find(
+        (choice) => choice.dataset.requiredChoice === group && choice.checked,
+      )
+      const isRequired = selected?.value === '対応可能'
+      control.setAttribute('aria-required', String(isRequired))
+      const invalid = isRequired && !isValidAmount(control)
+      setInvalid(control, invalid)
+      if (invalid) invalidControls.push(control)
+    }
+
+    if (!invalidControls.length) return true
+
+    showSubmitError(missingChoice
+      ? '金沢から富士レークホテルまでの送迎に対応可能かお選びください。'
+      : '必須の料金欄に、0円または現時点の概算額を数字でご記入ください。')
+    invalidControls[0]?.focus()
+    return false
+  }
+
   async function submitSurvey() {
     const button = document.querySelector('button.submit')
     if (!button || button.dataset.submitting === 'true') return
+
+    document.querySelector('.submit-error')?.remove()
+    if (!validateRequiredAnswers()) return
 
     button.dataset.submitting = 'true'
     button.disabled = true
     const originalLabel = button.textContent
     button.textContent = '送信中…'
-    document.querySelector('.submit-error')?.remove()
-
     try {
       const data = serializeAnswers()
       const response = await fetch(`${apiUrl}/api/forms/${formId}/submit`, {
@@ -200,6 +268,21 @@
     }
   }
 
+  document.addEventListener('input', (event) => {
+    if (event.target instanceof HTMLInputElement) setInvalid(event.target, false)
+  })
+  document.addEventListener('change', (event) => {
+    if (!(event.target instanceof HTMLInputElement)) return
+    if (!event.target.dataset.requiredChoice) return
+    const group = event.target.dataset.requiredChoice
+    for (const control of document.querySelectorAll('[data-required-choice]')) {
+      if (control.dataset.requiredChoice === group) setInvalid(control, false)
+    }
+    for (const control of document.querySelectorAll('[data-required-cost-group]')) {
+      if (control.dataset.requiredCostGroup !== group) continue
+      control.setAttribute('aria-required', String(event.target.value === '対応可能'))
+      setInvalid(control, false)
+    }
+  })
   document.querySelector('button.submit')?.addEventListener('click', submitSurvey)
 })()
-

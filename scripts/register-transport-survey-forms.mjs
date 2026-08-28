@@ -42,28 +42,31 @@ function artifactPath(definition) {
   return path.join(publicRoot, definition.slug, 'index.html')
 }
 
-function extractQuestionLabels(definition) {
+function extractQuestions(definition) {
   const html = fs.readFileSync(artifactPath(definition), 'utf8')
-  const labels = new Map()
-  const matcher = /<span class="qn">Q(\d+)<\/span>(.*?)<\/p>/gs
+  const questions = new Map()
+  const matcher = /<div class="q"([^>]*)><p class="qt"><span class="qn">Q(\d+)<\/span>(.*?)<\/p>/gs
 
   for (const match of html.matchAll(matcher)) {
-    const number = Number(match[1])
-    labels.set(number, 'Q' + number + ' ' + decodeText(match[2]))
+    const number = Number(match[2])
+    questions.set(number, {
+      label: 'Q' + number + ' ' + decodeText(match[3]),
+      required: match[1].includes('data-required-question="true"'),
+    })
   }
 
-  if (labels.size !== definition.questionCount) {
+  if (questions.size !== definition.questionCount) {
     throw new Error(
       definition.area + ': expected ' + definition.questionCount +
-      ' questions, found ' + labels.size,
+      ' questions, found ' + questions.size,
     )
   }
   for (let number = 1; number <= definition.questionCount; number += 1) {
-    if (!labels.has(number)) {
+    if (!questions.has(number)) {
       throw new Error(definition.area + ': missing Q' + number)
     }
   }
-  return labels
+  return questions
 }
 
 function fieldType(number) {
@@ -74,14 +77,15 @@ function fieldType(number) {
 }
 
 function buildPayload(definition) {
-  const labels = extractQuestionLabels(definition)
+  const questions = extractQuestions(definition)
   const fields = Array.from({ length: definition.questionCount }, (_, index) => {
     const number = index + 1
+    const question = questions.get(number)
     return {
       name: 'q' + number,
-      label: labels.get(number),
+      label: question.label,
       type: fieldType(number),
-      required: false,
+      required: question.required,
     }
   })
 
