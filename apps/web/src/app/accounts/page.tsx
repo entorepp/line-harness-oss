@@ -15,6 +15,7 @@ interface LineAccountListItem {
   pictureUrl: string | null
   basicId: string | null
   channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat'
+  whatsappBusinessAccountConfigured?: boolean
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -32,6 +33,10 @@ interface WeChatKfAccountConfig {
   wechatKfCallbackToken?: string | null
   wechatKfEncodingAesKey?: string | null
   wechatFollowUrl?: string | null
+}
+
+interface WhatsAppAccountConfig {
+  whatsappBusinessAccountId?: string | null
 }
 
 interface WeChatKfForm {
@@ -80,6 +85,12 @@ export default function AccountsPage() {
   const [loadingWeChatKfId, setLoadingWeChatKfId] = useState<string | null>(null)
   const [savingWeChatKfId, setSavingWeChatKfId] = useState<string | null>(null)
   const [generatingWeChatKfLinkId, setGeneratingWeChatKfLinkId] = useState<string | null>(null)
+  const [openWhatsAppId, setOpenWhatsAppId] = useState<string | null>(null)
+  const [whatsappWabaIds, setWhatsappWabaIds] = useState<Record<string, string>>({})
+  const [whatsappErrors, setWhatsappErrors] = useState<Record<string, string>>({})
+  const [whatsappNotices, setWhatsappNotices] = useState<Record<string, string>>({})
+  const [loadingWhatsAppId, setLoadingWhatsAppId] = useState<string | null>(null)
+  const [savingWhatsAppId, setSavingWhatsAppId] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -267,6 +278,64 @@ export default function AccountsPage() {
     }
   }
 
+  const openWhatsAppSettings = async (id: string) => {
+    if (openWhatsAppId === id) {
+      setOpenWhatsAppId(null)
+      return
+    }
+    setOpenWhatsAppId(id)
+    setLoadingWhatsAppId(id)
+    setWhatsappErrors((current) => ({ ...current, [id]: '' }))
+    setWhatsappNotices((current) => ({ ...current, [id]: '' }))
+    try {
+      const response = await api.lineAccounts.get(id)
+      if (!response.success) throw new Error('WhatsApp設定を取得できませんでした')
+      const config = response.data as typeof response.data & WhatsAppAccountConfig
+      setWhatsappWabaIds((current) => ({
+        ...current,
+        [id]: config.whatsappBusinessAccountId || '',
+      }))
+    } catch (loadError) {
+      setWhatsappErrors((current) => ({
+        ...current,
+        [id]: loadError instanceof Error ? loadError.message : 'WhatsApp設定を取得できませんでした',
+      }))
+    } finally {
+      setLoadingWhatsAppId(null)
+    }
+  }
+
+  const saveWhatsAppSettings = async (id: string) => {
+    const wabaId = (whatsappWabaIds[id] || '').trim()
+    if (wabaId && !/^\d{5,30}$/.test(wabaId)) {
+      setWhatsappErrors((current) => ({ ...current, [id]: 'WABA IDは5〜30桁の数字で入力してください' }))
+      return
+    }
+    setSavingWhatsAppId(id)
+    setWhatsappErrors((current) => ({ ...current, [id]: '' }))
+    setWhatsappNotices((current) => ({ ...current, [id]: '' }))
+    try {
+      const response = await api.lineAccounts.update(id, {
+        whatsappBusinessAccountId: wabaId || null,
+      })
+      if (!response.success) throw new Error('WhatsApp設定を保存できませんでした')
+      setWhatsappNotices((current) => ({
+        ...current,
+        [id]: wabaId
+          ? '保存しました。Chats画面で承認済みテンプレートを取得できます。'
+          : 'WABA IDを解除しました。',
+      }))
+      await load()
+    } catch (saveError) {
+      setWhatsappErrors((current) => ({
+        ...current,
+        [id]: saveError instanceof Error ? saveError.message : 'WhatsApp設定を保存できませんでした',
+      }))
+    } finally {
+      setSavingWhatsAppId(null)
+    }
+  }
+
   return (
     <div>
       <Header
@@ -400,6 +469,69 @@ export default function AccountsPage() {
                 </div>
               </div>
               <TestRecipientsSetting accountId={account.id} />
+
+              {account.channelType === 'whatsapp' && (
+                <div className="mt-4 rounded-lg border border-green-200 bg-green-50/60 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-green-950">WhatsAppから初回連絡</p>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${account.whatsappBusinessAccountConfigured ? 'bg-green-700 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                          {account.whatsappBusinessAccountConfigured ? 'WABA設定済み' : 'WABA未設定'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-green-900">
+                        Meta承認済みテンプレートを取得するため、WhatsApp Business Account IDを登録します。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void openWhatsAppSettings(account.id)}
+                      className="rounded-lg border border-green-700 bg-white px-3 py-1.5 text-xs font-medium text-green-800"
+                    >
+                      {openWhatsAppId === account.id ? '設定を閉じる' : 'WABA IDを設定'}
+                    </button>
+                  </div>
+
+                  {whatsappErrors[account.id] && (
+                    <p className="mt-3 rounded-md border border-red-200 bg-white p-2 text-xs text-red-700">{whatsappErrors[account.id]}</p>
+                  )}
+                  {whatsappNotices[account.id] && (
+                    <p className="mt-3 rounded-md border border-green-200 bg-white p-2 text-xs text-green-800">{whatsappNotices[account.id]}</p>
+                  )}
+
+                  {openWhatsAppId === account.id && (
+                    <div className="mt-3 space-y-3 rounded-lg border border-green-200 bg-white p-4">
+                      <label className="block text-xs font-medium text-gray-700">
+                        WhatsApp Business Account ID（WABA ID）
+                        <input
+                          inputMode="numeric"
+                          value={whatsappWabaIds[account.id] || ''}
+                          onChange={(event) => {
+                            setWhatsappWabaIds((current) => ({ ...current, [account.id]: event.target.value }))
+                            setWhatsappErrors((current) => ({ ...current, [account.id]: '' }))
+                            setWhatsappNotices((current) => ({ ...current, [account.id]: '' }))
+                          }}
+                          disabled={loadingWhatsAppId === account.id || savingWhatsAppId === account.id}
+                          className="mt-1 w-full rounded-lg border border-green-200 px-3 py-2 font-mono text-sm"
+                          placeholder="例: 123456789012345"
+                        />
+                      </label>
+                      <p className="text-[11px] leading-5 text-gray-500">
+                        WABA IDはシークレットではありません。既存のアクセストークンを使って承認済みテンプレートだけを読み込みます。
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void saveWhatsAppSettings(account.id)}
+                        disabled={loadingWhatsAppId === account.id || savingWhatsAppId === account.id}
+                        className="w-full rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {loadingWhatsAppId === account.id ? '読込中...' : savingWhatsAppId === account.id ? '保存中...' : 'WABA IDを保存'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {account.channelType === 'wechat' && (
                 <div className="mt-4 rounded-lg border border-green-200 bg-green-50/60 p-4">

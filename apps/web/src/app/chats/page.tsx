@@ -6,6 +6,7 @@ import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
 import ChatComposer from '@/components/chat-composer'
 import ChatMessageContent from '@/components/chat-message-content'
+import WhatsAppInitiationModal from '@/components/whatsapp-initiation-modal'
 
 interface Chat {
   id: string
@@ -235,6 +236,7 @@ export default function ChatsPage() {
   const [slackInput, setSlackInput] = useState('')
   const [savingSlack, setSavingSlack] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+  const [showWhatsAppInitiation, setShowWhatsAppInitiation] = useState(false)
 
   // Track previous chat state for notification
   const prevUnreadRef = useRef(0)
@@ -615,6 +617,7 @@ export default function ChatsPage() {
   const selectedAccountName = selectedAccount?.displayName || selectedAccount?.name || '選択中のチャネル'
   const fallbackAccountName = fallbackAccount?.displayName || fallbackAccount?.name
   const listIsEmpty = !loading && chats.length === 0 && friendsWithoutChats.length === 0
+  const whatsappAccounts = accounts.filter((account) => account.channelType === 'whatsapp' && account.isActive)
 
   const handleSwitchToFallbackAccount = () => {
     if (!fallbackAccount) return
@@ -647,29 +650,40 @@ export default function ChatsPage() {
         }
         action={
           accounts.length > 0 ? (
-            <select
-              value={selectedAccountId ?? ''}
-              onChange={(event) => handleSelectAccount(event.target.value)}
-              className="min-h-[44px] min-w-[220px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
-              aria-label="チャネル切替"
-            >
-              {accounts.map((account) => {
-                const name = account.displayName || account.name
-                const friendCount = account.stats?.friendCount ?? 0
-                const channelLabel = account.channelType === 'kakao'
-                  ? 'Kakao'
-                  : account.channelType === 'wechat'
-                    ? 'WeChat'
-                  : account.channelType === 'whatsapp'
-                    ? 'WhatsApp'
-                    : 'LINE'
-                return (
-                  <option key={account.id} value={account.id}>
-                    {name} / {channelLabel} / 友だち{friendCount}件
-                  </option>
-                )
-              })}
-            </select>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {whatsappAccounts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowWhatsAppInitiation(true)}
+                  className="min-h-[44px] rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700"
+                >
+                  + WhatsAppで新規連絡
+                </button>
+              )}
+              <select
+                value={selectedAccountId ?? ''}
+                onChange={(event) => handleSelectAccount(event.target.value)}
+                className="min-h-[44px] min-w-[220px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
+                aria-label="チャネル切替"
+              >
+                {accounts.map((account) => {
+                  const name = account.displayName || account.name
+                  const friendCount = account.stats?.friendCount ?? 0
+                  const channelLabel = account.channelType === 'kakao'
+                    ? 'Kakao'
+                    : account.channelType === 'wechat'
+                      ? 'WeChat'
+                    : account.channelType === 'whatsapp'
+                      ? 'WhatsApp'
+                      : 'LINE'
+                  return (
+                    <option key={account.id} value={account.id}>
+                      {name} / {channelLabel} / 友だち{friendCount}件
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
           ) : (
             <button
               type="button"
@@ -1093,6 +1107,21 @@ export default function ChatsPage() {
           ) : null}
         </div>
       </div>
+      {showWhatsAppInitiation && (
+        <WhatsAppInitiationModal
+          accounts={whatsappAccounts}
+          initialAccountId={selectedAccount?.channelType === 'whatsapp' ? selectedAccount.id : null}
+          onClose={() => setShowWhatsAppInitiation(false)}
+          onCreated={(accountId, result) => {
+            setShowWhatsAppInitiation(false)
+            setSelectedAccountId(accountId)
+            setSelectedFriendId(null)
+            setSelectedChatId(result.chatId)
+            setChatDetail(null)
+            void loadChats()
+          }}
+        />
+      )}
     </div>
   )
 }

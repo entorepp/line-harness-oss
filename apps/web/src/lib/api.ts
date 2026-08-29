@@ -119,6 +119,55 @@ export type WeChatKfUpdate = {
   wechatFollowUrl?: string | null
 }
 
+export type WhatsAppTemplateParameter = {
+  key: string
+  component: 'header' | 'body'
+  index: number
+  name: string | null
+  label: string
+}
+
+export type WhatsAppInitiationTemplate = {
+  id: string
+  name: string
+  language: string
+  status: string
+  category: string
+  parameterFormat: 'POSITIONAL' | 'NAMED'
+  headerText: string | null
+  bodyText: string
+  footerText: string | null
+  buttonLabels: string[]
+  parameters: WhatsAppTemplateParameter[]
+  supportedForInitiation: boolean
+  unsupportedReason: string | null
+}
+
+export type WhatsAppInitiationResult = {
+  accepted: boolean
+  duplicate: boolean
+  status: 'accepted' | 'pending' | 'failed' | 'unknown'
+  initiationId: string
+  friendId: string
+  chatId: string
+  messageId: string
+  providerMessageId: string | null
+  errorCode: string | null
+  errorMessage: string | null
+}
+
+export class ApiRequestError extends Error {
+  readonly status: number
+  readonly body: Record<string, unknown> | null
+
+  constructor(message: string, status: number, body: Record<string, unknown> | null) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+    this.body = body
+  }
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL
 if (!API_URL) {
   throw new Error(
@@ -153,8 +202,13 @@ export async function fetchApi<T>(path: string, options?: RequestInit & { rawBod
     },
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string; message?: string } | null
-    throw new Error(body?.error || body?.message || `API error: ${res.status}`)
+    const body = await res.json().catch(() => null) as Record<string, unknown> | null
+    const message = typeof body?.error === 'string'
+      ? body.error
+      : typeof body?.message === 'string'
+        ? body.message
+        : `API error: ${res.status}`
+    throw new ApiRequestError(message, res.status, body)
   }
   return res.json() as Promise<T>
 }
@@ -367,7 +421,9 @@ export const api = {
       }),
     update: (
       id: string,
-      data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'isActive'>> & WeChatKfUpdate,
+      data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'isActive'>>
+        & WeChatKfUpdate
+        & { whatsappBusinessAccountId?: string | null },
     ) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}`, {
         method: 'PUT',
@@ -386,6 +442,31 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ scene }),
       }),
+  },
+  whatsapp: {
+    listInitiationTemplates: (accountId: string) =>
+      fetchApi<ApiResponse<{
+        configured: boolean
+        releaseMode: 'off' | 'test' | 'live'
+        templates: WhatsAppInitiationTemplate[]
+        reason: string | null
+      }>>(`/api/whatsapp/accounts/${accountId}/templates`),
+    initiate: (data: {
+      idempotencyKey: string
+      lineAccountId: string
+      recipientPhone: string
+      customerName: string
+      numberProvidedConfirmed: boolean
+      optInConfirmed: boolean
+      consentSource: 'web_form' | 'email' | 'phone' | 'in_person' | 'other'
+      consentObtainedAt: string
+      templateName: string
+      templateLanguage: string
+      templateParameters: Record<string, string>
+    }) => fetchApi<ApiResponse<WhatsAppInitiationResult>>('/api/whatsapp/initial-messages', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   },
   conversions: {
     points: () =>
