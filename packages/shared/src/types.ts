@@ -282,8 +282,6 @@ export interface LineAccount {
   channelAccessToken: string;
   /** Channel Secret */
   channelSecret: string;
-  /** WhatsApp Business Account ID (WABA ID, WhatsApp channels only) */
-  whatsappBusinessAccountId?: string | null;
   /** 有効/無効 */
   isActive: boolean;
   /** 作成日時 (ISO 8601) */

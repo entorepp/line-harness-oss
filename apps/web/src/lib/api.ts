@@ -421,7 +421,9 @@ export const api = {
       }),
     update: (
       id: string,
-      data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'whatsappBusinessAccountId' | 'isActive'>> & WeChatKfUpdate,
+      data: Partial<Pick<LineAccount, 'name' | 'channelAccessToken' | 'channelSecret' | 'isActive'>>
+        & WeChatKfUpdate
+        & { whatsappBusinessAccountId?: string | null },
     ) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}`, {
         method: 'PUT',
