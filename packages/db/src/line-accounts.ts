@@ -21,6 +21,7 @@ export interface LineAccount {
   login_channel_secret: string | null;
   liff_id: string | null;
   channel_type: LineAccountChannelType;
+  whatsapp_business_account_id: string | null;
   locale: string;
   default_slack_channel: string | null;
   wechat_encoding_aes_key: string | null;
@@ -52,6 +53,7 @@ export interface CreateLineAccountInput {
   locale?: string;
   defaultSlackChannel?: string | null;
   wechatEncodingAesKey?: string | null;
+  whatsappBusinessAccountId?: string | null;
 }
 
 export async function createLineAccount(
@@ -64,8 +66,8 @@ export async function createLineAccount(
   await db
     .prepare(
       `INSERT INTO line_accounts
-         (id, channel_id, name, channel_access_token, channel_secret, channel_type, locale, default_slack_channel, wechat_encoding_aes_key, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+         (id, channel_id, name, channel_access_token, channel_secret, channel_type, whatsapp_business_account_id, locale, default_slack_channel, wechat_encoding_aes_key, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     )
     .bind(
       id,
@@ -74,6 +76,7 @@ export async function createLineAccount(
       input.channelAccessToken,
       input.channelSecret ?? '',
       input.channelType ?? 'line',
+      input.whatsappBusinessAccountId ?? null,
       input.locale ?? 'ja',
       input.defaultSlackChannel ?? null,
       input.wechatEncodingAesKey ?? null,
@@ -117,6 +120,7 @@ export interface UpdateLineAccountInput {
   channel_access_token?: string;
   channel_secret?: string;
   channel_type?: LineAccountChannelType;
+  whatsapp_business_account_id?: string | null;
   locale?: string;
   default_slack_channel?: string | null;
   wechat_encoding_aes_key?: string | null;
@@ -160,6 +164,10 @@ export async function updateLineAccount(
   if (updates.channel_type !== undefined) {
     fields.push('channel_type = ?');
     values.push(updates.channel_type);
+  }
+  if (updates.whatsapp_business_account_id !== undefined) {
+    fields.push('whatsapp_business_account_id = ?');
+    values.push(updates.whatsapp_business_account_id ?? null);
   }
   if (updates.locale !== undefined) {
     fields.push('locale = ?');

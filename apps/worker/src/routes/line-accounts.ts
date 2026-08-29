@@ -56,6 +56,7 @@ function serializeLineAccount(row: DbLineAccount) {
     channelId: row.channel_id,
     name: row.name,
     channelType: row.channel_type || 'line',
+    whatsappBusinessAccountConfigured: Boolean(row.whatsapp_business_account_id),
     locale: row.locale || 'ja',
     defaultSlackChannel: row.default_slack_channel ?? null,
     isActive: Boolean(row.is_active),
@@ -70,6 +71,7 @@ function serializeLineAccountFull(row: DbLineAccount) {
     ...serializeLineAccount(row),
     channelAccessToken: row.channel_access_token,
     channelSecret: row.channel_secret,
+    whatsappBusinessAccountId: row.whatsapp_business_account_id,
     wechatEncodingAesKey: row.wechat_encoding_aes_key,
     wechatKfCorpId: row.wechat_kf_corp_id,
     wechatKfSecret: row.wechat_kf_secret,
@@ -489,6 +491,7 @@ lineAccounts.post('/api/line-accounts', async (c) => {
       locale?: string;
       defaultSlackChannel?: string | null;
       wechatEncodingAesKey?: string | null;
+      whatsappBusinessAccountId?: string | null;
     }>();
 
     const channelType: ChannelType =
@@ -535,10 +538,24 @@ lineAccounts.post('/api/line-accounts', async (c) => {
       }
     }
 
+    const whatsappBusinessAccountId = body.whatsappBusinessAccountId?.trim() || null;
+    if (
+      whatsappBusinessAccountId
+      && (channelType !== 'whatsapp' || !/^\d{5,30}$/.test(whatsappBusinessAccountId))
+    ) {
+      return c.json({
+        success: false,
+        error: channelType === 'whatsapp'
+          ? 'WhatsApp Business Account ID must contain 5 to 30 digits'
+          : 'WhatsApp Business Account ID can only be set on a WhatsApp account',
+      }, 400);
+    }
+
     const account = await createLineAccount(c.env.DB, {
       ...body,
       channelType,
       channelSecret: body.channelSecret ?? '',
+      whatsappBusinessAccountId,
       wechatEncodingAesKey: channelType === 'wechat' ? body.wechatEncodingAesKey?.trim() || null : null,
     });
     return c.json({ success: true, data: serializeLineAccountFull(account) }, 201);
@@ -557,6 +574,7 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       channelAccessToken?: string;
       channelSecret?: string;
       channelType?: ChannelType;
+      whatsappBusinessAccountId?: string | null;
       locale?: string;
       defaultSlackChannel?: string | null;
       wechatEncodingAesKey?: string | null;
@@ -608,6 +626,22 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
     if (!existing) {
       return c.json({ success: false, error: 'LINE account not found' }, 404);
     }
+    const effectiveChannelType = body.channelType ?? existing.channel_type;
+    const whatsappBusinessAccountId = body.whatsappBusinessAccountId?.trim() || null;
+    if (body.whatsappBusinessAccountId !== undefined) {
+      if (effectiveChannelType !== 'whatsapp') {
+        return c.json({
+          success: false,
+          error: 'WhatsApp Business Account ID can only be set on a WhatsApp account',
+        }, 400);
+      }
+      if (whatsappBusinessAccountId && !/^\d{5,30}$/.test(whatsappBusinessAccountId)) {
+        return c.json({
+          success: false,
+          error: 'WhatsApp Business Account ID must contain 5 to 30 digits',
+        }, 400);
+      }
+    }
     const kfCorpId = body.wechatKfCorpId?.trim() || null;
     const kfSecret = body.wechatKfSecret?.trim() || null;
     const kfOpenKfid = body.wechatKfOpenKfid?.trim() || null;
@@ -623,6 +657,8 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       channel_access_token: body.channelAccessToken,
       channel_secret: body.channelSecret,
       channel_type: body.channelType,
+      whatsapp_business_account_id:
+        body.whatsappBusinessAccountId !== undefined ? whatsappBusinessAccountId : undefined,
       locale: body.locale,
       default_slack_channel: body.defaultSlackChannel,
       wechat_encoding_aes_key: body.wechatEncodingAesKey,

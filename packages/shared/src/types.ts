@@ -284,6 +284,8 @@ export interface LineAccount {
   channelAccessToken: string;
   /** Provider secret used for webhook verification */
   channelSecret: string;
+  /** WhatsApp Business Account ID used to read approved message templates */
+  whatsappBusinessAccountId?: string | null;
   /** WeChat callback message encryption key */
   wechatEncodingAesKey?: string | null;
   /** WeCom corporation ID for WeChat Customer Service */
