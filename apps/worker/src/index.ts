@@ -42,6 +42,7 @@ import { wechatKfWebhook } from './routes/wechat-kf-webhook.js';
 import { travelQuoteIntents } from './routes/travel-quote-intents.js';
 import { metaWebhook } from './routes/meta-webhook.js';
 import { metaDataDeletion } from './routes/meta-data-deletion.js';
+import { whatsappInitiation } from './routes/whatsapp-initiation.js';
 
 export type Env = {
   Bindings: {
@@ -61,6 +62,8 @@ export type Env = {
     FLATWORKER_API_BASE_URL?: string;
     FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
     QUOTE_CHAT_DELIVERY_ENABLED?: string;
+    WHATSAPP_INITIAL_CONTACT_MODE?: string;
+    WHATSAPP_INITIAL_CONTACT_TEST_PHONE_HASHES?: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
     GA4_MEASUREMENT_ID: string;
@@ -117,6 +120,7 @@ app.route('/', scenarios);
 app.route('/', broadcasts);
 app.route('/', users);
 app.route('/', lineAccounts);
+app.route('/', whatsappInitiation);
 app.route('/', conversions);
 app.route('/', affiliates);
 app.route('/', openapi);
