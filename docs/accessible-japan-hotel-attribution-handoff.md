@@ -53,4 +53,4 @@ https://liffform-studio.pages.dev/public-form?id=9ab583b2-e42e-4ca2-bcb9-13a3c59
 - ホテル個別設定、ホテルマスタ、追加スクリプトは不要。
 - 上記3ページの表示確認と、承認済みテスト回答1件の保存・通知確認が完了している。
 
-本番フォームの更新とテスト送信は、オーナー承認後に行います。
+Flat Travel 側の本番フォーム更新は完了しています。Accessible Japan 側で共通CTAを差し替えた後、Hilton Tokyo と Park Hotel Tokyo の表示確認を行ってください。承認のない本番テスト回答・Slack通知は実施していません。
