@@ -65,8 +65,7 @@ export default function WhatsAppInitiationModal({
   const [recipientPhone, setRecipientPhone] = useState('')
   const [consentSource, setConsentSource] = useState<ConsentSource>('web_form')
   const [consentObtainedAt, setConsentObtainedAt] = useState(localDatetimeValue())
-  const [numberProvidedConfirmed, setNumberProvidedConfirmed] = useState(false)
-  const [optInConfirmed, setOptInConfirmed] = useState(false)
+  const [consentConfirmed, setConsentConfirmed] = useState(false)
   const [templates, setTemplates] = useState<WhatsAppInitiationTemplate[]>([])
   const [templateKey, setTemplateKey] = useState('')
   const [templateParameters, setTemplateParameters] = useState<Record<string, string>>({})
@@ -159,8 +158,8 @@ export default function WhatsAppInitiationModal({
         lineAccountId: accountId,
         recipientPhone,
         customerName,
-        numberProvidedConfirmed,
-        optInConfirmed,
+        numberProvidedConfirmed: consentConfirmed,
+        optInConfirmed: consentConfirmed,
         consentSource,
         consentObtainedAt: consentDate.toISOString(),
         templateName: selectedTemplate.name,
@@ -238,14 +237,10 @@ export default function WhatsAppInitiationModal({
             </label>
           </div>
 
-          <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
             <label className="flex items-start gap-3 text-sm text-amber-950">
-              <input type="checkbox" checked={numberProvidedConfirmed} onChange={(event) => { resetFailedAttemptForEdit(); setNumberProvidedConfirmed(event.target.checked) }} disabled={unknownOutcome} className="mt-0.5 h-4 w-4" />
-              <span>お客様本人から、この連絡先電話番号の提供を受けました。</span>
-            </label>
-            <label className="flex items-start gap-3 text-sm text-amber-950">
-              <input type="checkbox" checked={optInConfirmed} onChange={(event) => { resetFailedAttemptForEdit(); setOptInConfirmed(event.target.checked) }} disabled={unknownOutcome} className="mt-0.5 h-4 w-4" />
-              <span>お客様から、Flat TravelがWhatsAppで連絡する明示的な同意を得ました。</span>
+              <input type="checkbox" checked={consentConfirmed} onChange={(event) => { resetFailedAttemptForEdit(); setConsentConfirmed(event.target.checked) }} disabled={unknownOutcome} className="mt-0.5 h-4 w-4" />
+              <span>お客様本人から番号を受け取り、Flat TravelからWhatsAppで連絡することに同意済みです。</span>
             </label>
           </div>
 
@@ -277,7 +272,7 @@ export default function WhatsAppInitiationModal({
 
           <div className="flex flex-col-reverse gap-2 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end">
             <button type="button" onClick={onClose} disabled={submitting} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">キャンセル</button>
-            <button type="submit" disabled={submitting || unknownOutcome || configured !== true || releaseMode === null || releaseMode === 'off' || !selectedTemplate || !numberProvidedConfirmed || !optInConfirmed} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="submit" disabled={submitting || unknownOutcome || configured !== true || releaseMode === null || releaseMode === 'off' || !selectedTemplate || !consentConfirmed} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
               {submitting ? 'Metaへ送信中...' : unknownOutcome ? '結果確認が必要です' : '承認済みテンプレートを送信'}
             </button>
           </div>
