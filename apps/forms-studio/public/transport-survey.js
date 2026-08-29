@@ -72,6 +72,16 @@
   }
 
   function serializeCostRows(container, lines, handled) {
+    for (const costs of container.querySelectorAll('.costs')) {
+      for (const control of costs.querySelectorAll('input,textarea,select')) {
+        const value = valueOf(control)
+        const labelledBlock = control.closest('.pair-item,.cost-lead')
+        const label = clean(labelledBlock?.querySelector('.cost-n')?.textContent)
+        if (value) lines.push(`${label || '金額'}: ${value}`)
+        handled.add(control)
+      }
+    }
+
     for (const block of container.querySelectorAll('.cost-main,.cost-item')) {
       const control = block.querySelector('input,textarea,select')
       if (!control) continue
@@ -186,49 +196,26 @@
 
   function validateRequiredAnswers() {
     const invalidControls = []
-    let missingChoice = false
 
-    const choiceControls = Array.from(
-      document.querySelectorAll('[data-required-choice]'),
-    )
-    const choiceGroups = new Set(
-      choiceControls.map((control) => control.dataset.requiredChoice),
-    )
-    for (const group of choiceGroups) {
-      const controls = choiceControls.filter(
-        (control) => control.dataset.requiredChoice === group,
-      )
-      const selected = controls.find((control) => control.checked)
-      for (const control of controls) setInvalid(control, !selected)
-      if (!selected) {
-        missingChoice = true
-        invalidControls.push(controls[0])
+    for (const costs of document.querySelectorAll('.costs')) {
+      const vehicle = costs.querySelector('.cost-lead input.amt')
+      const relatedCosts = Array.from(costs.querySelectorAll('input.must-in'))
+      const controls = [vehicle, ...relatedCosts].filter(Boolean)
+      const hasAnyAmount = controls.some((control) => valueOf(control))
+
+      for (const control of controls) {
+        control.setAttribute('aria-required', String(hasAnyAmount))
+        const invalid = hasAnyAmount && !isValidAmount(control)
+        setInvalid(control, invalid)
+        if (invalid) invalidControls.push(control)
       }
-    }
-
-    for (const control of document.querySelectorAll('[data-required-cost="true"]')) {
-      const invalid = !isValidAmount(control)
-      setInvalid(control, invalid)
-      if (invalid) invalidControls.push(control)
-    }
-
-    for (const control of document.querySelectorAll('[data-required-cost-group]')) {
-      const group = control.dataset.requiredCostGroup
-      const selected = choiceControls.find(
-        (choice) => choice.dataset.requiredChoice === group && choice.checked,
-      )
-      const isRequired = selected?.value === '対応可能'
-      control.setAttribute('aria-required', String(isRequired))
-      const invalid = isRequired && !isValidAmount(control)
-      setInvalid(control, invalid)
-      if (invalid) invalidControls.push(control)
     }
 
     if (!invalidControls.length) return true
 
-    showSubmitError(missingChoice
-      ? '金沢から富士レークホテルまでの送迎に対応可能かお選びください。'
-      : '必須の料金欄に、0円または現時点の概算額を数字でご記入ください。')
+    showSubmitError(
+      '料金を入力する行程は、車両代金・高速代金・駐車場代金をすべて数字でご記入ください（かからない場合は0）。',
+    )
     invalidControls[0]?.focus()
     return false
   }
@@ -273,16 +260,7 @@
   })
   document.addEventListener('change', (event) => {
     if (!(event.target instanceof HTMLInputElement)) return
-    if (!event.target.dataset.requiredChoice) return
-    const group = event.target.dataset.requiredChoice
-    for (const control of document.querySelectorAll('[data-required-choice]')) {
-      if (control.dataset.requiredChoice === group) setInvalid(control, false)
-    }
-    for (const control of document.querySelectorAll('[data-required-cost-group]')) {
-      if (control.dataset.requiredCostGroup !== group) continue
-      control.setAttribute('aria-required', String(event.target.value === '対応可能'))
-      setInvalid(control, false)
-    }
+    setInvalid(event.target, false)
   })
   document.querySelector('button.submit')?.addEventListener('click', submitSurvey)
 })()
