@@ -67,12 +67,12 @@ function stableUuid(input) {
 }
 
 const FORM_ID = stableUuid('accessible-japan-flat-travel-trip-planning-form-v1');
-const FORM_NAME = 'Accessible Japan × Flat Travel Trip Planning Form';
+const FORM_NAME = 'Flat Travel Trip Planning Form';
 
 const payload = {
   id: FORM_ID,
   name: FORM_NAME,
-  description: 'Tell us where and roughly when you want to travel. Exact dates are not required. Flat Travel will propose an accessible package that combines suitable hotels and transportation, with optional experiences, around your route.',
+  description: 'Tell us where and roughly when you want to travel. Exact dates are not required. Flat Travel will propose a travel package that combines hotels and transportation suited to your accessibility needs, with optional experiences along your route.',
   fields: [
     {
       name: 'first_name',
@@ -94,6 +94,36 @@ const payload = {
       type: 'email',
       required: true,
       placeholder: 'name@example.com',
+    },
+    {
+      name: 'hotel_interest',
+      label: 'What appealed to you about the hotel you were viewing?',
+      type: 'checkbox',
+      required: true,
+      helperText: 'Select all that apply. This helps us understand what to preserve when suggesting alternatives.',
+      options: [
+        'Location / neighbourhood',
+        'Hotel quality, style or brand',
+        'Accessible room information',
+        'Room size or layout',
+        'Price range',
+        'I did not come from a specific hotel page / not sure',
+      ],
+      allowOtherOption: true,
+      otherOptionLabel: 'Other',
+    },
+    {
+      name: 'hotel_match_preference',
+      label: 'How should we use that hotel in your proposal?',
+      type: 'radio',
+      required: true,
+      helperText: 'The hotel page is a starting point, not a booking or availability confirmation.',
+      options: [
+        'This hotel is my first choice',
+        'Similar hotels in the same area are welcome',
+        'Similar hotels in other convenient areas are welcome',
+        'I am still exploring / not sure',
+      ],
     },
     {
       name: 'hotel_grade',

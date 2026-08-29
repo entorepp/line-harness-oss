@@ -5,9 +5,22 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 type ReportLead = {
   id: string
   receivedAt: string
+  sourcePartner: string
+  sourceHotelName: string
+  sourceHotelSlug: string
+  sourcePageUrl: string
+  sourceAttributionMethod: string
+  sourceAttributionConfidence: string
+  utmSource: string
+  utmMedium: string
+  utmCampaign: string
+  utmContent: string
+  utmTerm: string
   firstName: string
   lastName: string
   email: string
+  hotelInterest: string[]
+  hotelMatchPreference: string
   hotelGrade: string
   legacyBudget: string
   travellers: string
@@ -229,6 +242,41 @@ export default function SharedReportPage() {
                         )}
                       </div>
                       <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="rounded-2xl border border-[#ffd0d4] bg-[#fff7f7] p-4 sm:col-span-2 lg:col-span-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#d91f2b]">流入ホテル</p>
+                          <p className="mt-1 text-lg font-semibold text-slate-900">
+                            {lead.sourceHotelName || lead.sourceHotelSlug || '特定できませんでした'}
+                          </p>
+                          <dl className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <Detail label="Partner" value={lead.sourcePartner} />
+                            <Detail label="Hotel slug" value={lead.sourceHotelSlug} />
+                            <Detail
+                              label="Attribution"
+                              value={[lead.sourceAttributionMethod, lead.sourceAttributionConfidence].filter(Boolean).join(' / ')}
+                            />
+                            <Detail label="UTM source / medium" value={[lead.utmSource, lead.utmMedium].filter(Boolean).join(' / ')} />
+                            <Detail label="UTM campaign" value={lead.utmCampaign} />
+                            <Detail label="UTM content" value={lead.utmContent} />
+                            <Detail label="UTM term" value={lead.utmTerm} />
+                            {lead.sourcePageUrl && (
+                              <div className="sm:col-span-2 lg:col-span-3">
+                                <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Source page</dt>
+                                <dd className="mt-1 break-all text-sm leading-6">
+                                  <a
+                                    className="font-semibold text-[#d91f2b] underline-offset-4 hover:underline"
+                                    href={lead.sourcePageUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    {lead.sourcePageUrl}
+                                  </a>
+                                </dd>
+                              </div>
+                            )}
+                          </dl>
+                        </div>
+                        <Detail label="ホテルで魅力を感じた点" value={lead.hotelInterest.join(', ')} />
+                        <Detail label="提案での扱い" value={lead.hotelMatchPreference} />
                         <Detail label="Hotel grade" value={lead.hotelGrade} />
                         {lead.legacyBudget && <Detail label="Legacy total budget" value={lead.legacyBudget} />}
                         <Detail label="Travellers" value={lead.travellers} />

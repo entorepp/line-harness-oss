@@ -2,8 +2,21 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { getCityDateEntriesIssue, getVisibleFormFields, normalizeCityDateEntries } from '@line-crm/shared'
-import type { CityDateEntry, Form as HarnessForm, FormField, FormIssue } from '@line-crm/shared'
+import {
+  ACCESSIBLE_JAPAN_FORM_ID,
+  buildAccessibleJapanAttributionInput,
+  getCityDateEntriesIssue,
+  getVisibleFormFields,
+  normalizeAccessibleJapanAttribution,
+  normalizeCityDateEntries,
+} from '@line-crm/shared'
+import type {
+  AccessibleJapanAttribution,
+  CityDateEntry,
+  Form as HarnessForm,
+  FormField,
+  FormIssue,
+} from '@line-crm/shared'
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL
 const API_URL = configuredApiUrl !== undefined
@@ -750,6 +763,7 @@ export default function PublicFormPage() {
     || searchParams.get('redirectUrl')
     || searchParams.get('redirect'),
   )
+  const attributionSearch = searchParams.toString()
 
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
   const submitAreaRef = useRef<HTMLDivElement | null>(null)
@@ -765,6 +779,19 @@ export default function PublicFormPage() {
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false)
   const [hearingTemplateCopied, setHearingTemplateCopied] = useState(false)
   const [cityDateModal, setCityDateModal] = useState<CityDateModalState | null>(null)
+  const [accessibleJapanAttribution, setAccessibleJapanAttribution] = useState<AccessibleJapanAttribution | null>(null)
+
+  useEffect(() => {
+    const resolvedFormId = form?.id || formId
+    if (resolvedFormId !== ACCESSIBLE_JAPAN_FORM_ID) {
+      setAccessibleJapanAttribution(null)
+      return
+    }
+
+    setAccessibleJapanAttribution(normalizeAccessibleJapanAttribution(
+      buildAccessibleJapanAttributionInput(window.location.href, document.referrer),
+    ))
+  }, [attributionSearch, form?.id, formId])
 
   useEffect(() => {
     const load = async () => {
@@ -1006,6 +1033,9 @@ export default function PublicFormPage() {
           issueId: issue?.id || undefined,
           sharedByFriendId: sharedByFriendId || undefined,
           slackChannelId: slackChannelId || undefined,
+          attribution: form.id === ACCESSIBLE_JAPAN_FORM_ID
+            ? accessibleJapanAttribution || undefined
+            : undefined,
           data: await buildSubmissionData(),
         }),
       })
@@ -1559,6 +1589,36 @@ export default function PublicFormPage() {
                   )}
                 </div>
               </section>
+
+              {accessibleJapanAttribution && (
+                accessibleJapanAttribution.sourceHotelName
+                || accessibleJapanAttribution.sourceHotelSlug
+              ) && (
+                <section className="overflow-hidden rounded-[24px] border border-[#bcd5c5] bg-[#f7fbf8]/95 shadow-sm backdrop-blur-sm">
+                  <div className="px-7 py-6 sm:px-8">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1d5c47]">
+                          Hotel page detected
+                        </p>
+                        <h2 className="mt-2 text-xl font-semibold text-slate-900">
+                          {accessibleJapanAttribution.sourceHotelName
+                            || accessibleJapanAttribution.sourceHotelSlug}
+                        </h2>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                          We will use this hotel as a starting point, together with your answers below, to suggest the best-fit hotel and route. You do not need to enter the hotel name again.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-[#dfeee5] px-3 py-1.5 text-xs font-semibold text-[#174a39]">
+                        Your selected hotel
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-slate-500">
+                      If this is not the hotel you meant, please mention the correct hotel in the final notes field.
+                    </p>
+                  </div>
+                </section>
+              )}
 
               {showMissingGuide && (
                 <section className="rounded-[24px] border border-[#d7e5dc] bg-white/[0.92] px-6 py-5 shadow-sm backdrop-blur-sm">
