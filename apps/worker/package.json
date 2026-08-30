@@ -6,6 +6,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "test:form-file-access": "esbuild scripts/test-form-file-access.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-form-file-access-test.mjs && node /tmp/flat-harness-form-file-access-test.mjs",
+    "test:form-file-upload": "esbuild scripts/test-form-file-upload.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-form-file-upload-test.mjs && node /tmp/flat-harness-form-file-upload-test.mjs",
     "test:whatsapp-initiation": "esbuild scripts/test-whatsapp-initiation.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-whatsapp-initiation-test.mjs && node /tmp/flat-harness-whatsapp-initiation-test.mjs"
   },
   "dependencies": {
