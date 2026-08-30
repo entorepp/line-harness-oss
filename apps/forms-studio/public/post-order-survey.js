@@ -413,6 +413,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           issueId: params.get('issue') || undefined,
+          sharedByFriendId: params.get('sharedBy') || undefined,
           slackChannelId: params.get('slackChannelId') || undefined,
           responderDisplayName: leadTravellerName(),
           data,

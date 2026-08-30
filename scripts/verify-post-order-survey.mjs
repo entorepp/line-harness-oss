@@ -39,6 +39,7 @@ const requiredIntegrationMarkers = [
   "fetch('/api/upload'",
   '`/api/forms/${formId}/submit`',
   "data.consent = document.getElementById('agree')?.checked",
+  "sharedByFriendId: params.get('sharedBy') || undefined",
   "localStorage.removeItem(STORE_KEY)",
 ]
 for (const marker of requiredIntegrationMarkers) {
