@@ -1,5 +1,5 @@
 const API_ORIGIN = 'https://line-flattravel.flat-travel.workers.dev';
-const TRANSPORT_SURVEY_PATHS = new Map([
+const CUSTOM_FORM_PATHS = new Map([
   ['96ff4bc9-40df-4b10-a3db-486f82374b30', '/tokyo-transport-survey/'],
   ['82119557-3c07-4f17-ab39-193d1fb35df3', '/kyoto-transport-survey/'],
   ['f01bcdfc-4b53-44c4-9fbf-9bf5ce2707cb', '/osaka-transport-survey/'],
@@ -8,6 +8,7 @@ const TRANSPORT_SURVEY_PATHS = new Map([
   ['eef7e0b9-c0b0-49d8-8a30-bd34a6cf2c92', '/fuji-odawara-transport-survey/'],
   ['e5a619c2-b729-4d9a-9151-b8e5f7d86382', '/fuji-mishima-transport-survey/'],
   ['96a7fa63-8f10-4e8d-881c-4eef2c32c04b', '/fuji-shizuoka-transport-survey/'],
+  ['72fa9940-164a-4efb-9ad8-e819bfeb8c91', '/post-order-survey/'],
 ]);
 
 function buildApiRequest(request) {
@@ -34,7 +35,7 @@ export default {
     }
 
     const surveyPath = url.pathname === '/public-form'
-      ? TRANSPORT_SURVEY_PATHS.get(url.searchParams.get('id'))
+      ? CUSTOM_FORM_PATHS.get(url.searchParams.get('id'))
       : null;
     if (surveyPath) {
       const assetUrl = new URL(surveyPath, url);

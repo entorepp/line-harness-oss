@@ -72,6 +72,16 @@
   }
 
   function serializeCostRows(container, lines, handled) {
+    for (const costs of container.querySelectorAll('.costs')) {
+      for (const control of costs.querySelectorAll('input,textarea,select')) {
+        const value = valueOf(control)
+        const labelledBlock = control.closest('.pair-item,.cost-lead')
+        const label = clean(labelledBlock?.querySelector('.cost-n')?.textContent)
+        if (value) lines.push(`${label || '金額'}: ${value}`)
+        handled.add(control)
+      }
+    }
+
     for (const block of container.querySelectorAll('.cost-main,.cost-item')) {
       const control = block.querySelector('input,textarea,select')
       if (!control) continue
@@ -166,16 +176,61 @@
     error.textContent = message
   }
 
+  const amountPattern = /^[¥￥]?\s*(?:\d{1,3}(?:,\d{3})*|\d+)\s*(?:円)?\s*$/
+
+  function isValidAmount(control) {
+    return amountPattern.test(valueOf(control))
+  }
+
+  function setInvalid(control, invalid) {
+    if (invalid) {
+      control.setAttribute('aria-invalid', 'true')
+      control.style.outline = '2px solid #b42318'
+      control.style.outlineOffset = '2px'
+      return
+    }
+    control.removeAttribute('aria-invalid')
+    control.style.removeProperty('outline')
+    control.style.removeProperty('outline-offset')
+  }
+
+  function validateRequiredAnswers() {
+    const invalidControls = []
+
+    for (const costs of document.querySelectorAll('.costs')) {
+      const vehicle = costs.querySelector('.cost-lead input.amt')
+      const relatedCosts = Array.from(costs.querySelectorAll('input.must-in'))
+      const controls = [vehicle, ...relatedCosts].filter(Boolean)
+      const hasAnyAmount = controls.some((control) => valueOf(control))
+
+      for (const control of controls) {
+        control.setAttribute('aria-required', String(hasAnyAmount))
+        const invalid = hasAnyAmount && !isValidAmount(control)
+        setInvalid(control, invalid)
+        if (invalid) invalidControls.push(control)
+      }
+    }
+
+    if (!invalidControls.length) return true
+
+    showSubmitError(
+      '料金を入力する行程は、車両代金・高速代金・駐車場代金をすべて数字でご記入ください（かからない場合は0）。',
+    )
+    invalidControls[0]?.focus()
+    return false
+  }
+
   async function submitSurvey() {
     const button = document.querySelector('button.submit')
     if (!button || button.dataset.submitting === 'true') return
+
+    document.querySelector('.submit-error')?.remove()
+    if (!validateRequiredAnswers()) return
 
     button.dataset.submitting = 'true'
     button.disabled = true
     const originalLabel = button.textContent
     button.textContent = '送信中…'
-    document.querySelector('.submit-error')?.remove()
-
     try {
       const data = serializeAnswers()
       const response = await fetch(`${apiUrl}/api/forms/${formId}/submit`, {
@@ -200,6 +255,12 @@
     }
   }
 
+  document.addEventListener('input', (event) => {
+    if (event.target instanceof HTMLInputElement) setInvalid(event.target, false)
+  })
+  document.addEventListener('change', (event) => {
+    if (!(event.target instanceof HTMLInputElement)) return
+    setInvalid(event.target, false)
+  })
   document.querySelector('button.submit')?.addEventListener('click', submitSurvey)
 })()
-

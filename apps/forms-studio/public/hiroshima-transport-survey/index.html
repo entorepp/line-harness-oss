@@ -97,6 +97,7 @@ input.cell.wide{width:118px;text-align:left}
 .cost-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:0;padding-top:8px}
 .cost-item{display:flex;align-items:center;gap:9px}
 .cost-lb{font-size:13.5px;color:var(--ink-2);white-space:nowrap}
+.must{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:2px;background:var(--amber-soft);color:var(--amber);font-size:10.5px;font-weight:700;letter-spacing:.04em;vertical-align:1px}
 input.amt.sm{width:120px;font-size:15px}
 .add-row{display:flex;gap:12px}
 .add-lb,.add-lb2{font-size:13px;color:var(--ink-3)}
@@ -147,6 +148,47 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
   input.amt{width:100%}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* --- ご記入にあたって（セクション冒頭の注意書きを1つにまとめた枠） --- */
+.callout{margin:4px 0 2px;padding:13px 16px;border:1px solid var(--rule);
+  border-left:3px solid var(--accent);border-radius:7px;background:var(--accent-soft)}
+.callout-t{margin:0 0 6px;font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.04em}
+.callout ul{margin:0;padding-left:1.15em}
+.callout li{font-size:14.5px;line-height:1.75;color:var(--ink-2)}
+.callout li+li{margin-top:3px}
+.callout b{color:var(--ink);font-weight:700}
+
+/* --- 「〜を含んだ金額」：設問の付け足しに見えないよう帯にする --- */
+.incl{display:block;margin:7px 0 0;padding:7px 12px;border-radius:6px;
+  background:var(--accent-soft);border:1px solid var(--rule);
+  color:var(--accent);font-size:14px;font-weight:700;line-height:1.6}
+
+/* --- 料金の入力欄：注記を各欄の直下に置き、3つで1つの枠にまとめる --- */
+.costs{margin-top:8px;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.cost{padding:12px 16px}
+.cost+.cost{border-top:1px solid var(--rule)}
+.cost-lead{background:var(--accent-soft)}
+.cost-h{display:flex;align-items:center;gap:2px}
+.cost-n{font-size:15px;font-weight:700;color:var(--ink)}
+.cost-lead .cost-n{font-size:16px}
+.cost-note{margin:2px 0 8px;font-size:13px;color:var(--ink-3);line-height:1.6}
+.cost-note b{color:var(--ink-2)}
+.cost .money{margin:0}
+.cost input.amt{width:190px}
+.cost input.amt.sm{width:150px}
+/* 表の見出しに添える注記（例：回送料金を含む） */
+.th-note{display:block;margin-top:3px;font-weight:400;font-size:11.5px;line-height:1.45;
+  color:var(--amber);white-space:normal}
+
+/* 実費2つ（高速・駐車場）は性質が同じなので横に並べる */
+.pair{display:flex;flex-wrap:wrap;gap:14px 32px}
+.pair-item{display:flex;flex-direction:column;gap:6px}
+@media (max-width:520px){
+  .cost input.amt{width:100%}
+  .pair{gap:14px}
+  .pair-item{flex:1 1 100%}
+  .pair-item input.amt.sm{width:100%}
+}
 </style>
 </head>
 <body>
@@ -197,16 +239,19 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 </section>
 <section class="sec"><h2><span class="num">2</span>送迎料金について</h2>
 <p class="body">広島駅とホテル間の送迎料金です。</p>
-<p class="body"><strong>ホテルごと（Q9）とエリアごと（Q10）のどちらか一方にご記入いただければ結構です。</strong>エリアごとに一律の料金を設定されている場合は、Q10のみで問題ございません。</p>
-<p class="note">※ 営業ができない区間は空欄のままで結構です。</p>
-<div class="q"><p class="qt"><span class="qn">Q9</span>ホテルごとの送迎料金（片道・円）　※高速代金込</p>
+<div class="callout"><p class="callout-t">ご記入にあたって</p><ul><li><b>ホテルごと（Q9）とエリアごと（Q10）はどちらか一方</b>で結構です。エリアごとに一律の料金を設定されている場合は、Q10のみで問題ございません。</li><li>営業ができない区間は<b>空欄のまま</b>で結構です。</li></ul></div>
+<div class="q"><p class="qt"><span class="qn">Q9</span>ホテルごとの送迎料金（片道・円）</p>
+<p class="incl">高速代金・介助料・乗降介助料 を含んだ金額をご記入ください</p>
 <div class="tw"><table><thead><tr><th class="rh" rowspan="2">発着地</th><th class="ku" colspan="8">広島市中心部エリア</th><th class="ku">宇品</th><th class="ku">宮島</th><th class="ku">尾道</th></tr><tr><th class="hn">ホテルインターゲート広島</th><th class="hn">ANAクラウンプラザホテル広島</th><th class="hn">ヒルトン広島</th><th class="hn">コンフォートホテル広島大手町</th><th class="hn">東急ステイ メルキュール 広島</th><th class="hn">fav広島平和大通り</th><th class="hn">ネストホテル広島八丁堀</th><th class="hn kuend">ホテルグランヴィア広島サウスゲート</th><th class="hn kuend">グランドプリンスホテル広島</th><th class="hn kuend">宮島 錦水館</th><th class="hn">尾道のおばあちゃんとわたくしホテル</th></tr></thead><tbody><tr><th class="rh">広島駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td class="kuend"><input type="text" class="cell" inputmode="numeric"></td><td class="kuend"><input type="text" class="cell" inputmode="numeric"></td><td class="kuend"><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
-<div class="q"><p class="qt"><span class="qn">Q10</span>エリアごとの送迎料金（片道・円）　※高速代金込</p>
+<div class="q"><p class="qt"><span class="qn">Q10</span>エリアごとの送迎料金（片道・円）</p>
+<p class="incl">高速代金・介助料・乗降介助料 を含んだ金額をご記入ください</p>
 <div class="tw"><table><thead><tr><th class="rh">発着地</th><th>広島市中心部エリア</th><th>宇品</th><th>宮島</th><th>尾道</th></tr></thead><tbody><tr><th class="rh">広島駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
 <h3 class="sub-h">その他のエリアについて</h3>
-<div class="q"><p class="qt"><span class="qn">Q11</span>上記以外のエリアでも料金の設定が可能な場合は、こちらにご記入ください　※高速代金込</p>
+<div class="q"><p class="qt"><span class="qn">Q11</span>上記以外のエリアでも料金の設定が可能な場合は、こちらにご記入ください</p>
+<p class="incl">高速代金・介助料・乗降介助料 を含んだ金額をご記入ください</p>
 <div class="tw"><table><thead><tr><th class="rh">発着地</th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th><th><input type="text" class="cell wide" placeholder="エリア名"></th></tr></thead><tbody><tr><th class="rh">広島駅</th><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td><td><input type="text" class="cell" inputmode="numeric"></td></tr></tbody></table></div></div>
-<div class="q"><p class="qt"><span class="qn">Q12</span>待ち合わせ・お見送り、それぞれの料金をご記入ください　※待機料金・駐車料金込</p>
+<div class="q"><p class="qt"><span class="qn">Q12</span>待ち合わせ・お見送り、それぞれの料金をご記入ください</p>
+<p class="incl">待機料金・駐車料金・介助料・乗降介助料 を含んだ金額をご記入ください</p>
 <div class="meet-row"><div class="meet-lb"><span class="meet-pl">広島駅</span><span class="meet-sv">改札での待ち合わせ・お見送り</span></div><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円 / 回</span></div></div>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q13</span>上記の送迎料金について、補足事項があればご記入ください</p>
@@ -215,15 +260,24 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 </section>
 <section class="sec"><h2><span class="num">3</span>観光の貸切について</h2>
 <p class="body">料金のご記入とあわせて、行程へのご意見もご記入ください。</p>
+<div class="callout"><p class="callout-t">ご記入にあたって</p><ul><li>ご対応が難しい行程は、<b>車両代金を含めて空欄のまま</b>で結構です。</li><li>車両代金をご記入いただいた行程は、<b>高速代金・駐車場代金もあわせてご記入ください</b>。かからない場合は「0」で結構です。</li></ul></div>
 <div class="course"><p class="cname">広島観光　10時間｜世界遺産・宮島＆平和を巡る満喫コース</p>
 <p class="croute">ホテルグランヴィア広島サウスゲート → 平和記念公園・原爆ドーム → 広島平和記念資料館 → 宮島口 → 宮島散策 → 表参道商店街（昼食） → 厳島神社 → おりづるタワー → ホテルグランヴィア広島サウスゲート</p>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q14</span>この行程の料金をご記入ください</p>
-<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
-<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
-<div class="cost-row">
-<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
-<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="costs">
+<div class="cost cost-lead">
+<div class="cost-h"><span class="cost-n">車両代金</span></div>
+<p class="cost-note">介助料・乗降介助料を<b>含めた</b>金額</p>
+<div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<div class="cost">
+<p class="cost-note">高速代金・駐車場代金は概算で可。かからない場合は「0」</p>
+<div class="pair">
+<div class="pair-item"><div class="cost-h"><span class="cost-n">高速代金</span><span class="must">必須</span></div>
+<div class="money"><input type="text" inputmode="numeric" class="amt sm must-in"><span class="unit">円</span></div></div>
+<div class="pair-item"><div class="cost-h"><span class="cost-n">駐車場代金</span><span class="must">必須</span></div>
+<div class="money"><input type="text" inputmode="numeric" class="amt sm must-in"><span class="unit">円</span></div></div>
+</div></div>
 </div>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q15</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
@@ -237,11 +291,19 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <p class="croute">ホテルグランヴィア広島サウスゲート → 宮島口 → 宮島散策 → 表参道商店街（昼食） → 厳島神社 → 平和記念公園・原爆ドーム → ホテルグランヴィア広島サウスゲート</p>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q17</span>この行程の料金をご記入ください</p>
-<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
-<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
-<div class="cost-row">
-<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
-<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="costs">
+<div class="cost cost-lead">
+<div class="cost-h"><span class="cost-n">車両代金</span></div>
+<p class="cost-note">介助料・乗降介助料を<b>含めた</b>金額</p>
+<div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<div class="cost">
+<p class="cost-note">高速代金・駐車場代金は概算で可。かからない場合は「0」</p>
+<div class="pair">
+<div class="pair-item"><div class="cost-h"><span class="cost-n">高速代金</span><span class="must">必須</span></div>
+<div class="money"><input type="text" inputmode="numeric" class="amt sm must-in"><span class="unit">円</span></div></div>
+<div class="pair-item"><div class="cost-h"><span class="cost-n">駐車場代金</span><span class="must">必須</span></div>
+<div class="money"><input type="text" inputmode="numeric" class="amt sm must-in"><span class="unit">円</span></div></div>
+</div></div>
 </div>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q18</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
@@ -255,11 +317,19 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <p class="croute">ホテルグランヴィア広島サウスゲート → おりづるタワー → 昼食 → 原爆ドーム → 平和記念公園 → 広島平和記念資料館 → ホテルグランヴィア広島サウスゲート</p>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q20</span>この行程の料金をご記入ください</p>
-<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
-<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
-<div class="cost-row">
-<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
-<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="costs">
+<div class="cost cost-lead">
+<div class="cost-h"><span class="cost-n">車両代金</span></div>
+<p class="cost-note">介助料・乗降介助料を<b>含めた</b>金額</p>
+<div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<div class="cost">
+<p class="cost-note">高速代金・駐車場代金は概算で可。かからない場合は「0」</p>
+<div class="pair">
+<div class="pair-item"><div class="cost-h"><span class="cost-n">高速代金</span><span class="must">必須</span></div>
+<div class="money"><input type="text" inputmode="numeric" class="amt sm must-in"><span class="unit">円</span></div></div>
+<div class="pair-item"><div class="cost-h"><span class="cost-n">駐車場代金</span><span class="must">必須</span></div>
+<div class="money"><input type="text" inputmode="numeric" class="amt sm must-in"><span class="unit">円</span></div></div>
+</div></div>
 </div>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q21</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
@@ -273,11 +343,19 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <p class="croute">ホテルグランヴィア広島サウスゲート → てつのくじら館 → 大和ミュージアム（昼食） → アレイからすこじま → 入船山記念館 → ホテルグランヴィア広島サウスゲート</p>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q23</span>この行程の料金をご記入ください</p>
-<div class="cost-main"><span class="cost-lb-main">車両代金</span><div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
-<p class="sub">別途かかる実費がございましたらご記入ください。（概算でも可）</p>
-<div class="cost-row">
-<div class="cost-item"><span class="cost-lb">高速代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
-<div class="cost-item"><span class="cost-lb">駐車場代金</span><div class="money"><input type="text" inputmode="numeric" class="amt sm"><span class="unit">円</span></div></div>
+<div class="costs">
+<div class="cost cost-lead">
+<div class="cost-h"><span class="cost-n">車両代金</span></div>
+<p class="cost-note">介助料・乗降介助料を<b>含めた</b>金額</p>
+<div class="money"><input type="text" inputmode="numeric" class="amt"><span class="unit">円</span></div></div>
+<div class="cost">
+<p class="cost-note">高速代金・駐車場代金は概算で可。かからない場合は「0」</p>
+<div class="pair">
+<div class="pair-item"><div class="cost-h"><span class="cost-n">高速代金</span><span class="must">必須</span></div>
+<div class="money"><input type="text" inputmode="numeric" class="amt sm must-in"><span class="unit">円</span></div></div>
+<div class="pair-item"><div class="cost-h"><span class="cost-n">駐車場代金</span><span class="must">必須</span></div>
+<div class="money"><input type="text" inputmode="numeric" class="amt sm must-in"><span class="unit">円</span></div></div>
+</div></div>
 </div>
 </div>
 <div class="q"><p class="qt"><span class="qn">Q24</span>この行程でおすすめの食事場所がございましたらご記入ください</p>
@@ -390,5 +468,6 @@ button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 </script>
 
 <script src="/transport-survey.js" data-form-id="1528b3da-2966-4c7c-945d-38e9ea322204" data-question-count="36"></script>
+
 </body>
 </html>
