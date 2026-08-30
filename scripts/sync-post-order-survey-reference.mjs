@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { applyPostOrderSurveyReview } from './post-order-survey-review-patch.mjs'
 
 const FORM_ID = '72fa9940-164a-4efb-9ad8-e819bfeb8c91'
 const REFERENCE_URL = 'https://flatcare-post-order-survey.vercel.app'
@@ -52,20 +53,23 @@ async function fetchReference() {
 }
 
 const reference = await fetchReference()
+const reviewed = applyPostOrderSurveyReview(reference)
 if (process.argv.includes('--check')) {
   const artifact = fs.readFileSync(artifactPath, 'utf8')
   const integration = `\n${hook}`
   if ((artifact.split(hook).length - 1) !== 1) {
     throw new Error('Local integration hook occurrence mismatch')
   }
-  if (artifact.replace(integration, '') !== reference) {
-    throw new Error('Local survey UI differs from the current reviewed reference')
+  if (artifact.replace(integration, '') !== reviewed) {
+    throw new Error('Local survey UI differs from the current reference plus approved review patch')
   }
-  console.log(`POST_ORDER_REFERENCE_EXACT sha256=${sha256(reference)}`)
+  console.log(
+    `POST_ORDER_REVIEW_PATCH_EXACT reference_sha256=${sha256(reference)} reviewed_sha256=${sha256(reviewed)}`,
+  )
 } else {
   fs.mkdirSync(path.dirname(artifactPath), { recursive: true })
-  fs.writeFileSync(artifactPath, `${reference}\n${hook}`)
+  fs.writeFileSync(artifactPath, `${reviewed}\n${hook}`)
   console.log(
-    `POST_ORDER_REFERENCE_SYNCED sha256=${sha256(reference)} bytes=${Buffer.byteLength(reference)}`,
+    `POST_ORDER_REVIEW_PATCH_SYNCED reference_sha256=${sha256(reference)} reviewed_sha256=${sha256(reviewed)} bytes=${Buffer.byteLength(reviewed)}`,
   )
 }

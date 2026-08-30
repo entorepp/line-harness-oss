@@ -26,9 +26,19 @@ const requiredReferenceMarkers = [
   'send.disabled=!agree.checked',
   'accept:"image/jpeg,image/png,image/heic,image/heif"',
   'accept:"image/jpeg,image/png,image/heic,image/heif,application/pdf"',
+  'Upload a photo or PDF of your travel insurance certificate',
+  'Names update automatically from Section 3.',
+  'className="nativefile"',
+  'T("No file selected","ファイルが選択されていません")',
 ]
 for (const marker of requiredReferenceMarkers) {
   if (!artifact.includes(marker)) throw new Error(`Missing reviewed marker: ${marker}`)
+}
+if (artifact.includes('Photographs are for illustration only.')) {
+  throw new Error('Illustration-only photograph note must be removed')
+}
+if (!artifact.includes('minmax(190px,1fr)') || !artifact.includes('font-size:15px;line-height:1.55')) {
+  throw new Error('Experience cards are not using the reviewed readable sizing')
 }
 
 const requiredIntegrationMarkers = [
@@ -41,6 +51,7 @@ const requiredIntegrationMarkers = [
   "data.consent = document.getElementById('agree')?.checked",
   "sharedByFriendId: params.get('sharedBy') || undefined",
   "localStorage.removeItem(STORE_KEY)",
+  "updateFileStatus(input, files)",
 ]
 for (const marker of requiredIntegrationMarkers) {
   if (!integration.includes(marker)) throw new Error(`Missing integration marker: ${marker}`)
