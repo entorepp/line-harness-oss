@@ -30,6 +30,7 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     (method === 'GET' && path.match(/^\/api\/form-issues\/[^/]+$/)) ||
     path.startsWith('/api/images/') || // Public image serving for LINE (legacy)
     path.startsWith('/api/files/') || // Public file serving
+    path.startsWith('/api/form-files/') || // Signed, expiring private form attachment
     path === '/api/travel/quote-intents' // Origin-checked Flat Travel intake; profile is transient and redacted before D1/Slack
   ) {
     return next();

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import worker from '../src/index.js';
 import { uploads } from '../src/routes/uploads.js';
 
 type StoredValue = {
@@ -59,6 +60,20 @@ const env = {
   LINE_CHANNEL_SECRET: 'test-line-secret',
   WORKER_URL: 'https://line-flattravel.example.test',
 } as never;
+
+const executionCtx = {
+  waitUntil() {},
+  passThroughOnException() {},
+} as ExecutionContext;
+
+const fullWorkerPrivateRead = await worker.fetch(
+  new Request(
+    'https://line-flattravel.example.test/api/form-files/not-real.jpg?expires=1&sig=invalid',
+  ),
+  env,
+  executionCtx,
+);
+assert.equal(fullWorkerPrivateRead.status, 403);
 
 const privatePayload = new FormData();
 privatePayload.append('file', new File([new Uint8Array([1, 2, 3])], 'passport.jpg', {
