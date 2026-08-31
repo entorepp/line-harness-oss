@@ -14,6 +14,22 @@ const artifactPath = path.join(
 )
 const hook = `<script src="/post-order-survey.js" data-form-id="${FORM_ID}"></script>`
 
+function addIntegrationHook(source) {
+  const closingBody = '\n</body>'
+  if ((source.split(closingBody).length - 1) !== 1) {
+    throw new Error('Reference must contain exactly one closing body tag')
+  }
+  return source.replace(closingBody, `\n${hook}${closingBody}`)
+}
+
+function removeIntegrationHook(source) {
+  const integratedHook = `\n${hook}`
+  if ((source.split(integratedHook).length - 1) !== 1) {
+    throw new Error('Local integration hook occurrence mismatch')
+  }
+  return source.replace(integratedHook, '')
+}
+
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex')
 }
@@ -56,11 +72,7 @@ const reference = await fetchReference()
 const reviewed = applyPostOrderSurveyReview(reference)
 if (process.argv.includes('--check')) {
   const artifact = fs.readFileSync(artifactPath, 'utf8')
-  const integration = `\n${hook}`
-  if ((artifact.split(hook).length - 1) !== 1) {
-    throw new Error('Local integration hook occurrence mismatch')
-  }
-  if (artifact.replace(integration, '') !== reviewed) {
+  if (removeIntegrationHook(artifact) !== reviewed) {
     throw new Error('Local survey UI differs from the current reference plus approved review patch')
   }
   console.log(
@@ -68,7 +80,7 @@ if (process.argv.includes('--check')) {
   )
 } else {
   fs.mkdirSync(path.dirname(artifactPath), { recursive: true })
-  fs.writeFileSync(artifactPath, `${reviewed}\n${hook}`)
+  fs.writeFileSync(artifactPath, addIntegrationHook(reviewed))
   console.log(
     `POST_ORDER_REVIEW_PATCH_SYNCED reference_sha256=${sha256(reference)} reviewed_sha256=${sha256(reviewed)} bytes=${Buffer.byteLength(reviewed)}`,
   )
