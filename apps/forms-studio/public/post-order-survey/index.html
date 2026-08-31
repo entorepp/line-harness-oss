@@ -3,26 +3,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@600&display=swap">
 <style>
-:root{
+:root{color-scheme:light;
   --ink:#1c2b33; --ink-2:#4a5b63; --ink-3:#7d8b91;
   --ground:#fbfaf8; --card:#ffffff; --rule:#e4e0d9;
   --accent:#2f6b5f; --accent-soft:#eff4f2; --ku-line:#b9cfc8;
   --amber:#8a6d3b; --amber-soft:#f7f1e4;
   --key:#8a4b32; --key-soft:#f7ece7;
-}
-:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){
-  --ink:#e8e6e1; --ink-2:#b2bcc0; --ink-3:#8b979c;
-  --ground:#14191c; --card:#1b2226; --rule:#2e373c;
-  --accent:#7cc0ae; --accent-soft:#1c2725; --ku-line:#3c5b53;
-  --amber:#d8b478; --amber-soft:#2a241a;
-  --key:#d99878; --key-soft:#2b201b;
-}}
-:root[data-theme="dark"]{
-  --ink:#e8e6e1; --ink-2:#b2bcc0; --ink-3:#8b979c;
-  --ground:#14191c; --card:#1b2226; --rule:#2e373c;
-  --accent:#7cc0ae; --accent-soft:#1c2725; --ku-line:#3c5b53;
-  --amber:#d8b478; --amber-soft:#2a241a;
-  --key:#d99878; --key-soft:#2b201b;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--ground);color:var(--ink);
@@ -33,19 +19,17 @@ body{margin:0;background:var(--ground);color:var(--ink);
 .bar{position:sticky;top:0;z-index:30;background:var(--ground);border-bottom:1px solid var(--rule)}
 .barprog{font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap;margin-right:auto}
 .barprog b{color:var(--accent);font-weight:700}
-.barin{max-width:820px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.barin{max-width:980px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .barin .who{font-size:12px;letter-spacing:.14em;color:var(--accent);font-weight:700}
 @media(max-width:480px){.barin .who{display:none}.barin{gap:10px;padding:9px 14px}}
 .seg{display:flex;border:1px solid var(--rule);border-radius:7px;overflow:hidden;background:var(--card)}
 .seg button{appearance:none;border:0;background:transparent;color:var(--ink-2);
   font:700 13px/1 "Zen Kaku Gothic New",sans-serif;padding:8px 15px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
-:root[data-theme="dark"] .seg button[aria-pressed="true"]{color:#0f1517}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .seg button[aria-pressed="true"]{color:#0f1517}}
 .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
 /* ---------- shell ---------- */
-.wrap{max-width:820px;margin:0 auto;padding:44px 20px 96px;display:flex;flex-direction:column;gap:8px}
+.wrap{max-width:980px;margin:0 auto;padding:44px 20px 96px;display:flex;flex-direction:column;gap:8px}
 .head{border-bottom:2px solid var(--ink);padding-bottom:26px;margin-bottom:8px}
 .eyebrow{margin:0 0 10px;font-size:12.5px;letter-spacing:.14em;color:var(--accent);font-weight:700}
 h1{font-family:"Zen Old Mincho","Zen Kaku Gothic New",serif;font-weight:600;
@@ -78,8 +62,6 @@ h2:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 @media(max-width:560px){h2{padding:13px 14px;font-size:16px;gap:9px}.body{padding:14px 14px 18px}}
 .num{flex:none;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;
   background:var(--accent);color:#fff;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
-:root[data-theme="dark"] .num{color:#0f1517}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .num{color:#0f1517}}
 .why{margin:0;color:var(--ink-2);font-size:14.5px}
 .pbar{height:3px;background:var(--rule);overflow:hidden}
 .pbar i{display:block;height:100%;background:var(--accent);transition:width .25s}
@@ -96,8 +78,6 @@ h2:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .sub.callout{color:var(--key);background:var(--key-soft);border-left:3px solid var(--key);
   border-radius:0 7px 7px 0;padding:10px 13px;line-height:1.7}
 .filerr{margin:0;font-size:12.5px;color:#b3261e;font-weight:700}
-:root[data-theme="dark"] .filerr{color:#f2b8b5}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .filerr{color:#f2b8b5}}
 .spec{margin:0;font-size:12px;color:var(--ink-3);background:var(--accent-soft);border-radius:6px;
   padding:6px 10px;line-height:1.65}
 .paxnone{margin:0;font-size:13px;color:var(--ink-3)}
@@ -132,8 +112,16 @@ select{cursor:pointer;appearance:none;
   background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
   background-position:calc(100% - 19px) calc(50% + 2px),calc(100% - 13px) calc(50% + 2px);
   background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:38px}
-input[type=file]{width:100%;font:inherit;font-size:13.5px;color:var(--ink-2);background:var(--ground);
-  border:1px dashed var(--rule);border-radius:7px;padding:11px 12px}
+.filepick{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:50px;
+  border:1px dashed var(--rule);border-radius:8px;padding:9px 11px;background:var(--ground);cursor:pointer}
+.filepick:hover{border-color:var(--accent);background:var(--accent-soft)}
+.nativefile{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;
+  overflow:hidden!important;pointer-events:none!important;padding:0!important;border:0!important}
+.filebutton{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:34px;
+  padding:7px 13px;border-radius:6px;background:var(--accent);color:#fff;font-size:13.5px;font-weight:700}
+.filestatus{min-width:0;color:var(--ink-2);font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.filepick:has(.nativefile:focus-visible){outline:2px solid var(--accent);outline-offset:2px;border-color:transparent}
+@media(max-width:560px){.filepick{align-items:flex-start;flex-direction:column}.filebutton{width:100%}}
 input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
 .frow{display:flex;gap:10px;flex-wrap:wrap}
 .fcell{flex:1 1 0;min-width:130px;display:flex;flex-direction:column;gap:4px}
@@ -181,9 +169,9 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px soli
 
 /* ---------- upsell ---------- */
 .up{border:1px solid var(--rule);border-radius:9px;overflow:hidden;background:var(--card)}
-.upcat{background:var(--accent-soft);padding:8px 15px;font-size:13px;font-weight:700;color:var(--accent);
+.upcat{background:var(--accent-soft);padding:10px 15px;font-size:14.5px;font-weight:700;color:var(--accent);
   border-bottom:1px solid var(--rule);letter-spacing:.02em;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.upnote{font-size:11.5px;font-weight:400;color:var(--ink-3);letter-spacing:0}
+.upnote{font-size:12.5px;font-weight:500;color:var(--ink-3);letter-spacing:0}
 .uprow{display:block;
   padding:11px 15px;border-bottom:1px solid var(--rule)}
 .up .uprow:last-child{border-bottom:none}
@@ -200,14 +188,14 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px soli
 .upbanner{padding:14px 15px 12px}
 .upbanner img{width:100%;max-width:430px;border-radius:8px;display:block;margin-bottom:5px}
 .upprice{font-size:12px;font-weight:700;color:var(--key);letter-spacing:0}
-.upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px;padding:10px 15px 14px}
-.upthumb{display:flex;flex-direction:column;gap:6px;cursor:pointer;position:relative;
-  border:1px solid var(--rule);border-radius:9px;padding:8px;background:var(--card)}
+.upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;padding:14px 15px 18px}
+.upthumb{display:flex;flex-direction:column;gap:9px;cursor:pointer;position:relative;
+  border:1px solid var(--rule);border-radius:10px;padding:10px;background:var(--card)}
 .upthumb:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
 .upthumb img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;display:block}
 .upthumb input{accent-color:var(--accent);width:17px;height:17px;position:absolute;top:13px;left:13px;
   margin:0;background:#fff;border-radius:3px}
-.upthumbname{font-size:12.5px;line-height:1.5}
+.upthumbname{font-size:15px;line-height:1.55;font-weight:700}
 .cards{display:flex;flex-direction:column;gap:9px}
 .card{display:flex;align-items:flex-start;gap:11px;cursor:pointer;
   border:1px solid var(--rule);border-radius:9px;padding:11px 12px;background:var(--card)}
@@ -259,8 +247,6 @@ button.submit{font:inherit;font-size:16px;font-weight:700;color:#fff;background:
   border:none;border-radius:8px;padding:14px 56px;cursor:pointer;letter-spacing:.04em}
 button.submit:hover{filter:brightness(1.08)}
 button.submit:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
-:root[data-theme="dark"] button.submit{color:#0f1517}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) button.submit{color:#0f1517}}
 .foot{margin-top:44px;padding-top:22px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:13.5px}
 @media(max-width:560px){.wrap{padding:30px 14px 72px}.q{padding:15px 14px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
@@ -332,10 +318,10 @@ const S=[
   f:[
   {t:"radio",id:"ins",e:"Have you arranged travel insurance?",j:"旅行保険には加入されていますか",r:1,
    o:[["Yes","加入済み"],["Not yet, but I will","これから加入する"],["No, and I do not intend to","加入しない"]]},
-  {t:"file",showIf:["ins",["Yes"]],e:"Upload your insurance certificate",j:"旅行証券のアップロード",
-   he:"Please make sure the insurer, the plan name, what is covered, and the 24-hour assistance number are all readable.",
+  {t:"file",showIf:["ins",["Yes"]],e:"Upload a photo or PDF of your travel insurance certificate",j:"旅行証券の写真またはPDFをアップロード",
+   he:"Required because you answered Yes. Please make sure the insurer, plan name, coverage, and 24-hour assistance number are all readable.",
    hj:"加入先の保険会社名・プラン名・補償範囲・24時間アシスタンスデスクの電話番号が読み取れる状態でアップロードしてください。複数枚に分かれている場合はすべてお送りください。",r:1,k:1,cal:1,
-   spec:["JPEG, PNG, HEIC or PDF &nbsp;·&nbsp; up to 10MB each &nbsp;·&nbsp; up to 3 files",
+   spec:["Required if you answered Yes &nbsp;·&nbsp; JPEG, PNG, HEIC or PDF &nbsp;·&nbsp; up to 10MB each &nbsp;·&nbsp; up to 3 files",
          "JPEG・PNG・HEIC・PDF ／ 1ファイル10MBまで ／ 3ファイルまで"],
    accept:"image/jpeg,image/png,image/heic,image/heif,application/pdf",multiple:1,
    nj:"保険会社名・プラン名・補償範囲・24時間デスク番号を個別に手入力させると転記ミスと未記入が増える。証券画像1点に集約し、必要な情報は画像から読み取る。"},
@@ -425,7 +411,7 @@ const S=[
  repeat:{e:"Room",j:"部屋",addE:"Add a room",addJ:"部屋を追加",nameFrom:-1},
  f:[
   {t:"pax",e:"Who is staying in this room?",j:"この部屋にご宿泊の方",r:1,k:1,
-   he:"Tick everyone sharing this room.",hj:"この部屋に同室となる方すべてにチェックしてください。",
+   he:"Names update automatically from Section 3. Tick everyone sharing this room.",hj:"氏名は第3セクションの入力から自動反映されます。この部屋に同室となる方すべてにチェックしてください。",
    nj:"部屋割りを自由記述で受けると表記ゆれで手配に使えない。第3セクションで登録された旅行者から選ぶ方式にし、部屋タイプと同じ設問群に置くことで『どの部屋に誰が入るか』を1つで取得する。"},
   {t:"row",e:"Room type",j:"お部屋のタイプ",r:1,
    cells:[["Beds","ベッドタイプ","select",[["Double (1 bed)","ダブル（1ベッド）"],["Twin (2 beds)","ツイン（2ベッド）"],["Triple (3 beds)","トリプル（3ベッド）"],["No preference","希望なし"]]],
@@ -696,7 +682,6 @@ function question(f,qn,inst,scoped){
       box.appendChild(l);
     });
     card.appendChild(box);
-    if((f.items||[]).some(x=>x.img)) card.appendChild(html("p","imgnote",T("Photographs are for illustration only.","写真はイメージです。")));
   } else if(f.t==="paxone"){
     const box=el("div","opts");
     travellerNames().forEach((nm,i)=>{
@@ -733,7 +718,6 @@ function question(f,qn,inst,scoped){
     });
     card.appendChild(box);
     if(f.note) card.appendChild(html("p","gnote",T(f.note[0],f.note[1])));
-    if((f.rows||[]).some(r=>r[2])) card.appendChild(html("p","imgnote",T("Photographs are for illustration only.","写真はイメージです。")));
   } else if(f.t==="pcount"){
     const box=el("div","pcount");
     const figs=f.fig?FIG()[f.fig]:null;
@@ -779,12 +763,24 @@ function question(f,qn,inst,scoped){
     card.appendChild(box);
   } else if(f.t==="file"){
     if(f.spec) card.appendChild(html("p","spec",T(f.spec[0],f.spec[1])));
-    const i=document.createElement("input"); i.type="file";
+    const i=document.createElement("input"); i.type="file"; i.className="nativefile";
     i.accept=f.accept||"image/*,.pdf";
     if(f.multiple) i.multiple=true;
+    i.setAttribute("aria-label",T(f.multiple?"Choose files":"Choose file","ファイルを選択"));
+    const pick=el("label","filepick");
+    const choose=el("span","filebutton",T(f.multiple?"Choose files":"Choose file","ファイルを選択"));
+    const status=el("span","filestatus",T("No file selected","ファイルが選択されていません"));
+    const announce=()=>{
+      const fs=[...i.files];
+      status.textContent=fs.length===0?T("No file selected","ファイルが選択されていません"):
+        fs.length===1?fs[0].name:T(fs.length+" files selected",fs.length+"件のファイルを選択済み");
+      status.title=fs.map(x=>x.name).join(", ");
+    };
+    pick.appendChild(i); pick.appendChild(choose); pick.appendChild(status);
     const err=el("p","filerr");
     const MAX=10*1024*1024, MAXN=f.multiple?3:1;
     i.addEventListener("change",()=>{
+      announce();
       const fs=[...i.files]; let msg="";
       if(fs.length>MAXN) msg=T("Please select up to "+MAXN+" file(s).","ファイルは"+MAXN+"つまでお選びください。");
       else{
@@ -792,10 +788,10 @@ function question(f,qn,inst,scoped){
         if(big.length) msg=T("This file is over 10MB: ","10MBを超えています：")+big.map(x=>x.name).join(", ");
       }
       err.textContent=msg; err.style.display=msg?"block":"none";
-      if(msg) i.value="";
+      if(msg){ i.value=""; announce(); }
     });
     err.style.display="none";
-    card.appendChild(i); card.appendChild(err);
+    card.appendChild(pick); card.appendChild(err);
   } else if(f.t==="select"){
     const sel=mkInput("select",null,f.o);
     sel.dataset.k=QKEY;
@@ -825,10 +821,8 @@ function upsell(){
       const w=el("div","upbanner");
       const im=document.createElement("img"); im.src=IMG[c.img]; im.alt=T(c.ce,c.cj);
       w.appendChild(im);
-      w.appendChild(el("p","imgnote",T("Photographs are for illustration only.","写真はイメージです。")));
       box.appendChild(w);
     }
-    if(c.thumbs) box.appendChild(html("p","imgnote imgnote-row",T("Photographs are for illustration only.","写真はイメージです。")));
     const grid=c.thumbs?el("div","upgrid"):null;
     if(grid) box.appendChild(grid);
     c.i.forEach((it,i)=>{
@@ -932,6 +926,8 @@ function nameQn(){
 }
 function travellerNames(){
   const n=REPS[3]||1, out=[], qn=nameQn();
+  const lead=[...document.querySelectorAll('[data-k^="q1_"]')]
+    .map(x=>x.value.trim()).filter(Boolean).join(" ");
   for(let i=0;i<n;i++){
     const label=T("Traveller ","旅行者")+(i+1);
     if(!qn){ out.push(label); continue; }
@@ -940,7 +936,7 @@ function travellerNames(){
     const vals=[...document.querySelectorAll('[data-k^="'+pre+'"]')]
       .filter(x=>x.type!=="radio"&&x.type!=="checkbox"&&rx.test(x.dataset.k))
       .map(x=>x.value.trim()).filter(Boolean);
-    out.push(vals.length?vals.join(" "):label);
+    out.push(vals.length?vals.join(" "):(i===0&&lead?lead:label));
   }
   return out;
 }

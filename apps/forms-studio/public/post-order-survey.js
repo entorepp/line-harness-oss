@@ -63,6 +63,17 @@
     }
   }
 
+  function updateFileStatus(input, files) {
+    const status = input.closest('.filepick')?.querySelector('.filestatus')
+    if (!status) return
+    status.textContent = files.length === 0
+      ? text('No file selected', 'ファイルが選択されていません')
+      : files.length === 1
+        ? files[0].name
+        : text(`${files.length} files selected`, `${files.length}件のファイルを選択済み`)
+    status.title = files.map((file) => file.name).join(', ')
+  }
+
   function decorateFileInputs() {
     for (const input of document.querySelectorAll('.q input[type="file"]')) {
       const key = fileInputKey(input)
@@ -70,6 +81,7 @@
       input.dataset.privateUploadKey = key
       const files = selectedFiles.get(key)
       if (files?.length && !input.files?.length) restoreFileSelection(input, files)
+      updateFileStatus(input, files || Array.from(input.files || []))
     }
   }
 
@@ -81,6 +93,7 @@
     const files = Array.from(input.files || [])
     if (files.length) selectedFiles.set(key, files)
     else selectedFiles.delete(key)
+    updateFileStatus(input, files)
     uploadedFileCache.delete(key)
   })
 
