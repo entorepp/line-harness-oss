@@ -94,43 +94,10 @@ export function applyPostOrderSurveyReview(input) {
   overflow:hidden!important;pointer-events:none!important;padding:0!important;border:0!important}
 .filebutton{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:34px;
   padding:7px 13px;border-radius:6px;background:var(--accent);color:#fff;font-size:13.5px;font-weight:700}
-.filestatus{min-width:0;color:var(--ink-2);font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.filestatus{min-width:0;color:var(--ink-2);font-size:13.5px;line-height:1.5;overflow-wrap:anywhere}
 .filepick:has(.nativefile:focus-visible){outline:2px solid var(--accent);outline-offset:2px;border-color:transparent}
 @media(max-width:560px){.filepick{align-items:flex-start;flex-direction:column}.filebutton{width:100%}}`,
     'custom English file picker styles',
-  )
-
-  source = replaceOnce(
-    source,
-    `.upcat{background:var(--accent-soft);padding:8px 15px;font-size:13px;font-weight:700;color:var(--accent);`,
-    `.upcat{background:var(--accent-soft);padding:10px 15px;font-size:14.5px;font-weight:700;color:var(--accent);`,
-    'upsell category text size',
-  )
-  source = replaceOnce(
-    source,
-    `.upnote{font-size:11.5px;font-weight:400;color:var(--ink-3);letter-spacing:0}`,
-    `.upnote{font-size:12.5px;font-weight:500;color:var(--ink-3);letter-spacing:0}`,
-    'upsell helper text size',
-  )
-  source = replaceOnce(
-    source,
-    `.upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px;padding:10px 15px 14px}`,
-    `.upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;padding:14px 15px 18px}`,
-    'upsell card width',
-  )
-  source = replaceOnce(
-    source,
-    `.upthumb{display:flex;flex-direction:column;gap:6px;cursor:pointer;position:relative;
-  border:1px solid var(--rule);border-radius:9px;padding:8px;background:var(--card)}`,
-    `.upthumb{display:flex;flex-direction:column;gap:9px;cursor:pointer;position:relative;
-  border:1px solid var(--rule);border-radius:10px;padding:10px;background:var(--card)}`,
-    'upsell card spacing',
-  )
-  source = replaceOnce(
-    source,
-    `.upthumbname{font-size:12.5px;line-height:1.5}`,
-    `.upthumbname{font-size:15px;line-height:1.55;font-weight:700}`,
-    'upsell card name size',
   )
 
   source = replaceOnce(

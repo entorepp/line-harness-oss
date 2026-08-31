@@ -17,6 +17,8 @@ if (!worker.includes(`['${FORM_ID}', '/post-order-survey/']`)) {
 }
 
 const requiredReferenceMarkers = [
+  '<!doctype html>',
+  '<meta name="viewport" content="width=device-width,initial-scale=1">',
   'const S=[',
   '{n:11,e:"Things you might enjoy",j:"旅にプラスできること"',
   'repeat:{e:"Traveller",j:"旅行者"',
@@ -33,6 +35,11 @@ const requiredReferenceMarkers = [
   ':root{color-scheme:light;',
   '.barin{max-width:980px;',
   '.wrap{max-width:980px;',
+  '.upcat{background:var(--accent-soft);padding:8px 15px;font-size:13px;',
+  '.upnote{font-size:11.5px;font-weight:400;',
+  '.upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px;padding:10px 15px 14px}',
+  '.upthumbname{font-size:12.5px;line-height:1.5}',
+  '.filestatus{min-width:0;color:var(--ink-2);font-size:13.5px;',
 ]
 for (const marker of requiredReferenceMarkers) {
   if (!artifact.includes(marker)) throw new Error(`Missing reviewed marker: ${marker}`)
@@ -46,8 +53,8 @@ if (artifact.includes('prefers-color-scheme:dark')) {
 if (artifact.includes('data-theme="dark"') || artifact.includes('--ground:#14191c')) {
   throw new Error('The customer survey must not retain an alternate dark palette')
 }
-if (!artifact.includes('minmax(190px,1fr)') || !artifact.includes('font-size:15px;line-height:1.55')) {
-  throw new Error('Experience cards are not using the reviewed readable sizing')
+if (artifact.includes('minmax(190px,1fr)') || artifact.includes('font-size:15px;line-height:1.55')) {
+  throw new Error('Experience cards still differ from the current Vercel reference sizing')
 }
 
 const requiredIntegrationMarkers = [
