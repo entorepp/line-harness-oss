@@ -15,6 +15,76 @@ export function applyPostOrderSurveyReview(input) {
 
   source = replaceOnce(
     source,
+    `:root{\n  --ink:#1c2b33;`,
+    `:root{color-scheme:light;\n  --ink:#1c2b33;`,
+    'light color scheme',
+  )
+  source = removeOnce(
+    source,
+    `:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){\n  --ink:#e8e6e1; --ink-2:#b2bcc0; --ink-3:#8b979c;\n  --ground:#14191c; --card:#1b2226; --rule:#2e373c;\n  --accent:#7cc0ae; --accent-soft:#1c2725; --ku-line:#3c5b53;\n  --amber:#d8b478; --amber-soft:#2a241a;\n  --key:#d99878; --key-soft:#2b201b;\n}}\n`,
+    'automatic dark palette',
+  )
+  source = removeOnce(
+    source,
+    `:root[data-theme="dark"]{\n  --ink:#e8e6e1; --ink-2:#b2bcc0; --ink-3:#8b979c;\n  --ground:#14191c; --card:#1b2226; --rule:#2e373c;\n  --accent:#7cc0ae; --accent-soft:#1c2725; --ku-line:#3c5b53;\n  --amber:#d8b478; --amber-soft:#2a241a;\n  --key:#d99878; --key-soft:#2b201b;\n}\n`,
+    'explicit dark palette',
+  )
+  source = removeOnce(
+    source,
+    `:root[data-theme="dark"] .seg button[aria-pressed="true"]{color:#0f1517}\n`,
+    'explicit dark language toggle color',
+  )
+  source = removeOnce(
+    source,
+    `@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .seg button[aria-pressed="true"]{color:#0f1517}}\n`,
+    'automatic dark language toggle color',
+  )
+  source = removeOnce(
+    source,
+    `@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .num{color:#0f1517}}\n`,
+    'automatic dark section number color',
+  )
+  source = removeOnce(
+    source,
+    `:root[data-theme="dark"] .num{color:#0f1517}\n`,
+    'explicit dark section number color',
+  )
+  source = removeOnce(
+    source,
+    `@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .filerr{color:#f2b8b5}}\n`,
+    'automatic dark file error color',
+  )
+  source = removeOnce(
+    source,
+    `:root[data-theme="dark"] .filerr{color:#f2b8b5}\n`,
+    'explicit dark file error color',
+  )
+  source = removeOnce(
+    source,
+    `@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) button.submit{color:#0f1517}}\n`,
+    'automatic dark submit color',
+  )
+  source = removeOnce(
+    source,
+    `:root[data-theme="dark"] button.submit{color:#0f1517}\n`,
+    'explicit dark submit color',
+  )
+
+  source = replaceOnce(
+    source,
+    `.barin{max-width:820px;`,
+    `.barin{max-width:980px;`,
+    'desktop header width',
+  )
+  source = replaceOnce(
+    source,
+    `.wrap{max-width:820px;`,
+    `.wrap{max-width:980px;`,
+    'desktop form width',
+  )
+
+  source = replaceOnce(
+    source,
     `input[type=file]{width:100%;font:inherit;font-size:13.5px;color:var(--ink-2);background:var(--ground);
   border:1px dashed var(--rule);border-radius:7px;padding:11px 12px}`,
     `.filepick{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:50px;
