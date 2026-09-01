@@ -70,7 +70,7 @@ function StudioNav() {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
-  if (pathname === '/login' || pathname === '/public-form') {
+  if (pathname === '/login' || pathname === '/public-form' || pathname === '/shared-report') {
     return <>{children}</>
   }
 

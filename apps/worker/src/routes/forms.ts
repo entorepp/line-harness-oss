@@ -18,7 +18,14 @@ import {
 } from '@line-crm/db';
 import { getFriendByLineUserId, getFriendById } from '@line-crm/db';
 import { addTagToFriend, enrollFriendInScenario } from '@line-crm/db';
-import { getVisibleFormFields } from '@line-crm/shared';
+import {
+  ACCESSIBLE_JAPAN_ATTRIBUTION_DATA_KEYS,
+  ACCESSIBLE_JAPAN_FORM_ID,
+  accessibleJapanAttributionToSubmissionData,
+  getVisibleFormFields,
+  normalizeAccessibleJapanAttribution,
+  stripAccessibleJapanAttributionData,
+} from '@line-crm/shared';
 import type { FormField as SharedFormField } from '@line-crm/shared';
 import type {
   Form as DbForm,
@@ -29,6 +36,133 @@ import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
 
 const forms = new Hono<Env>();
+
+type AccessibleJapanReportLead = {
+  id: string;
+  receivedAt: string;
+  sourcePartner: string;
+  sourceHotelName: string;
+  sourceHotelSlug: string;
+  sourcePageUrl: string;
+  sourceAttributionMethod: string;
+  sourceAttributionConfidence: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmContent: string;
+  utmTerm: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  hotelInterest: string[];
+  hotelMatchPreference: string;
+  hotelGrade: string;
+  legacyBudget: string;
+  travellers: string;
+  roomCount: string;
+  bedType: string;
+  datesDecided: string;
+  citySchedule: string[];
+  preferredCities: string[];
+  approximateTiming: string;
+  notes: string;
+};
+
+const PRIVATE_REPORT_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0',
+  Pragma: 'no-cache',
+  'Referrer-Policy': 'no-referrer',
+  'X-Robots-Tag': 'noindex, nofollow, noarchive',
+};
+
+function normalizeReportText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeReportText(item)).filter(Boolean).join(', ');
+  }
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value).trim();
+}
+
+function normalizeReportList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    const normalized = normalizeReportText(value);
+    return normalized ? [normalized] : [];
+  }
+  return value.map((item) => normalizeReportText(item)).filter(Boolean);
+}
+
+function reportMonth(receivedAt: string): string {
+  const matched = receivedAt.match(/^(\d{4})-(\d{2})/);
+  return matched ? `${matched[1]}-${matched[2]}` : jstNow().slice(0, 7);
+}
+
+function serializeAccessibleJapanReportLead(row: DbFormSubmission): AccessibleJapanReportLead {
+  const data = JSON.parse(row.data || '{}') as Record<string, unknown>;
+  const attribution = normalizeAccessibleJapanAttribution({
+    sourceHotelName: data.source_hotel_name,
+    sourceHotelSlug: data.source_hotel_slug,
+    sourcePageUrl: data.source_page_url,
+    utmSource: data.utm_source,
+    utmMedium: data.utm_medium,
+    utmCampaign: data.utm_campaign,
+    utmContent: data.utm_content,
+    utmTerm: data.utm_term,
+  });
+  const citySchedule = normalizeReportList(data.city_schedule);
+  const datesDecided = normalizeReportText(data.dates_decided)
+    || (citySchedule.length > 0 ? 'Yes (legacy response)' : '');
+  return {
+    id: row.id,
+    receivedAt: row.created_at,
+    sourcePartner: attribution.partner,
+    sourceHotelName: attribution.sourceHotelName,
+    sourceHotelSlug: attribution.sourceHotelSlug,
+    sourcePageUrl: attribution.sourcePageUrl,
+    sourceAttributionMethod: attribution.attributionMethod,
+    sourceAttributionConfidence: attribution.attributionConfidence,
+    utmSource: attribution.utmSource,
+    utmMedium: attribution.utmMedium,
+    utmCampaign: attribution.utmCampaign,
+    utmContent: attribution.utmContent,
+    utmTerm: attribution.utmTerm,
+    firstName: normalizeReportText(data.first_name),
+    lastName: normalizeReportText(data.last_name),
+    email: normalizeReportText(data.email),
+    hotelInterest: normalizeReportList(data.hotel_interest),
+    hotelMatchPreference: normalizeReportText(data.hotel_match_preference),
+    hotelGrade: normalizeReportText(data.hotel_grade),
+    legacyBudget: normalizeReportText(data.budget),
+    travellers: normalizeReportText(data.travellers),
+    roomCount: normalizeReportText(data.room_count),
+    bedType: normalizeReportText(data.bed_type),
+    datesDecided,
+    citySchedule,
+    preferredCities: normalizeReportList(data.preferred_cities),
+    approximateTiming: normalizeReportText(data.approximate_timing),
+    notes: normalizeReportText(data.notes),
+  };
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
+function readBearerToken(headerValue: string | undefined): string {
+  if (!headerValue?.startsWith('Bearer ')) return '';
+  return headerValue.slice('Bearer '.length).trim();
+}
 
 type FormField = SharedFormField;
 
@@ -107,6 +241,20 @@ type FormAnswerEntry = {
   value: string;
 };
 
+const ATTRIBUTION_LABELS: Record<string, string> = {
+  source_partner: 'Referral partner',
+  source_hotel_name: 'Source hotel',
+  source_hotel_slug: 'Source hotel slug',
+  source_page_url: 'Source hotel page',
+  source_attribution_method: 'Attribution method',
+  source_attribution_confidence: 'Attribution confidence',
+  utm_source: 'UTM source',
+  utm_medium: 'UTM medium',
+  utm_campaign: 'UTM campaign',
+  utm_content: 'UTM content',
+  utm_term: 'UTM term',
+};
+
 function isUploadedFormFile(value: unknown): value is {
   url: string;
   fileName?: string;
@@ -146,6 +294,15 @@ function buildAnswerEntries(
   allFields: FormField[] = fields,
 ): FormAnswerEntry[] {
   const knownFieldNames = new Set(allFields.map((field) => field.name));
+  const attributionFieldNames = new Set<string>(ACCESSIBLE_JAPAN_ATTRIBUTION_DATA_KEYS);
+
+  const attributionEntries = ACCESSIBLE_JAPAN_ATTRIBUTION_DATA_KEYS
+    .map((name) => ({
+      name,
+      label: ATTRIBUTION_LABELS[name] || name,
+      value: formatSubmissionValue(submissionData[name]),
+    }))
+    .filter((entry) => entry.value);
 
   const orderedEntries = fields
     .map((field) => ({
@@ -156,7 +313,7 @@ function buildAnswerEntries(
     .filter((entry) => entry.value);
 
   const extraEntries = Object.entries(submissionData)
-    .filter(([key]) => !knownFieldNames.has(key))
+    .filter(([key]) => !knownFieldNames.has(key) && !attributionFieldNames.has(key))
     .map(([key, value]) => ({
       name: key,
       label: key,
@@ -164,7 +321,7 @@ function buildAnswerEntries(
     }))
     .filter((entry) => entry.value);
 
-  return [...orderedEntries, ...extraEntries];
+  return [...attributionEntries, ...orderedEntries, ...extraEntries];
 }
 
 function filterVisibleSubmissionData(
@@ -385,6 +542,73 @@ forms.get('/api/forms', async (c) => {
   } catch (err) {
     console.error('GET /api/forms error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// GET /api/shared-reports/accessible-japan — read-only, form-scoped partner report
+forms.get('/api/shared-reports/accessible-japan', async (c) => {
+  try {
+    const token = readBearerToken(c.req.header('Authorization'));
+    const expectedHash = c.env.ACCESSIBLE_JAPAN_REPORT_TOKEN_SHA256?.trim().toLowerCase() || '';
+    const authorized = token.length >= 32
+      && expectedHash.length === 64
+      && constantTimeEqual(await sha256Hex(token), expectedHash);
+
+    if (!authorized) {
+      return c.json(
+        { success: false, error: 'This report link is invalid or has expired' },
+        401,
+        PRIVATE_REPORT_HEADERS,
+      );
+    }
+
+    const form = await getFormById(c.env.DB, ACCESSIBLE_JAPAN_FORM_ID);
+    if (!form) {
+      return c.json(
+        { success: false, error: 'Report not found' },
+        404,
+        PRIVATE_REPORT_HEADERS,
+      );
+    }
+
+    const rows = await getFormSubmissions(c.env.DB, ACCESSIBLE_JAPAN_FORM_ID);
+    const leads = rows.map(serializeAccessibleJapanReportLead);
+    const grouped = new Map<string, AccessibleJapanReportLead[]>();
+
+    for (const lead of leads) {
+      const month = reportMonth(lead.receivedAt);
+      const monthLeads = grouped.get(month) || [];
+      monthLeads.push(lead);
+      grouped.set(month, monthLeads);
+    }
+
+    const currentMonth = jstNow().slice(0, 7);
+    if (!grouped.has(currentMonth)) grouped.set(currentMonth, []);
+
+    const months = Array.from(grouped.entries())
+      .sort(([left], [right]) => right.localeCompare(left))
+      .map(([month, monthLeads]) => ({
+        month,
+        count: monthLeads.length,
+        leads: monthLeads,
+      }));
+
+    return c.json({
+      success: true,
+      data: {
+        reportName: 'Accessible Japan × Flat Travel Leads',
+        totalCount: leads.length,
+        generatedAt: jstNow(),
+        months,
+      },
+    }, 200, PRIVATE_REPORT_HEADERS);
+  } catch (err) {
+    console.error('GET /api/shared-reports/accessible-japan error:', err);
+    return c.json(
+      { success: false, error: 'Internal server error' },
+      500,
+      PRIVATE_REPORT_HEADERS,
+    );
   }
 });
 
@@ -706,6 +930,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
       slackChannelId?: string;
       responderDisplayName?: string;
       responderPictureUrl?: string | null;
+      attribution?: Record<string, unknown>;
       data?: Record<string, unknown>;
     }>();
 
@@ -728,7 +953,21 @@ forms.post('/api/forms/:id/submit', async (c) => {
     // Validate required fields
     const fields = JSON.parse(form.fields || '[]') as FormField[];
     const visibleFields = getVisibleFormFields(fields, rawSubmissionData);
-    const submissionData = filterVisibleSubmissionData(fields, visibleFields, rawSubmissionData);
+    const filteredSubmissionData = filterVisibleSubmissionData(
+      fields,
+      visibleFields,
+      formId === ACCESSIBLE_JAPAN_FORM_ID
+        ? stripAccessibleJapanAttributionData(rawSubmissionData)
+        : rawSubmissionData,
+    );
+    const submissionData = formId === ACCESSIBLE_JAPAN_FORM_ID
+      ? {
+        ...filteredSubmissionData,
+        ...accessibleJapanAttributionToSubmissionData(
+          normalizeAccessibleJapanAttribution(body.attribution),
+        ),
+      }
+      : filteredSubmissionData;
 
     for (const field of visibleFields) {
       if (field.required) {

@@ -57,6 +57,7 @@ export type Env = {
     WORKER_URL: string;
     WEB_APP_URL?: string;
     FORMS_APP_URL?: string;
+    ACCESSIBLE_JAPAN_REPORT_TOKEN_SHA256?: string;
     SLACK_BOT_TOKEN: string;
     TRAVEL_QUOTE_SLACK_CHANNEL_ID?: string;
     FLATWORKER_API_BASE_URL?: string;
