@@ -199,25 +199,23 @@ chats.get('/api/chats', async (c) => {
     const operatorId = c.req.query('operatorId') ?? undefined;
     const lineAccountId = c.req.query('lineAccountId') ?? undefined;
 
-    // JOIN friends to get display_name and picture_url
+    // Resolve the last message from chats.last_message_at. The previous two
+    // correlated scans walked a friend's full message history every five
+    // seconds in each open browser tab and could exhaust D1's daily row-read
+    // allowance. created_at is indexed, and the composite index in migration
+    // 023 makes the tie-break lookup bounded as well.
     let sql = `SELECT c.*, f.display_name, f.picture_url, f.line_user_id, la.channel_type,
-                      (
-                        SELECT ml.id
-                          FROM messages_log ml
-                         WHERE ml.friend_id = c.friend_id
-                         ORDER BY ml.created_at DESC, ml.id DESC
-                         LIMIT 1
-                      ) as last_message_id,
-                      (
-                        SELECT ml.direction
-                          FROM messages_log ml
-                         WHERE ml.friend_id = c.friend_id
-                         ORDER BY ml.created_at DESC, ml.id DESC
-                         LIMIT 1
-                      ) as last_message_direction
+                      ml.id as last_message_id,
+                      ml.direction as last_message_direction
                FROM chats c
                LEFT JOIN friends f ON c.friend_id = f.id
-               LEFT JOIN line_accounts la ON la.id = f.line_account_id`;
+               LEFT JOIN line_accounts la ON la.id = f.line_account_id
+               LEFT JOIN messages_log ml ON ml.id = (
+                 SELECT MAX(latest.id)
+                   FROM messages_log latest
+                  WHERE latest.friend_id = c.friend_id
+                    AND latest.created_at = c.last_message_at
+               )`;
     const conditions: string[] = [];
     const bindings: unknown[] = [];
 
