@@ -40,6 +40,8 @@ const requiredReferenceMarkers = [
   '.upgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px;padding:10px 15px 14px}',
   '.upthumbname{font-size:12.5px;line-height:1.5}',
   '.filestatus{min-width:0;color:var(--ink-2);font-size:13.5px;',
+  'showIf:["wcType",["Manual wheelchair","Powered wheelchair","Mobility scooter","Rollator / walker"]],e:"Make and model"',
+  'showIf:["wcType",["Manual wheelchair","Powered wheelchair","Mobility scooter","Rollator / walker"]],e:"Dimensions"',
 ]
 for (const marker of requiredReferenceMarkers) {
   if (!artifact.includes(marker)) throw new Error(`Missing reviewed marker: ${marker}`)
@@ -55,6 +57,10 @@ if (artifact.includes('data-theme="dark"') || artifact.includes('--ground:#14191
 }
 if (artifact.includes('minmax(190px,1fr)') || artifact.includes('font-size:15px;line-height:1.55')) {
   throw new Error('Experience cards still differ from the current Vercel reference sizing')
+}
+if (artifact.includes('showIf:["wcType",["Powered wheelchair","Mobility scooter"]],e:"Make and model"')
+  || artifact.includes('showIf:["wcType",["Powered wheelchair","Mobility scooter"]],e:"Dimensions"')) {
+  throw new Error('Manual wheelchair make/model or dimensions are still hidden')
 }
 
 const requiredIntegrationMarkers = [
