@@ -7,6 +7,7 @@ import { processScheduledBroadcasts } from './services/broadcast.js';
 import { processReminderDeliveries } from './services/reminder-delivery.js';
 import { processScheduledMessages } from './services/scheduled-messages.js';
 import { checkAccountHealth } from './services/ban-monitor.js';
+import { processAccessibleJapanQuoteJobs } from './services/accessible-japan-quote-jobs.js';
 import { authMiddleware } from './middleware/auth.js';
 import { webhook } from './routes/webhook.js';
 import { friends } from './routes/friends.js';
@@ -52,6 +53,8 @@ export type Env = {
     WEB_APP_URL?: string;
     FORMS_APP_URL?: string;
     ACCESSIBLE_JAPAN_REPORT_TOKEN_SHA256?: string;
+    ACCESSIBLE_JAPAN_QUOTE_INTAKE_URL?: string;
+    ACCESSIBLE_JAPAN_QUOTE_INTAKE_TOKEN?: string;
     SLACK_BOT_TOKEN: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
@@ -240,6 +243,7 @@ async function scheduled(
   }
   jobs.push(processScheduledMessages(env));
   jobs.push(checkAccountHealth(env.DB));
+  jobs.push(processAccessibleJapanQuoteJobs(env, { limit: 3 }));
 
   await Promise.allSettled(jobs);
 }

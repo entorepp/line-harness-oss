@@ -34,6 +34,10 @@ import type {
 } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
+import {
+  enqueueAccessibleJapanQuoteJob,
+  processAccessibleJapanQuoteJobs,
+} from '../services/accessible-japan-quote-jobs.js';
 
 const forms = new Hono<Env>();
 type AccessibleJapanReportLead = {
@@ -1007,6 +1011,9 @@ forms.post('/api/forms/:id/submit', async (c) => {
       slackChannelId: resolvedSubmissionSlackChannelId,
       data: JSON.stringify(submissionData),
     });
+    if (form.id === ACCESSIBLE_JAPAN_FORM_ID) {
+      await enqueueAccessibleJapanQuoteJob(c.env.DB, submission.id);
+    }
 
     const now = jstNow();
     const notificationFriendId = sharedByFriendId || friendId || null;
@@ -1091,6 +1098,15 @@ forms.post('/api/forms/:id/submit', async (c) => {
         },
       ),
     );
+
+    if (form.id === ACCESSIBLE_JAPAN_FORM_ID) {
+      sideEffects.push(
+        processAccessibleJapanQuoteJobs(c.env, {
+          submissionId: submission.id,
+          limit: 1,
+        }),
+      );
+    }
 
     if (sideEffects.length > 0) {
       c.executionCtx.waitUntil((async () => {
