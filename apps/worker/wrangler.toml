@@ -11,6 +11,8 @@ WORKER_URL = "https://line-flattravel.flat-travel.workers.dev"
 WEB_APP_URL = "https://line-crm-web-2ob.pages.dev"
 FORMS_APP_URL = "https://liffform-studio.pages.dev"
 ACCESSIBLE_JAPAN_REPORT_TOKEN_SHA256 = "95c1325d3505286b60b17605200dc738d9f553e35f1d41bdf46bc3e1231da30b"
+ACCESSIBLE_JAPAN_QUOTE_INTAKE_URL = "https://travelworker-api-659208123397.asia-northeast1.run.app/api/integrations/accessible-japan-quote-intents"
+# ACCESSIBLE_JAPAN_QUOTE_INTAKE_TOKEN is a Worker secret and must not be stored here.
 
 [[d1_databases]]
 binding = "DB"

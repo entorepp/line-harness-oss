@@ -593,3 +593,21 @@ CREATE INDEX IF NOT EXISTS idx_form_submissions_form ON form_submissions (form_i
 CREATE INDEX IF NOT EXISTS idx_form_submissions_issue ON form_submissions (form_issue_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_friend ON form_submissions (friend_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_slack_channel ON form_submissions (slack_channel_id);
+
+-- Accessible Japan form -> FlatWorker quotation draft retry queue.  The queue
+-- stores no answer body or contact details; those remain in form_submissions.
+CREATE TABLE IF NOT EXISTS accessible_japan_quote_jobs (
+  submission_id TEXT PRIMARY KEY REFERENCES form_submissions (id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'retry', 'complete', 'failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  lease_until TEXT,
+  case_id TEXT,
+  last_error_code TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_accessible_japan_quote_jobs_due
+  ON accessible_japan_quote_jobs (status, next_attempt_at);
