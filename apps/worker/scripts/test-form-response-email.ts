@@ -47,7 +47,7 @@ const respondentCopy = buildResponseCopyEmail({
   fields,
   submissionData,
 });
-assert.match(respondentCopy.subject, /Copy of your responses/);
+assert.match(respondentCopy.subject, /Respondent copy/);
 assert.match(respondentCopy.text, /Alex & Sam/);
 assert.match(respondentCopy.text, /File received \(not attached/);
 assert.doesNotMatch(respondentCopy.text, /sig=secret/);
@@ -66,6 +66,8 @@ const agencyCopy = buildResponseCopyEmail({
   includedFieldNames: ['name'],
 });
 assert.deepEqual(agencyCopy.includedFieldNames, ['name']);
+assert.match(agencyCopy.subject, /Agency copy/);
+assert.notEqual(respondentCopy.subject, agencyCopy.subject);
 assert.match(agencyCopy.text, /Alex & Sam/);
 assert.doesNotMatch(agencyCopy.text, /Support/);
 assert.doesNotMatch(agencyCopy.text, /Passport/);
@@ -98,6 +100,10 @@ assert.deepEqual(classifyEmailError({ code: 'E_RECIPIENT_SUPPRESSED' }), {
 assert.deepEqual(classifyEmailError(new Error('timeout')), {
   status: 'unknown',
   code: 'EMAIL_OUTCOME_UNKNOWN',
+});
+assert.deepEqual(classifyEmailError({ code: 'E_GMAIL_OUTCOME_UNKNOWN', outcome: 'unknown' }), {
+  status: 'unknown',
+  code: 'E_GMAIL_OUTCOME_UNKNOWN',
 });
 
 console.log('FORM_RESPONSE_EMAIL_TEST_OK');

@@ -45,17 +45,6 @@ import { metaDataDeletion } from './routes/meta-data-deletion.js';
 import { whatsappInitiation } from './routes/whatsapp-initiation.js';
 import { formResponseEmails } from './routes/form-response-emails.js';
 
-type FormResponseEmailBinding = {
-  send(message: {
-    to: string;
-    from: string;
-    replyTo?: string;
-    subject: string;
-    text: string;
-    html: string;
-  }): Promise<unknown>;
-};
-
 export type Env = {
   Bindings: {
     DB: D1Database;
@@ -79,10 +68,7 @@ export type Env = {
     WHATSAPP_INITIAL_CONTACT_TEST_PHONE_HASHES?: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
-    FORM_RESPONSE_EMAIL?: FormResponseEmailBinding;
     FORM_RESPONSE_EMAIL_ENABLED?: string;
-    FORM_RESPONSE_EMAIL_FROM?: string;
-    FORM_RESPONSE_EMAIL_REPLY_TO?: string;
     FORM_RESPONSE_EMAIL_ENCRYPTION_KEY?: string;
     FORM_RESPONSE_EMAIL_ALLOWED_OPERATORS?: string;
     FORM_RESPONSE_EMAIL_OPERATOR_KEY_HASHES?: string;

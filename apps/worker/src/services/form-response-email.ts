@@ -186,9 +186,13 @@ export function buildResponseCopyEmail(input: {
     }];
   });
 
-  const subject = japanese
-    ? `【Flat Travel】ご回答内容の控え：${input.formName}`
-    : `[Flat Travel] Copy of your responses: ${input.formName}`;
+  const subject = input.recipientRole === 'agency_contact'
+    ? (japanese
+      ? `【Flat Travel・代理店共有用】回答内容：${input.formName}`
+      : `[Flat Travel · Agency copy] Responses: ${input.formName}`)
+    : (japanese
+      ? `【Flat Travel・回答者控え】ご回答内容：${input.formName}`
+      : `[Flat Travel · Respondent copy] Your responses: ${input.formName}`);
   const greeting = japanese ? `${input.contactName} 様` : `Dear ${input.contactName},`;
   const intro = input.recipientRole === 'agency_contact'
     ? (japanese
@@ -282,10 +286,14 @@ export function maskEmailAddress(email: string): string {
 }
 
 export function classifyEmailError(error: unknown): { status: 'failed' | 'unknown'; code: string } {
+  const explicitOutcome = typeof error === 'object' && error && 'outcome' in error
+    ? String((error as { outcome?: unknown }).outcome || '')
+    : '';
   const rawCode = typeof error === 'object' && error && 'code' in error
     ? String((error as { code?: unknown }).code || '')
     : '';
   const safeCode = /^E_[A-Z0-9_]{1,80}$/u.test(rawCode) ? rawCode : 'EMAIL_OUTCOME_UNKNOWN';
-  const knownFailure = safeCode !== 'EMAIL_OUTCOME_UNKNOWN';
+  if (explicitOutcome === 'unknown') return { status: 'unknown', code: safeCode };
+  const knownFailure = explicitOutcome === 'failed' || safeCode !== 'EMAIL_OUTCOME_UNKNOWN';
   return { status: knownFailure ? 'failed' : 'unknown', code: safeCode };
 }
