@@ -38,6 +38,7 @@ import { entryRoutes } from './routes/entry-routes.js';
 import { uploads } from './routes/uploads.js';
 import { waWebhook } from './routes/wa-webhook.js';
 import { kakaoWebhook } from './routes/kakao-webhook.js';
+import { travelQuoteIntents } from './routes/travel-quote-intents.js';
 
 export type Env = {
   Bindings: {
@@ -56,6 +57,9 @@ export type Env = {
     ACCESSIBLE_JAPAN_QUOTE_INTAKE_URL?: string;
     ACCESSIBLE_JAPAN_QUOTE_INTAKE_TOKEN?: string;
     SLACK_BOT_TOKEN: string;
+    TRAVEL_QUOTE_SLACK_CHANNEL_ID?: string;
+    FLATWORKER_API_BASE_URL?: string;
+    FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
     GA4_MEASUREMENT_ID: string;
@@ -91,6 +95,10 @@ app.get('/forms', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORM
 app.get('/forms/new', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/forms/new'), 302));
 app.get('/forms/edit', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/forms/edit'), 302));
 app.get('/public-form', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/public-form'), 302));
+
+// Public, origin-checked website enquiry intake. Mount before session auth;
+// the route applies its own origin, size, rate and schema guards.
+app.route('/', travelQuoteIntents);
 
 // Auth middleware — skips /webhook and /docs automatically
 app.use('*', authMiddleware);

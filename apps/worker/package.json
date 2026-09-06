@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:travel-quote-route": "esbuild scripts/test-travel-quote-route.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-travel-quote-test.mjs && node /tmp/flat-harness-travel-quote-test.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",
