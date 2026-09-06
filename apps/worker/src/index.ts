@@ -39,6 +39,18 @@ import { uploads } from './routes/uploads.js';
 import { waWebhook } from './routes/wa-webhook.js';
 import { kakaoWebhook } from './routes/kakao-webhook.js';
 import { travelQuoteIntents } from './routes/travel-quote-intents.js';
+import { formResponseEmails } from './routes/form-response-emails.js';
+
+type FormResponseEmailBinding = {
+  send(message: {
+    to: string;
+    from: string;
+    replyTo?: string;
+    subject: string;
+    text: string;
+    html: string;
+  }): Promise<unknown>;
+};
 
 export type Env = {
   Bindings: {
@@ -62,6 +74,13 @@ export type Env = {
     FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
+    FORM_RESPONSE_EMAIL?: FormResponseEmailBinding;
+    FORM_RESPONSE_EMAIL_ENABLED?: string;
+    FORM_RESPONSE_EMAIL_FROM?: string;
+    FORM_RESPONSE_EMAIL_REPLY_TO?: string;
+    FORM_RESPONSE_EMAIL_ENCRYPTION_KEY?: string;
+    FORM_RESPONSE_EMAIL_ALLOWED_OPERATORS?: string;
+    FORM_RESPONSE_EMAIL_OPERATOR_KEY_HASHES?: string;
     GA4_MEASUREMENT_ID: string;
     UPLOADS: KVNamespace;
     WA_BRIDGE_SECRET: string;
@@ -86,8 +105,17 @@ function buildWebAppRedirectUrl(requestUrl: string, webAppUrl: string | undefine
   return target.toString();
 }
 
-// CORS — allow all origins for MVP
-app.use('*', cors({ origin: '*' }));
+// CORS — allow all origins for MVP. Keep the Forms Studio operator attribution
+// header explicit so browser preflight requests cannot silently drop it.
+app.use('*', cors({
+  origin: '*',
+  allowHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Forms-Operator',
+    'X-Forms-Operator-Key',
+  ],
+}));
 
 // Human-friendly redirects for the Worker domain.
 app.get('/', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.WEB_APP_URL, '/'), 302));
@@ -130,6 +158,7 @@ app.route('/', automations);
 app.route('/', richMenus);
 app.route('/', trackedLinks);
 app.route('/', forms);
+app.route('/', formResponseEmails);
 app.route('/', entryRoutes);
 app.route('/', uploads);
 app.route('/', waWebhook);
