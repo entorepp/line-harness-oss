@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import { travelQuoteIntents } from '../src/routes/travel-quote-intents.js';
+import { FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS } from '../src/services/flatworker-travel-quote.js';
 import { parseTravelQuoteIntent } from '../src/services/travel-quote-intent.js';
+
+assert.equal(FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS, 45_000);
 
 const rows: Array<Record<string, any>> = [];
 const slackPosts: Array<Record<string, any>> = [];
@@ -299,4 +302,3 @@ assert.match(rows[2].id, /^travel-quote-intake-failed:/);
 assert.doesNotMatch(rows[2].metadata, /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 
 console.log('travel quote intent route: create, deduplicate, validate, and origin guard passed');
-
