@@ -32,6 +32,48 @@ export interface FormSubmission {
   created_at: string;
 }
 
+export type FormSubmissionEmailRecipientRole = 'respondent' | 'agency_contact';
+
+export interface FormSubmissionEmailRecipient {
+  id: string;
+  submission_id: string;
+  recipient_role: FormSubmissionEmailRecipientRole;
+  company_name: string | null;
+  contact_name: string;
+  email_ciphertext: string;
+  email_hash: string;
+  source: 'staff_registered' | 'staff_corrected';
+  created_by: string;
+  created_at: string;
+  updated_by: string;
+  updated_at: string;
+  removed_by: string | null;
+  removed_at: string | null;
+}
+
+export interface FormSubmissionEmailDelivery {
+  id: string;
+  batch_id: string;
+  submission_id: string;
+  recipient_id: string;
+  idempotency_key: string;
+  policy_version: string;
+  included_field_names_json: string;
+  field_label_snapshot_json: string;
+  submission_data_sha256: string;
+  subject_snapshot: string;
+  body_sha256: string;
+  status: 'pending' | 'accepted' | 'failed' | 'unknown';
+  provider: string;
+  provider_message_id: string | null;
+  error_code: string | null;
+  requested_by: string;
+  requested_at: string;
+  accepted_at: string | null;
+  updated_at: string;
+  retry_of_delivery_id: string | null;
+}
+
 export interface FormIssue {
   id: string;
   form_id: string;
@@ -203,6 +245,219 @@ export async function getFormSubmissions(
     .bind(formId)
     .all<FormSubmission>();
   return result.results;
+}
+
+export async function getFormSubmissionById(
+  db: D1Database,
+  id: string,
+): Promise<FormSubmission | null> {
+  return db.prepare(`SELECT * FROM form_submissions WHERE id = ?`).bind(id).first<FormSubmission>();
+}
+
+export async function getFormSubmissionEmailRecipients(
+  db: D1Database,
+  submissionId: string,
+): Promise<FormSubmissionEmailRecipient[]> {
+  const result = await db.prepare(
+    `SELECT * FROM form_submission_email_recipients
+     WHERE submission_id = ? AND removed_at IS NULL
+     ORDER BY CASE recipient_role WHEN 'respondent' THEN 0 ELSE 1 END, created_at ASC`,
+  ).bind(submissionId).all<FormSubmissionEmailRecipient>();
+  return result.results;
+}
+
+export async function getFormSubmissionEmailRecipientById(
+  db: D1Database,
+  id: string,
+): Promise<FormSubmissionEmailRecipient | null> {
+  return db.prepare(
+    `SELECT * FROM form_submission_email_recipients WHERE id = ?`,
+  ).bind(id).first<FormSubmissionEmailRecipient>();
+}
+
+export async function saveFormSubmissionEmailRecipient(
+  db: D1Database,
+  input: {
+    id?: string;
+    submissionId: string;
+    recipientRole: FormSubmissionEmailRecipientRole;
+    companyName?: string | null;
+    contactName: string;
+    emailCiphertext: string;
+    emailHash: string;
+    actor: string;
+  },
+): Promise<{ recipient: FormSubmissionEmailRecipient; created: boolean }> {
+  const now = jstNow();
+  let existing: FormSubmissionEmailRecipient | null = null;
+
+  if (input.id) {
+    existing = await getFormSubmissionEmailRecipientById(db, input.id);
+  } else if (input.recipientRole === 'respondent') {
+    existing = await db.prepare(
+      `SELECT * FROM form_submission_email_recipients
+       WHERE submission_id = ? AND recipient_role = 'respondent' AND removed_at IS NULL`,
+    ).bind(input.submissionId).first<FormSubmissionEmailRecipient>();
+  }
+
+  if (existing) {
+    if (existing.submission_id !== input.submissionId || existing.removed_at) {
+      throw new Error('Recipient does not belong to this active submission');
+    }
+    await db.prepare(
+      `UPDATE form_submission_email_recipients
+       SET company_name = ?, contact_name = ?, email_ciphertext = ?, email_hash = ?,
+           source = 'staff_corrected', updated_by = ?, updated_at = ?
+       WHERE id = ?`,
+    ).bind(
+      input.companyName ?? null,
+      input.contactName,
+      input.emailCiphertext,
+      input.emailHash,
+      input.actor,
+      now,
+      existing.id,
+    ).run();
+    return { recipient: (await getFormSubmissionEmailRecipientById(db, existing.id))!, created: false };
+  }
+
+  const id = crypto.randomUUID();
+  await db.prepare(
+    `INSERT INTO form_submission_email_recipients
+       (id, submission_id, recipient_role, company_name, contact_name, email_ciphertext,
+        email_hash, source, created_by, created_at, updated_by, updated_at, removed_by, removed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'staff_registered', ?, ?, ?, ?, NULL, NULL)`,
+  ).bind(
+    id,
+    input.submissionId,
+    input.recipientRole,
+    input.companyName ?? null,
+    input.contactName,
+    input.emailCiphertext,
+    input.emailHash,
+    input.actor,
+    now,
+    input.actor,
+    now,
+  ).run();
+  return { recipient: (await getFormSubmissionEmailRecipientById(db, id))!, created: true };
+}
+
+export async function removeFormSubmissionEmailRecipient(
+  db: D1Database,
+  id: string,
+  actor: string,
+): Promise<FormSubmissionEmailRecipient | null> {
+  const existing = await getFormSubmissionEmailRecipientById(db, id);
+  if (!existing || existing.removed_at) return null;
+  const now = jstNow();
+  await db.prepare(
+    `UPDATE form_submission_email_recipients
+     SET removed_by = ?, removed_at = ?, updated_by = ?, updated_at = ? WHERE id = ?`,
+  ).bind(actor, now, actor, now, id).run();
+  return getFormSubmissionEmailRecipientById(db, id);
+}
+
+export async function getFormSubmissionEmailDeliveries(
+  db: D1Database,
+  submissionId: string,
+): Promise<FormSubmissionEmailDelivery[]> {
+  const result = await db.prepare(
+    `SELECT * FROM form_submission_email_deliveries
+     WHERE submission_id = ? ORDER BY requested_at DESC`,
+  ).bind(submissionId).all<FormSubmissionEmailDelivery>();
+  return result.results;
+}
+
+export async function createFormSubmissionEmailDelivery(
+  db: D1Database,
+  input: Omit<FormSubmissionEmailDelivery, 'status' | 'provider_message_id' | 'error_code' | 'accepted_at'>,
+): Promise<{ delivery: FormSubmissionEmailDelivery; created: boolean }> {
+  const result = await db.prepare(
+    `INSERT OR IGNORE INTO form_submission_email_deliveries
+       (id, batch_id, submission_id, recipient_id, idempotency_key, policy_version,
+        included_field_names_json, field_label_snapshot_json, submission_data_sha256,
+        subject_snapshot, body_sha256, status, provider, provider_message_id, error_code,
+        requested_by, requested_at, accepted_at, updated_at, retry_of_delivery_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, ?, ?, NULL, ?, ?)`,
+  ).bind(
+    input.id,
+    input.batch_id,
+    input.submission_id,
+    input.recipient_id,
+    input.idempotency_key,
+    input.policy_version,
+    input.included_field_names_json,
+    input.field_label_snapshot_json,
+    input.submission_data_sha256,
+    input.subject_snapshot,
+    input.body_sha256,
+    input.provider,
+    input.requested_by,
+    input.requested_at,
+    input.updated_at,
+    input.retry_of_delivery_id,
+  ).run();
+  const delivery = await db.prepare(
+    `SELECT * FROM form_submission_email_deliveries
+     WHERE submission_id = ? AND recipient_id = ? AND idempotency_key = ?`,
+  ).bind(input.submission_id, input.recipient_id, input.idempotency_key).first<FormSubmissionEmailDelivery>();
+  if (!delivery) throw new Error('Failed to create delivery receipt');
+  return { delivery, created: Number(result.meta?.changes || 0) > 0 };
+}
+
+export async function updateFormSubmissionEmailDelivery(
+  db: D1Database,
+  id: string,
+  input: {
+    status: FormSubmissionEmailDelivery['status'];
+    providerMessageId?: string | null;
+    errorCode?: string | null;
+    acceptedAt?: string | null;
+  },
+): Promise<FormSubmissionEmailDelivery | null> {
+  const now = jstNow();
+  await db.prepare(
+    `UPDATE form_submission_email_deliveries
+     SET status = ?, provider_message_id = ?, error_code = ?, accepted_at = ?, updated_at = ?
+     WHERE id = ?`,
+  ).bind(
+    input.status,
+    input.providerMessageId ?? null,
+    input.errorCode ?? null,
+    input.acceptedAt ?? null,
+    now,
+    id,
+  ).run();
+  return db.prepare(`SELECT * FROM form_submission_email_deliveries WHERE id = ?`)
+    .bind(id).first<FormSubmissionEmailDelivery>();
+}
+
+export async function createFormSubmissionEmailAudit(
+  db: D1Database,
+  input: {
+    submissionId: string;
+    recipientId?: string | null;
+    deliveryId?: string | null;
+    action: 'recipient_added' | 'recipient_updated' | 'recipient_removed' | 'previewed' | 'send_requested' | 'send_accepted' | 'send_failed' | 'send_unknown';
+    actor: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  await db.prepare(
+    `INSERT INTO form_submission_email_audit
+       (id, submission_id, recipient_id, delivery_id, action, actor, metadata_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    crypto.randomUUID(),
+    input.submissionId,
+    input.recipientId ?? null,
+    input.deliveryId ?? null,
+    input.action,
+    input.actor,
+    JSON.stringify(input.metadata || {}),
+    jstNow(),
+  ).run();
 }
 
 export interface CreateFormSubmissionInput {
