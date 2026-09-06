@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Form as HarnessForm, Scenario, Tag } from '@line-crm/shared'
 import PageHeader from '@/components/page-header'
+import ResponseCopyPanel from '@/components/forms/response-copy-panel'
 import { api } from '@/lib/api'
 
 type FormSubmissionRecord = {
@@ -1429,6 +1430,10 @@ export default function FormsDashboardPage() {
                       </div>
 
                       <div className="mt-5 space-y-3">
+                        <ResponseCopyPanel
+                          submissionId={selectedSubmission.id}
+                          defaultRespondentName={findSubmissionDisplay(selectedForm, selectedSubmission).title}
+                        />
                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
                           <div className="flex flex-wrap items-end gap-3">
                             <div className="min-w-[240px] flex-1">

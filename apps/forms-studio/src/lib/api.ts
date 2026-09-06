@@ -15,6 +15,70 @@ export const API_URL = configuredApiUrl !== undefined
     : ''
 export const AUTH_STORAGE_KEY = 'forms_studio_api_key'
 export const ACCOUNT_STORAGE_KEY = 'forms_studio_line_account_id'
+export const OPERATOR_STORAGE_KEY = 'forms_studio_operator_name'
+export const OPERATOR_KEY_SESSION_STORAGE_KEY = 'forms_studio_operator_personal_key'
+
+export type FormResponseEmailRecipient = {
+  id: string
+  submissionId: string
+  role: 'respondent' | 'agency_contact'
+  companyName: string | null
+  contactName: string
+  email: string
+  maskedEmail: string
+  source: 'staff_registered' | 'staff_corrected'
+  createdBy: string
+  createdAt: string
+  updatedBy: string
+  updatedAt: string
+}
+
+export type FormResponseEmailDelivery = {
+  id: string
+  batchId: string
+  submissionId: string
+  recipientId: string
+  status: 'pending' | 'accepted' | 'failed' | 'unknown'
+  provider: string
+  providerMessageId: string | null
+  errorCode: string | null
+  requestedBy: string
+  requestedAt: string
+  acceptedAt: string | null
+  updatedAt: string
+  retryOfDeliveryId: string | null
+}
+
+export type FormResponseCopyState = {
+  submissionHash: string
+  emailEnabled: boolean
+  providerConfigured: boolean
+  recipients: FormResponseEmailRecipient[]
+  deliveries: FormResponseEmailDelivery[]
+  fields: Array<{
+    name: string
+    label: string
+    type: string
+    answered: boolean
+    attachmentExcluded: boolean
+  }>
+}
+
+export type FormResponseCopyPreview = {
+  submissionHash: string
+  previewHash: string
+  policyVersion: string
+  recipients: Array<{
+    recipientId: string
+    role: 'respondent' | 'agency_contact'
+    contactName: string
+    companyName: string | null
+    email: string
+    subject: string
+    text: string
+    includedFieldNames: string[]
+  }>
+}
 
 let hasRedirectedForUnauthorized = false
 
@@ -45,6 +109,8 @@ function handleUnauthorized() {
   hasRedirectedForUnauthorized = true
   localStorage.removeItem(AUTH_STORAGE_KEY)
   localStorage.removeItem(ACCOUNT_STORAGE_KEY)
+  localStorage.removeItem(OPERATOR_STORAGE_KEY)
+  sessionStorage.removeItem(OPERATOR_KEY_SESSION_STORAGE_KEY)
 
   if (window.location.pathname !== '/login') {
     window.location.assign('/login')
@@ -71,6 +137,12 @@ export async function fetchApi<T>(
   const { rawBody, ...fetchOptions } = options || {}
   const headers: Record<string, string> = {
     Authorization: `Bearer ${getApiKey()}`,
+  }
+  if (typeof window !== 'undefined') {
+    const operator = localStorage.getItem(OPERATOR_STORAGE_KEY)?.trim()
+    if (operator) headers['X-Forms-Operator'] = encodeURIComponent(operator)
+    const operatorKey = sessionStorage.getItem(OPERATOR_KEY_SESSION_STORAGE_KEY)?.trim()
+    if (operatorKey) headers['X-Forms-Operator-Key'] = operatorKey
   }
 
   if (!rawBody) {
@@ -244,5 +316,61 @@ export const api = {
         }
         form: HarnessForm
       }>>(`/api/form-issues/${issueId}`),
+    responseCopy: (submissionId: string) =>
+      fetchApi<ApiResponse<FormResponseCopyState>>(
+        `/api/form-submissions/${submissionId}/response-copy`,
+      ),
+    saveEmailRecipient: (
+      submissionId: string,
+      data: {
+        id?: string
+        role: 'respondent' | 'agency_contact'
+        companyName?: string | null
+        contactName: string
+        email: string
+        emailConfirmation: string
+        expectedSubmissionHash: string
+        correctionReason?: string
+      },
+    ) => fetchApi<ApiResponse<FormResponseEmailRecipient>>(
+      `/api/form-submissions/${submissionId}/email-recipients`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+    removeEmailRecipient: (submissionId: string, recipientId: string) =>
+      fetchApi<ApiResponse<null>>(
+        `/api/form-submissions/${submissionId}/email-recipients/${recipientId}`,
+        { method: 'DELETE' },
+      ),
+    previewResponseCopy: (
+      submissionId: string,
+      data: { recipientIds: string[]; agencyIncludedFieldNames: string[] },
+    ) => fetchApi<ApiResponse<FormResponseCopyPreview>>(
+      `/api/form-submissions/${submissionId}/response-copy/preview`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+    sendResponseCopy: (
+      submissionId: string,
+      data: {
+        recipientIds: string[]
+        agencyIncludedFieldNames: string[]
+        expectedSubmissionHash: string
+        expectedPreviewHash: string
+        idempotencyKey: string
+        confirmed: boolean
+        agencySharingConfirmed: boolean
+      },
+    ) => fetchApi<ApiResponse<{
+      batchId: string
+      results: Array<{
+        recipientId: string
+        maskedEmail: string
+        status: 'accepted' | 'failed' | 'unknown'
+        errorCode?: string
+        deduplicated: boolean
+      }>
+    }>>(
+      `/api/form-submissions/${submissionId}/response-copy/send`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
   },
 }
