@@ -3,7 +3,12 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import AuthGuard from '@/components/auth-guard'
-import { ACCOUNT_STORAGE_KEY, AUTH_STORAGE_KEY } from '@/lib/api'
+import {
+  ACCOUNT_STORAGE_KEY,
+  AUTH_STORAGE_KEY,
+  OPERATOR_KEY_SESSION_STORAGE_KEY,
+  OPERATOR_STORAGE_KEY,
+} from '@/lib/api'
 
 function StudioNav() {
   const pathname = usePathname()
@@ -12,6 +17,8 @@ function StudioNav() {
   const logout = () => {
     localStorage.removeItem(AUTH_STORAGE_KEY)
     localStorage.removeItem(ACCOUNT_STORAGE_KEY)
+    localStorage.removeItem(OPERATOR_STORAGE_KEY)
+    sessionStorage.removeItem(OPERATOR_KEY_SESSION_STORAGE_KEY)
     router.replace('/login')
   }
 
