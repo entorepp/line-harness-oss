@@ -5,6 +5,12 @@ type FlatworkerTravelQuoteEnvironment = {
   FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
 };
 
+// TravelWorker performs bounded quote normalization, lead linkage, PDF
+// rendering and Slack review posting before replying. Production measurements
+// are currently above ten seconds, so keep the public request alive long
+// enough for that single synchronous handoff to complete.
+export const FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS = 45_000;
+
 const SAFE_UPSTREAM_MESSAGES = new Set([
   'invalid traveller profile schema',
   'traveller email required',
@@ -40,7 +46,7 @@ export async function syncTravelQuoteToFlatworker(
         'x-travelworker-request-id': crypto.randomUUID(),
       },
       body: JSON.stringify(intent),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS),
     });
     if (!response.ok) {
       let body: Record<string, unknown> = {};
@@ -78,4 +84,3 @@ export async function syncTravelQuoteToFlatworker(
     return { status: 'failed', caseId };
   }
 }
-
