@@ -163,6 +163,7 @@ const localizedTextDefaults: Record<string, {
 
 const PAGE_BACKGROUND_IMAGE = '/travel-background.jpg'
 const HERO_BACKGROUND_IMAGE = '/travel-header.jpg'
+const ACCESSIBLE_JAPAN_HERO_IMAGE = '/accessible-japan-trip-hero-v2.jpg'
 
 function normalizeLocale(value: string | null | undefined): string {
   const locale = value?.trim() || ''
@@ -311,7 +312,21 @@ function fieldControlClass(isMissing: boolean) {
   }`
 }
 
-function choiceControlClass(isMissing: boolean) {
+function choiceControlClass(
+  isMissing: boolean,
+  isAccessibleJapanForm = false,
+  isSelected = false,
+) {
+  if (isAccessibleJapanForm) {
+    return `rounded-2xl border px-4 py-3.5 text-sm transition-all sm:px-5 ${
+      isMissing
+        ? 'border-rose-200 bg-rose-50/70'
+        : isSelected
+          ? 'border-[#2a7058] bg-[#edf7f1] text-[#163d30] shadow-[0_8px_24px_rgba(42,112,88,0.10)] ring-1 ring-[#2a7058]/20'
+          : 'border-[#e7dccb] bg-white text-slate-700 hover:border-[#a9c7b9] hover:bg-[#fffcf6]'
+    }`
+  }
+
   return `rounded-xl border px-4 py-3 text-sm text-slate-700 transition ${
     isMissing
       ? 'border-rose-200 bg-rose-50/60'
@@ -895,6 +910,7 @@ export default function PublicFormPage() {
   )
   const agencyHearingCopyText = agencyHearingCopyTexts[normalizeLocale(form?.locale || issue?.locale)] || agencyHearingCopyTexts.ja
   const showCustomerHearingCopy = Boolean(form && isAgencyAccessibleTravelForm(form))
+  const isAccessibleJapanForm = (form?.id || formId) === ACCESSIBLE_JAPAN_FORM_ID
 
   const scrollToField = (fieldName: string) => {
     const target = fieldRefs.current[fieldName]
@@ -1385,23 +1401,52 @@ export default function PublicFormPage() {
     }
 
     if (field.type === 'radio') {
+      const showHotelGradeRecommendation = isAccessibleJapanForm && field.name === 'hotel_grade'
+
       return (
         <div className="space-y-2">
-          {(field.options ?? []).map((option) => (
-            <label key={option} className={`flex items-center gap-3 ${choiceControlClass(isMissing)}`}>
-              <input
-                type="radio"
-                name={field.name}
-                checked={value === option}
-                onChange={() => setFieldValue(field, option)}
-                aria-invalid={isMissing}
-                className="h-4 w-4 border-[#b7cebf] text-[#1d5c47] focus:ring-[#1d5c47]"
-              />
-              {option}
-            </label>
-          ))}
+          {showHotelGradeRecommendation && (
+            <div
+              role="note"
+              className="mb-4 rounded-2xl border border-[#f1c9b8] bg-[#fff4ec] px-4 py-3.5 text-[#653828] sm:px-5"
+            >
+              <p className="text-sm font-semibold">Our recommendation: 4-star or above</p>
+              <p className="mt-1 text-xs leading-5 text-[#815545]">
+                A good starting point for balancing comfort, location and your preferences.
+              </p>
+            </div>
+          )}
+          {(field.options ?? []).map((option) => {
+            const checked = value === option
+            const recommended = showHotelGradeRecommendation
+              && (option.startsWith('4-star') || option.startsWith('5-star'))
+
+            return (
+              <label
+                key={option}
+                className={`flex cursor-pointer items-center justify-between gap-3 ${choiceControlClass(isMissing, isAccessibleJapanForm, checked)}`}
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <input
+                    type="radio"
+                    name={field.name}
+                    checked={checked}
+                    onChange={() => setFieldValue(field, option)}
+                    aria-invalid={isMissing}
+                    className={`${isAccessibleJapanForm ? 'h-5 w-5' : 'h-4 w-4'} shrink-0 border-[#b7cebf] text-[#1d5c47] focus:ring-[#1d5c47]`}
+                  />
+                  <span>{option}</span>
+                </span>
+                {recommended && (
+                  <span className="shrink-0 rounded-full bg-[#1d5c47] px-2.5 py-1 text-[11px] font-semibold text-white">
+                    Recommended
+                  </span>
+                )}
+              </label>
+            )
+          })}
           {field.allowOtherOption && (
-            <label className={`block ${choiceControlClass(isMissing)}`}>
+            <label className={`block ${choiceControlClass(isMissing, isAccessibleJapanForm, value === OTHER_SENTINEL)}`}>
               <div className="flex items-center gap-3">
                 <input
                   type="radio"
@@ -1409,7 +1454,7 @@ export default function PublicFormPage() {
                   checked={value === OTHER_SENTINEL}
                   onChange={() => setFieldValue(field, OTHER_SENTINEL)}
                   aria-invalid={isMissing}
-                  className="h-4 w-4 border-[#b7cebf] text-[#1d5c47] focus:ring-[#1d5c47]"
+                  className={`${isAccessibleJapanForm ? 'h-5 w-5' : 'h-4 w-4'} border-[#b7cebf] text-[#1d5c47] focus:ring-[#1d5c47]`}
                 />
                 {field.otherOptionLabel || 'その他'}
               </div>
@@ -1427,7 +1472,7 @@ export default function PublicFormPage() {
           {(field.options ?? []).map((option) => {
             const checked = selected.includes(option)
             return (
-              <label key={option} className={`flex items-center gap-3 ${choiceControlClass(isMissing)}`}>
+              <label key={option} className={`flex cursor-pointer items-center gap-3 ${choiceControlClass(isMissing, isAccessibleJapanForm, checked)}`}>
                 <input
                   type="checkbox"
                   checked={checked}
@@ -1438,14 +1483,14 @@ export default function PublicFormPage() {
                     setFieldValue(field, next)
                   }}
                   aria-invalid={isMissing}
-                  className="h-4 w-4 rounded border-[#b7cebf] text-[#1d5c47] focus:ring-[#1d5c47]"
+                  className={`${isAccessibleJapanForm ? 'h-5 w-5' : 'h-4 w-4'} rounded border-[#b7cebf] text-[#1d5c47] focus:ring-[#1d5c47]`}
                 />
                 {option}
               </label>
             )
           })}
           {field.allowOtherOption && (
-            <label className={`block ${choiceControlClass(isMissing)}`}>
+            <label className={`block ${choiceControlClass(isMissing, isAccessibleJapanForm, selected.includes(OTHER_SENTINEL))}`}>
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
@@ -1458,7 +1503,7 @@ export default function PublicFormPage() {
                     setFieldValue(field, next)
                   }}
                   aria-invalid={isMissing}
-                  className="h-4 w-4 rounded border-[#b7cebf] text-[#1d5c47] focus:ring-[#1d5c47]"
+                  className={`${isAccessibleJapanForm ? 'h-5 w-5' : 'h-4 w-4'} rounded border-[#b7cebf] text-[#1d5c47] focus:ring-[#1d5c47]`}
                 />
                 {field.otherOptionLabel || 'その他'}
               </div>
@@ -1517,17 +1562,29 @@ export default function PublicFormPage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#edf5ef] px-4 py-8 sm:px-6">
+    <main className={`relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 ${
+      isAccessibleJapanForm ? 'bg-[#f7f2e8] sm:py-10' : 'bg-[#edf5ef]'
+    }`}>
       <div className="pointer-events-none absolute inset-0">
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-[0.16]"
-          style={{ backgroundImage: `url(${PAGE_BACKGROUND_IMAGE})` }}
-        />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.78),rgba(237,245,239,0.94)_42%,rgba(237,245,239,0.98)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-64 bg-[linear-gradient(180deg,rgba(237,245,239,0),rgba(237,245,239,0.96))]" />
+        {isAccessibleJapanForm ? (
+          <>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.92),rgba(247,242,232,0.90)_42%,rgba(239,246,241,0.96)_100%)]" />
+            <div className="absolute -left-24 top-24 h-72 w-72 rounded-full bg-[#f7d9c9]/24 blur-3xl" />
+            <div className="absolute -right-20 top-[36rem] h-80 w-80 rounded-full bg-[#bad9ca]/24 blur-3xl" />
+          </>
+        ) : (
+          <>
+            <div
+              className="absolute inset-0 bg-cover bg-center opacity-[0.16]"
+              style={{ backgroundImage: `url(${PAGE_BACKGROUND_IMAGE})` }}
+            />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.78),rgba(237,245,239,0.94)_42%,rgba(237,245,239,0.98)_100%)]" />
+            <div className="absolute inset-x-0 bottom-0 h-64 bg-[linear-gradient(180deg,rgba(237,245,239,0),rgba(237,245,239,0.96))]" />
+          </>
+        )}
       </div>
 
-      <div className="relative mx-auto max-w-3xl">
+      <div className={`relative mx-auto ${isAccessibleJapanForm ? 'max-w-4xl' : 'max-w-3xl'}`}>
         {loading ? (
           <div className="rounded-[24px] border border-[#d7e5dc] bg-white/[0.92] p-10 text-center text-sm text-slate-500 shadow-sm backdrop-blur-sm">
             フォームを読み込んでいます...
@@ -1548,53 +1605,91 @@ export default function PublicFormPage() {
           </div>
         ) : form ? (
           <>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <section className="relative overflow-hidden rounded-[32px] border border-[#d7e5dc] shadow-[0_20px_60px_rgba(29,92,71,0.18)]">
-                <div className="absolute inset-0 overflow-hidden">
-                  <div
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: `url(${HERO_BACKGROUND_IMAGE})` }}
-                  />
-                  <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(10,40,31,0.88)_0%,rgba(24,87,67,0.76)_42%,rgba(52,127,98,0.32)_100%)]" />
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.28),transparent_32%),linear-gradient(180deg,rgba(17,60,46,0.08),rgba(17,60,46,0.38))]" />
-                  <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,rgba(14,48,37,0),rgba(14,48,37,0.72))]" />
-                </div>
-                <div className="relative px-8 py-10 text-white sm:px-10 sm:py-12">
-                  <h1 className="max-w-2xl text-[30px] font-normal tracking-tight text-white sm:text-[40px]">
-                    {form.name}
-                  </h1>
-                  {form.description && (
-                    <p className="mt-5 max-w-2xl text-sm leading-7 text-white/88 sm:text-[15px]">
-                      {form.description}
-                    </p>
-                  )}
-                  {showCustomerHearingCopy && (
-                    <div className="mt-6 flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => void copyCustomerHearingMessage()}
-                        className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#174635] shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition hover:bg-[#f4fbf7] focus:outline-none focus:ring-2 focus:ring-white/70"
-                      >
-                        {hearingTemplateCopied ? agencyHearingCopyText.copied : agencyHearingCopyText.button}
-                      </button>
-                      <span className="text-xs leading-5 text-white/78">
-                        {agencyHearingCopyText.helper}
-                      </span>
+            <form onSubmit={handleSubmit} className={isAccessibleJapanForm ? 'space-y-5' : 'space-y-4'}>
+              {isAccessibleJapanForm ? (
+                <section className="overflow-hidden rounded-[30px] border border-[#e4d8c7] bg-[#fffaf1] shadow-[0_24px_70px_rgba(54,74,62,0.16)] sm:rounded-[36px]">
+                  <div className="grid md:grid-cols-[0.92fr_1.08fr]">
+                    <div className="relative h-60 overflow-hidden md:order-2 md:h-auto md:min-h-[430px]">
+                      <img
+                        src={ACCESSIBLE_JAPAN_HERO_IMAGE}
+                        alt="A wheelchair user and companion enjoying a bright day in Tokyo"
+                        className="h-full w-full object-cover object-[66%_center] md:object-[70%_center]"
+                      />
+                      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(20,66,53,0.02),rgba(20,66,53,0.12))]" />
                     </div>
-                  )}
-                  {issue?.name && (
-                    <p className="mt-6 text-sm font-medium tracking-[0.12em] text-white/72">
-                      {issue.name}
-                    </p>
-                  )}
-                </div>
-              </section>
+                    <div className="flex flex-col justify-center px-7 py-9 md:order-1 sm:px-10 sm:py-11">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2a7058]">
+                        Flat Travel · Trip planning
+                      </p>
+                      <h1 className="mt-4 text-[32px] font-semibold leading-[1.08] tracking-[-0.035em] text-[#17372c] sm:text-[42px]">
+                        Let&apos;s plan a Japan trip that works for you
+                      </h1>
+                      <p className="mt-5 text-sm leading-7 text-[#55665e] sm:text-[15px]">
+                        Tell us what matters to you. We&apos;ll use your answers to shape a hotel + transportation package around your accessibility needs.
+                      </p>
+                      <div className="mt-6 flex flex-wrap gap-2" aria-label="Form details">
+                        <span className="rounded-full border border-[#c9ddcf] bg-white px-3 py-1.5 text-xs font-semibold text-[#245b49]">
+                          About 3 minutes
+                        </span>
+                        <span className="rounded-full border border-[#ead0c1] bg-[#fff3ea] px-3 py-1.5 text-xs font-semibold text-[#7a4938]">
+                          Exact dates are not required
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              ) : (
+                <section className="relative overflow-hidden rounded-[32px] border border-[#d7e5dc] shadow-[0_20px_60px_rgba(29,92,71,0.18)]">
+                  <div className="absolute inset-0 overflow-hidden">
+                    <div
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${HERO_BACKGROUND_IMAGE})` }}
+                    />
+                    <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(10,40,31,0.88)_0%,rgba(24,87,67,0.76)_42%,rgba(52,127,98,0.32)_100%)]" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.28),transparent_32%),linear-gradient(180deg,rgba(17,60,46,0.08),rgba(17,60,46,0.38))]" />
+                    <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,rgba(14,48,37,0),rgba(14,48,37,0.72))]" />
+                  </div>
+                  <div className="relative px-8 py-10 text-white sm:px-10 sm:py-12">
+                    <h1 className="max-w-2xl text-[30px] font-normal tracking-tight text-white sm:text-[40px]">
+                      {form.name}
+                    </h1>
+                    {form.description && (
+                      <p className="mt-5 max-w-2xl text-sm leading-7 text-white/88 sm:text-[15px]">
+                        {form.description}
+                      </p>
+                    )}
+                    {showCustomerHearingCopy && (
+                      <div className="mt-6 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void copyCustomerHearingMessage()}
+                          className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#174635] shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition hover:bg-[#f4fbf7] focus:outline-none focus:ring-2 focus:ring-white/70"
+                        >
+                          {hearingTemplateCopied ? agencyHearingCopyText.copied : agencyHearingCopyText.button}
+                        </button>
+                        <span className="text-xs leading-5 text-white/78">
+                          {agencyHearingCopyText.helper}
+                        </span>
+                      </div>
+                    )}
+                    {issue?.name && (
+                      <p className="mt-6 text-sm font-medium tracking-[0.12em] text-white/72">
+                        {issue.name}
+                      </p>
+                    )}
+                  </div>
+                </section>
+              )}
 
               {accessibleJapanAttribution && (
                 accessibleJapanAttribution.sourceHotelName
                 || accessibleJapanAttribution.sourceHotelSlug
               ) && (
-                <section className="overflow-hidden rounded-[24px] border border-[#bcd5c5] bg-[#f7fbf8]/95 shadow-sm backdrop-blur-sm">
+                <section className={`overflow-hidden rounded-[24px] border shadow-sm backdrop-blur-sm ${
+                  isAccessibleJapanForm
+                    ? 'border-[#c9ddcf] bg-[#f4faf6]/95'
+                    : 'border-[#bcd5c5] bg-[#f7fbf8]/95'
+                }`}>
                   <div className="px-7 py-6 sm:px-8">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
@@ -1667,15 +1762,17 @@ export default function PublicFormPage() {
                     ref={(node) => {
                       fieldRefs.current[field.name] = node
                     }}
-                    className={`scroll-mt-24 overflow-hidden rounded-[24px] border shadow-sm transition-colors ${
+                    className={`scroll-mt-24 overflow-hidden border shadow-sm transition-all ${
                       missingReason
                         ? 'border-rose-200 bg-white/[0.92]'
-                        : 'border-[#d7e5dc] bg-white/[0.92]'
+                        : isAccessibleJapanForm
+                          ? 'rounded-[26px] border-[#e7dccb] bg-[#fffdf8]/95 shadow-[0_10px_34px_rgba(67,82,72,0.07)]'
+                          : 'rounded-[24px] border-[#d7e5dc] bg-white/[0.92]'
                     }`}
                   >
-                    <div className="px-8 py-7 backdrop-blur-sm">
+                    <div className={`${isAccessibleJapanForm ? 'px-6 py-6 sm:px-8 sm:py-7' : 'px-8 py-7'} backdrop-blur-sm`}>
                       <div className="flex items-start gap-2">
-                        <h2 className="text-base font-medium leading-7 text-slate-900">{field.label}</h2>
+                        <h2 className={`${isAccessibleJapanForm ? 'text-[17px] font-semibold text-[#17372c]' : 'text-base font-medium text-slate-900'} leading-7`}>{field.label}</h2>
                         {field.required && <span className="text-[#d93025]">*</span>}
                       </div>
                       {fieldHelper && (
@@ -1698,7 +1795,7 @@ export default function PublicFormPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="rounded-lg bg-[#1d5c47] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#174a39] disabled:cursor-not-allowed disabled:opacity-60"
+                  className={`${isAccessibleJapanForm ? 'w-full rounded-full px-7 py-4 text-base shadow-[0_12px_28px_rgba(29,92,71,0.20)] sm:w-auto' : 'rounded-lg px-6 py-3 text-sm'} bg-[#1d5c47] font-semibold text-white transition-all hover:bg-[#174a39] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   {submitting ? localizedTexts.submittingLabel : (form.submitButtonLabel || localizedTexts.submitButtonLabel)}
                 </button>
