@@ -26,7 +26,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     (method === 'GET' && path.match(/^\/api\/form-issues\/[^/]+$/)) ||
     (method === 'GET' && path === '/api/shared-reports/accessible-japan') ||
     path.startsWith('/api/images/') || // Public image serving for LINE (legacy)
-    path.startsWith('/api/files/') // Public file serving
+    path.startsWith('/api/files/') || // Public file serving
+    path === '/api/travel/quote-intents' // Origin-checked Flat Travel intake
   ) {
     return next();
   }
