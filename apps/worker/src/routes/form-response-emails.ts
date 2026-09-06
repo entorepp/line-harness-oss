@@ -19,6 +19,7 @@ import type {
 } from '@line-crm/db';
 import type { FormField } from '@line-crm/shared';
 import type { Env } from '../index.js';
+import { sendFormResponseEmailViaTravelworker } from '../services/form-response-email-provider.js';
 import {
   FORM_RESPONSE_EMAIL_POLICY_VERSION,
   buildResponseCopyEmail,
@@ -290,7 +291,7 @@ formResponseEmails.get('/api/form-submissions/:submissionId/response-copy', asyn
       data: {
         submissionHash: context.submissionHash,
         emailEnabled: c.env.FORM_RESPONSE_EMAIL_ENABLED === 'true',
-        providerConfigured: Boolean(c.env.FORM_RESPONSE_EMAIL && c.env.FORM_RESPONSE_EMAIL_FROM),
+        providerConfigured: Boolean(c.env.FLATWORKER_API_BASE_URL && c.env.FLATWORKER_TRAVEL_QUOTE_TOKEN),
         recipients: await Promise.all(recipients.map((recipient) => serializeRecipient(recipient, secret))),
         deliveries: deliveries.map(serializeDelivery),
         fields: context.fields
@@ -385,7 +386,7 @@ formResponseEmails.post('/api/form-submissions/:submissionId/email-recipients', 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error';
     const duplicate = /UNIQUE constraint/u.test(message);
-    return jsonPrivate(c, { success: false, error: duplicate ? '同じメールアドレスは既に登録されています' : message }, duplicate ? 409 : errorStatus(message));
+    return jsonPrivate(c, { success: false, error: duplicate ? '同じ役割に同じメールアドレスは既に登録されています' : message }, duplicate ? 409 : errorStatus(message));
   }
 });
 
@@ -459,13 +460,9 @@ formResponseEmails.post('/api/form-submissions/:submissionId/response-copy/send'
     if (c.env.FORM_RESPONSE_EMAIL_ENABLED !== 'true') {
       return jsonPrivate(c, { success: false, error: '回答コピーメール送信は現在無効です' }, 503);
     }
-    if (!c.env.FORM_RESPONSE_EMAIL || !c.env.FORM_RESPONSE_EMAIL_FROM) {
+    if (!c.env.FLATWORKER_API_BASE_URL || !c.env.FLATWORKER_TRAVEL_QUOTE_TOKEN) {
       return jsonPrivate(c, { success: false, error: 'メール配信事業者が設定されていません' }, 503);
     }
-    const sender = normalizeEmailAddress(c.env.FORM_RESPONSE_EMAIL_FROM);
-    const replyTo = c.env.FORM_RESPONSE_EMAIL_REPLY_TO
-      ? normalizeEmailAddress(c.env.FORM_RESPONSE_EMAIL_REPLY_TO)
-      : undefined;
     const context = await getSubmissionContext(c.env.DB, c.req.param('submissionId'));
     if (!context) return jsonPrivate(c, { success: false, error: 'Submission not found' }, 404);
     const body = await c.req.json<{
@@ -512,7 +509,7 @@ formResponseEmails.post('/api/form-submissions/:submissionId/response-copy/send'
         submission_data_sha256: context.submissionHash,
         subject_snapshot: prepared.copy.subject,
         body_sha256: bodyHash,
-        provider: 'cloudflare_email_service',
+        provider: 'gmail_api',
         requested_by: actor,
         requested_at: requestedAt,
         updated_at: requestedAt,
@@ -539,13 +536,18 @@ formResponseEmails.post('/api/form-submissions/:submissionId/response-copy/send'
       });
 
       try {
-        const providerResult = await c.env.FORM_RESPONSE_EMAIL.send({
-          to: prepared.email,
-          from: sender,
-          replyTo,
+        const providerResult = await sendFormResponseEmailViaTravelworker({
+          env: c.env,
+          requestId: receiptResult.delivery.id,
+          submissionId: context.submission.id,
+          recipientRole: prepared.recipient.recipient_role,
+          recipientEmail: prepared.email,
+          recipientName: prepared.recipient.contact_name,
           subject: prepared.copy.subject,
           text: prepared.copy.text,
           html: prepared.copy.html,
+          bodySha256: bodyHash,
+          policyVersion: FORM_RESPONSE_EMAIL_POLICY_VERSION,
         });
         const rawProviderId = typeof providerResult === 'object' && providerResult
           ? String((providerResult as Record<string, unknown>).messageId || (providerResult as Record<string, unknown>).id || '')

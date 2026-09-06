@@ -15,8 +15,10 @@ CREATE TABLE IF NOT EXISTS form_submission_email_recipients (
   removed_at        TEXT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_form_email_recipients_active_address
-  ON form_submission_email_recipients (submission_id, email_hash)
+DROP INDEX IF EXISTS idx_form_email_recipients_active_address;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_form_email_recipients_active_role_address
+  ON form_submission_email_recipients (submission_id, recipient_role, email_hash)
   WHERE removed_at IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_form_email_recipients_active_respondent
@@ -39,7 +41,7 @@ CREATE TABLE IF NOT EXISTS form_submission_email_deliveries (
   subject_snapshot           TEXT NOT NULL,
   body_sha256                TEXT NOT NULL,
   status                     TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'failed', 'unknown')),
-  provider                   TEXT NOT NULL DEFAULT 'cloudflare_email_service',
+  provider                   TEXT NOT NULL DEFAULT 'gmail_api',
   provider_message_id        TEXT,
   error_code                 TEXT,
   requested_by               TEXT NOT NULL,

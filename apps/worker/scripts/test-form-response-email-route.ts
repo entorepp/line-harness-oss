@@ -102,7 +102,8 @@ function statement(sqlInput: string) {
           emailHash, createdBy, createdAt, updatedBy, updatedAt,
         ] = bindings;
         if (recipients.some((row) => row.submission_id === submissionId && !row.removed_at
-          && (row.email_hash === emailHash || (role === 'respondent' && row.recipient_role === 'respondent')))) {
+          && ((row.recipient_role === role && row.email_hash === emailHash)
+            || (role === 'respondent' && row.recipient_role === 'respondent')))) {
           throw new Error('UNIQUE constraint failed');
         }
         recipients.push({
@@ -202,22 +203,28 @@ function statement(sqlInput: string) {
 const db = { prepare: statement } as any;
 const operatorKey = 'test-only-personal-operator-key-0001';
 const sentMessages: Row[] = [];
-const emailBinding = {
-  async send(message: Row) {
-    sentMessages.push(message);
-    return { messageId: `cf-email-${sentMessages.length}` };
-  },
-};
+globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  const message = JSON.parse(String(init?.body || '{}')) as Row;
+  sentMessages.push(message);
+  return new Response(JSON.stringify({
+    ok: true,
+    status: 'accepted',
+    provider: 'gmail_api',
+    messageId: `gmail-email-${sentMessages.length}`,
+    idempotent: false,
+    testRecipientUsed: true,
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+}) as typeof fetch;
 const env = {
   DB: db,
   FORM_RESPONSE_EMAIL_ENABLED: 'false',
-  FORM_RESPONSE_EMAIL_FROM: 'notifications@flat-travel.com',
   FORM_RESPONSE_EMAIL_ENCRYPTION_KEY: 'test-only-encryption-secret-32-characters',
   FORM_RESPONSE_EMAIL_ALLOWED_OPERATORS: '前田',
   FORM_RESPONSE_EMAIL_OPERATOR_KEY_HASHES: JSON.stringify({
     '前田': await sha256Hex(`form-response-email-operator-v1:${operatorKey}`),
   }),
-  FORM_RESPONSE_EMAIL: emailBinding,
+  FLATWORKER_API_BASE_URL: 'https://travelworker.example',
+  FLATWORKER_TRAVEL_QUOTE_TOKEN: 'test-only-travelworker-token',
 } as any;
 const app = new Hono();
 app.route('/', formResponseEmails);
@@ -263,7 +270,7 @@ assert.equal(respondent.email, 'taro@example.com');
 
 const agencyResponse = await saveRecipient({
   role: 'agency_contact', companyName: 'Example Agency', contactName: '佐藤 花子',
-  email: 'sato@agency.example', emailConfirmation: 'sato@agency.example',
+  email: 'taro@example.com', emailConfirmation: 'taro@example.com',
 });
 assert.equal(agencyResponse.status, 201);
 const agency = (await agencyResponse.json() as any).data;
@@ -349,6 +356,13 @@ const recipientChangedAfterPreview = await saveRecipient({
 });
 assert.equal(recipientChangedAfterPreview.status, 200);
 
+const agencyChangedToSameAddress = await saveRecipient({
+  id: agency.id, role: 'agency_contact', companyName: 'Example Agency', contactName: '佐藤 花子',
+  email: 'taro.final@example.com', emailConfirmation: 'taro.final@example.com',
+  correctionReason: '同一受信箱での役割別2通テスト',
+});
+assert.equal(agencyChangedToSameAddress.status, 200);
+
 env.FORM_RESPONSE_EMAIL_ENABLED = 'true';
 const stalePreviewSend = await request(`/api/form-submissions/${submission.id}/response-copy/send`, {
   method: 'POST', body: JSON.stringify(sendBody),
@@ -375,10 +389,12 @@ const sent = await request(`/api/form-submissions/${submission.id}/response-copy
 });
 assert.equal(sent.status, 200);
 assert.equal(sentMessages.length, 2);
-assert.deepEqual(sentMessages.map((item) => item.to).sort(), ['sato@agency.example', 'taro.final@example.com']);
+assert.deepEqual(sentMessages.map((item) => item.recipientEmail), ['taro.final@example.com', 'taro.final@example.com']);
+assert.deepEqual(sentMessages.map((item) => item.recipientRole).sort(), ['agency_contact', 'respondent']);
 assert.ok(sentMessages.every((item) => !('cc' in item) && !('bcc' in item)));
-assert.match(sentMessages.find((item) => item.to === 'taro.final@example.com')!.text, /Wheelchair assistance requested/);
-assert.doesNotMatch(sentMessages.find((item) => item.to === 'sato@agency.example')!.text, /Wheelchair assistance requested/);
+assert.match(sentMessages.find((item) => item.recipientRole === 'respondent')!.text, /Wheelchair assistance requested/);
+assert.doesNotMatch(sentMessages.find((item) => item.recipientRole === 'agency_contact')!.text, /Wheelchair assistance requested/);
+assert.notEqual(sentMessages[0].subject, sentMessages[1].subject);
 assert.ok(sentMessages.every((item) => !item.text.includes('private-signed-token')));
 assert.equal(deliveries.length, 2);
 assert.ok(deliveries.every((item) => item.status === 'accepted'));
