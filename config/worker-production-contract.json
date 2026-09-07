@@ -1,0 +1,8 @@
+{
+  "worker": "line-flattravel",
+  "accountId": "322a0c34972d981aa3dff5514306b1bc",
+  "branch": "production/flat-harness-worker",
+  "minimumSourceCommit": "b7fb07893b5773baedc88e8ce786faf6f779e7d7",
+  "sourceBinding": "FLAT_HARNESS_SOURCE_COMMIT",
+  "publicUrl": "https://line-flattravel.flat-travel.workers.dev"
+}

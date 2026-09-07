@@ -1,0 +1,35 @@
+name: Worker contracts
+
+on:
+  push:
+    branches: [production/flat-harness-worker]
+  pull_request:
+    branches: [production/flat-harness-worker]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Worker contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @line-crm/shared build
+      - run: pnpm --filter @line-crm/line-sdk build
+      - run: pnpm --filter @line-crm/db typecheck
+      - run: pnpm --filter worker typecheck
+      - run: pnpm --filter worker test:whatsapp-send
+      - run: pnpm --filter worker test:accessible-japan-quote-trigger
+      - run: pnpm --filter worker test:form-response-email
+      - run: pnpm --filter worker test:form-response-email-route
+      - run: pnpm --filter worker test:travel-quote-route
+      - run: node scripts/test-worker-release-contract.mjs

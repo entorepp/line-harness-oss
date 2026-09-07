@@ -1,22 +1,21 @@
 name: Deploy Worker
 
-# Configure CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets to enable auto-deploy
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/worker/**'
-      - 'packages/db/**'
-      - 'packages/shared/**'
-      - 'packages/line-sdk/**'
-      - '.github/workflows/deploy-worker.yml'
+
+concurrency:
+  group: flat-harness-worker-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Require the production branch
+        run: test "$GITHUB_REF_NAME" = 'production/flat-harness-worker'
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -26,11 +25,13 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @line-crm/shared --filter @line-crm/line-sdk --filter @line-crm/db build
-
-      - uses: cloudflare/wrangler-action@v3
+      - name: Verify source, message contracts and exact production bytes
+        run: node scripts/deploy-worker-production.mjs --deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/worker
-          command: deploy
+          name: worker-release-evidence
+          path: apps/worker/.wrangler/production-release/*.json

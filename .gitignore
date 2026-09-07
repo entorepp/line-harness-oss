@@ -2,6 +2,7 @@ node_modules/
 dist/
 .next/
 .wrangler/
+.release/
 .vercel/
 .env
 .env.local

@@ -7,7 +7,5 @@ ROOT_DIR="${SCRIPT_DIR:h}"
 source "$ROOT_DIR/scripts/cloudflare-env.sh"
 
 cloudflare_require_token
-
-echo "=== Deploying worker ==="
-cd "$ROOT_DIR/apps/worker"
-cloudflare_wrangler deploy
+cd "$ROOT_DIR"
+node scripts/deploy-worker-production.mjs --deploy
