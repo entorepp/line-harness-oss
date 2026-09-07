@@ -164,6 +164,93 @@ const localizedTextDefaults: Record<string, {
 const PAGE_BACKGROUND_IMAGE = '/travel-background.jpg'
 const HERO_BACKGROUND_IMAGE = '/travel-header.jpg'
 const ACCESSIBLE_JAPAN_HERO_IMAGE = '/accessible-japan-trip-hero-v2.jpg'
+const FLAT_TRAVEL_CHANNELS = {
+  whatsapp: 'https://wa.me/817036209459',
+  instagram: 'https://ig.me/m/flattravel_japan',
+  messenger: 'https://m.me/100550119618069',
+} as const
+
+function ChannelIcon({ channel }: { channel: keyof typeof FLAT_TRAVEL_CHANNELS }) {
+  if (channel === 'whatsapp') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-6 w-6 shrink-0">
+        <path d="M19.2 4.8A9.1 9.1 0 0 0 4.9 15.7L3.6 20.4l4.8-1.3a9.1 9.1 0 0 0 10.8-14.3Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+        <path d="M8.2 7.7c.2-.5.5-.5.8-.5h.5c.2 0 .4 0 .6.5l.8 2c.1.3.1.5-.1.7l-.7.9c-.2.2-.1.4 0 .6.8 1.4 1.9 2.4 3.3 3.1.3.1.5.1.6-.1l.9-1.1c.2-.2.4-.3.7-.2l2 .9c.3.1.5.3.5.5 0 .3-.2 1.6-1.1 2.2-.8.6-1.8.8-3.1.4-1.2-.4-2.8-1-4.6-2.6-2.1-1.9-3.4-4.2-3.5-5.7 0-.8.2-1.2.4-1.6Z" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  if (channel === 'instagram') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-6 w-6 shrink-0">
+        <rect x="3.3" y="3.3" width="17.4" height="17.4" rx="5.2" stroke="currentColor" strokeWidth="2" />
+        <circle cx="12" cy="12" r="4.1" stroke="currentColor" strokeWidth="2" />
+        <circle cx="17.7" cy="6.5" r="1.2" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-6 w-6 shrink-0">
+      <circle cx="12" cy="12" r="10.5" fill="currentColor" />
+      <path d="m6.2 15.1 4.8-5.2 2.4 2.4 4.7-2.7-4.8 5.2-2.4-2.4-4.7 2.7Z" fill="white" />
+    </svg>
+  )
+}
+
+function AccessibleJapanSuccessChannels() {
+  return (
+    <section className="border-t border-[#d7e5dc] bg-[#f5f8f5] px-6 py-8 text-left sm:px-10 sm:py-10" aria-labelledby="continue-by-message-title">
+      <div className="mx-auto max-w-2xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2a7058]">Prefer messaging?</p>
+        <h2 id="continue-by-message-title" className="mt-3 text-2xl font-semibold tracking-[-0.025em] text-[#17372c] sm:text-[30px]">
+          Don&apos;t check email often?
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-[#55665e] sm:text-[15px]">
+          You can continue the conversation with us on the app you use most. Your trip details are already submitted—just send us a message and we&apos;ll pick up from there.
+        </p>
+
+        <a
+          href={FLAT_TRAVEL_CHANNELS.whatsapp}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-6 flex min-h-14 items-center justify-between gap-4 rounded-2xl bg-[#176b45] px-5 py-4 font-semibold text-white shadow-[0_12px_28px_rgba(23,107,69,0.18)] transition hover:-translate-y-0.5 hover:bg-[#125a3a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#176b45]"
+          aria-label="Continue on WhatsApp"
+        >
+          <span className="flex items-center gap-3"><ChannelIcon channel="whatsapp" />Continue on WhatsApp</span>
+          <span aria-hidden="true">→</span>
+        </a>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <a
+            href={FLAT_TRAVEL_CHANNELS.instagram}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-[#c9d9ce] bg-white px-4 py-3.5 font-semibold text-[#284f40] transition hover:-translate-y-0.5 hover:border-[#9ebbaa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#176b45]"
+            aria-label="Continue on Instagram Direct"
+          >
+            <span className="flex items-center gap-3"><ChannelIcon channel="instagram" />Instagram Direct</span>
+            <span aria-hidden="true">→</span>
+          </a>
+          <a
+            href={FLAT_TRAVEL_CHANNELS.messenger}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-[#c9d9ce] bg-white px-4 py-3.5 font-semibold text-[#284f40] transition hover:-translate-y-0.5 hover:border-[#9ebbaa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#176b45]"
+            aria-label="Continue on Facebook Messenger"
+          >
+            <span className="flex items-center gap-3"><ChannelIcon channel="messenger" />Facebook Messenger</span>
+            <span aria-hidden="true">→</span>
+          </a>
+        </div>
+
+        <p className="mt-4 text-xs leading-5 text-[#718078]">
+          Opening a channel does not send a message automatically.
+        </p>
+      </div>
+    </section>
+  )
+}
 
 function normalizeLocale(value: string | null | undefined): string {
   const locale = value?.trim() || ''
@@ -1602,6 +1689,7 @@ export default function PublicFormPage() {
                 {form?.successDescription || localizedTexts.successDescription}
               </p>
             </div>
+            {isAccessibleJapanForm ? <AccessibleJapanSuccessChannels /> : null}
           </div>
         ) : form ? (
           <>

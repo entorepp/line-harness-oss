@@ -28,6 +28,19 @@ assert.match(publicFormSource, /Let&apos;s plan a Japan trip that works for you/
 assert.match(publicFormSource, /Our recommendation: 4-star or above/);
 assert.match(publicFormSource, /option\.startsWith\('4-star'\)/);
 assert.match(publicFormSource, /option\.startsWith\('5-star'\)/);
+assert.match(publicFormSource, /Don&apos;t check email often\?/);
+assert.match(publicFormSource, /Your trip details are already submitted/);
+assert.match(publicFormSource, /Continue on WhatsApp/);
+assert.match(publicFormSource, /Instagram Direct/);
+assert.match(publicFormSource, /Facebook Messenger/);
+assert.match(publicFormSource, /https:\/\/wa\.me\/817036209459/);
+assert.match(publicFormSource, /https:\/\/ig\.me\/m\/flattravel_japan/);
+assert.match(publicFormSource, /https:\/\/m\.me\/100550119618069/);
+assert.match(
+  publicFormSource,
+  /isAccessibleJapanForm \? <AccessibleJapanSuccessChannels \/> : null/,
+  'the contact-channel success panel must stay scoped to the Accessible Japan form ID',
+);
 assert.match(
   publicFormSource,
   /style=\{\{ backgroundImage: `url\(\$\{HERO_BACKGROUND_IMAGE\}\)` \}\}/,
