@@ -50,10 +50,11 @@ export function assertMessagingContract(code) {
     '/api/scheduled-messages/:id/send-now', 'processScheduledMessageById',
     'claimScheduledMessage', 'buildWhatsAppMessagePayload',
     'deliveryMode: body.deliveryMode', 'undoGroupId: body.undoGroupId',
-    'processScheduledMessages(env)', 'processAccessibleJapanQuoteJobs',
+    'processAccessibleJapanQuoteJobs',
     '/webhook/meta', '/webhook/wechat', '/webhook/wechat-kf',
     '/api/form-files/', '/meta-data-deletion',
   ]) assert.ok(code.includes(marker), `Missing compiled release contract: ${marker}`);
+  assert.match(code, /jobs\.push\(processScheduledMessages\(/, 'The scheduled message dispatcher must remain connected to cron');
   assert.ok(!code.includes('WhatsApp account currently supports only text'), 'WhatsApp media support regressed');
 }
 
