@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "node ../../scripts/deploy-worker-production.mjs --deploy",
     "typecheck": "tsc --noEmit",
     "test:form-file-access": "esbuild scripts/test-form-file-access.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-file-access-test.mjs && node .wrangler/tests/flat-harness-form-file-access-test.mjs",
     "test:form-file-upload": "esbuild scripts/test-form-file-upload.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-file-upload-test.mjs && node .wrangler/tests/flat-harness-form-file-upload-test.mjs",
