@@ -132,6 +132,32 @@ CREATE TABLE IF NOT EXISTS messages_log (
 
 CREATE INDEX IF NOT EXISTS idx_messages_log_friend_id ON messages_log (friend_id);
 CREATE INDEX IF NOT EXISTS idx_messages_log_created_at ON messages_log (created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_log_friend_created_id
+  ON messages_log (friend_id, created_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS meta_message_receipts (
+  line_account_id TEXT NOT NULL,
+  message_id      TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now', '+9 hours')),
+  PRIMARY KEY (line_account_id, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_meta_message_receipts_created
+  ON meta_message_receipts(created_at);
+
+CREATE TABLE IF NOT EXISTS quote_delivery_receipts (
+  channel TEXT NOT NULL,
+  provider_message_id TEXT NOT NULL,
+  quote_reference TEXT NOT NULL,
+  quote_revision TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (channel, provider_message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quote_delivery_receipts_reference
+  ON quote_delivery_receipts(quote_reference, updated_at);
 
 -- ============================================================
 -- Auto Replies
@@ -186,13 +212,69 @@ CREATE TABLE IF NOT EXISTS line_accounts (
   login_channel_secret TEXT,
   liff_id              TEXT,
   channel_type         TEXT NOT NULL DEFAULT 'line',
+  whatsapp_business_account_id TEXT,
   locale               TEXT NOT NULL DEFAULT 'ja',
   default_slack_channel TEXT,
+  wechat_encoding_aes_key TEXT,
+  wechat_access_token    TEXT,
+  wechat_qr_ticket       TEXT,
+  wechat_qr_url          TEXT,
+  wechat_kf_corp_id      TEXT,
+  wechat_kf_secret       TEXT,
+  wechat_kf_open_kfid    TEXT,
+  wechat_kf_callback_token TEXT,
+  wechat_kf_encoding_aes_key TEXT,
+  wechat_kf_access_token TEXT,
+  wechat_kf_token_expires_at TEXT,
+  wechat_kf_contact_url  TEXT,
+  wechat_kf_sync_cursor  TEXT,
+  wechat_follow_url      TEXT,
   token_expires_at     TEXT,
   is_active            INTEGER NOT NULL DEFAULT 1,
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
+
+CREATE TABLE IF NOT EXISTS wechat_kf_message_receipts (
+  line_account_id TEXT NOT NULL,
+  message_id      TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now', '+9 hours')),
+  PRIMARY KEY (line_account_id, message_id)
+);
+
+CREATE TABLE IF NOT EXISTS whatsapp_outbound_initiations (
+  id                         TEXT PRIMARY KEY,
+  idempotency_key            TEXT NOT NULL UNIQUE,
+  line_account_id            TEXT NOT NULL REFERENCES line_accounts(id),
+  recipient_phone            TEXT NOT NULL,
+  customer_name              TEXT NOT NULL,
+  number_provided_confirmed  INTEGER NOT NULL CHECK (number_provided_confirmed = 1),
+  opt_in_confirmed           INTEGER NOT NULL CHECK (opt_in_confirmed = 1),
+  consent_source             TEXT NOT NULL CHECK (consent_source IN ('web_form', 'email', 'phone', 'in_person', 'other')),
+  consent_obtained_at        TEXT NOT NULL,
+  template_name              TEXT NOT NULL,
+  template_language          TEXT NOT NULL,
+  template_parameters        TEXT NOT NULL DEFAULT '{}',
+  rendered_preview           TEXT NOT NULL,
+  status                     TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'failed', 'unknown')),
+  provider_message_id        TEXT,
+  friend_id                  TEXT NOT NULL,
+  chat_id                    TEXT NOT NULL,
+  message_log_id             TEXT NOT NULL,
+  error_code                 TEXT,
+  error_message              TEXT,
+  created_at                 TEXT NOT NULL,
+  updated_at                 TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_outbound_initiations_account_phone
+  ON whatsapp_outbound_initiations(line_account_id, recipient_phone, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_outbound_initiations_provider_message
+  ON whatsapp_outbound_initiations(provider_message_id);
+
+CREATE INDEX IF NOT EXISTS idx_wechat_kf_receipts_created
+  ON wechat_kf_message_receipts(created_at);
 
 -- ============================================================
 -- Round 2: Conversion Points (CV Tracking)
@@ -414,6 +496,9 @@ CREATE TABLE IF NOT EXISTS chats (
 CREATE INDEX IF NOT EXISTS idx_chats_friend ON chats (friend_id);
 CREATE INDEX IF NOT EXISTS idx_chats_operator ON chats (operator_id);
 CREATE INDEX IF NOT EXISTS idx_chats_status ON chats (status);
+CREATE INDEX IF NOT EXISTS idx_chats_last_message_at ON chats (last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chats_status_last_message
+  ON chats (status, last_message_at DESC);
 
 CREATE TABLE IF NOT EXISTS scheduled_messages (
   id            TEXT PRIMARY KEY,

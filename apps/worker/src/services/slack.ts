@@ -215,6 +215,57 @@ interface SlackPostOptions {
   blocks?: unknown[];
 }
 
+type SlackApiResponse = {
+  ok: boolean;
+  error?: string;
+  response_metadata?: {
+    messages?: string[];
+  };
+};
+
+function stripSlackImageDecorations(blocks?: unknown[]): unknown[] | undefined {
+  if (!blocks) return undefined;
+
+  return blocks.flatMap((block) => {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) {
+      return [block];
+    }
+
+    const record = block as Record<string, unknown>;
+    if (record.type === 'image') {
+      return [];
+    }
+
+    const accessory = record.accessory;
+    if (
+      accessory
+      && typeof accessory === 'object'
+      && !Array.isArray(accessory)
+      && (accessory as Record<string, unknown>).type === 'image'
+    ) {
+      const { accessory: _removed, ...textOnlyBlock } = record;
+      return [textOnlyBlock];
+    }
+
+    return [block];
+  });
+}
+
+async function postSlackBody(
+  token: string,
+  body: Record<string, unknown>,
+): Promise<SlackApiResponse> {
+  const res = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  return res.json() as Promise<SlackApiResponse>;
+}
+
 export async function postToSlack(opts: SlackPostOptions): Promise<boolean> {
   try {
     const body: Record<string, unknown> = {
@@ -226,18 +277,30 @@ export async function postToSlack(opts: SlackPostOptions): Promise<boolean> {
     if (opts.iconUrl) body.icon_url = opts.iconUrl;
     if (opts.blocks) body.blocks = opts.blocks;
 
-    const res = await fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${opts.token}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    const data = await res.json() as { ok: boolean; error?: string };
+    const data = await postSlackBody(opts.token, body);
     if (!data.ok) {
-      console.error('Slack API error:', data.error);
+      const canRetryWithoutImages = data.error === 'invalid_arguments'
+        && (Boolean(opts.iconUrl) || Boolean(opts.blocks?.length));
+      if (canRetryWithoutImages) {
+        const fallbackBody: Record<string, unknown> = {
+          channel: opts.channel,
+          text: opts.text,
+          unfurl_links: false,
+        };
+        if (opts.username) fallbackBody.username = opts.username;
+        const textOnlyBlocks = stripSlackImageDecorations(opts.blocks);
+        if (textOnlyBlocks?.length) fallbackBody.blocks = textOnlyBlocks;
+
+        const retry = await postSlackBody(opts.token, fallbackBody);
+        if (retry.ok) {
+          console.warn('Slack rejected image arguments; notification delivered without images');
+          return true;
+        }
+        console.error('Slack API retry error:', retry.error, retry.response_metadata?.messages);
+        return false;
+      }
+
+      console.error('Slack API error:', data.error, data.response_metadata?.messages);
       return false;
     }
     return true;

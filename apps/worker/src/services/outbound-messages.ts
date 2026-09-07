@@ -1,8 +1,16 @@
 import { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
+import { getLineAccountById } from '@line-crm/db';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 import type { Env } from '../index.js';
 import { dispatchKakaoBizMessage } from './kakao.js';
+import {
+  assertMetaReplyWindow,
+  dispatchMetaText,
+  isMetaMessagingChannel,
+} from './meta-messaging.js';
+import { dispatchWeChatKfText } from './wechat-kf.js';
+import { dispatchWeChatText } from './wechat.js';
 
 export interface MessagingFriendContext {
   id: string;
@@ -280,6 +288,12 @@ export function summarizeOutboundMessage(messageType: string, storedContent: str
     return `[ファイル] ${fileName}${url ? ` ${url}` : ''}`;
   }
 
+  if (messageType === 'video' || messageType === 'audio') {
+    const parsed = safeJsonParse(storedContent);
+    const url = typeof parsed?.url === 'string' ? parsed.url : storedContent;
+    return `[${messageType === 'video' ? '動画' : '音声'}] ${url}`;
+  }
+
   if (messageType === 'sticker') {
     try {
       const sticker = normalizeStickerContent(storedContent);
@@ -327,6 +341,67 @@ function resolveKakaoRecipient(friend: MessagingFriendContext): string {
   return parts.length >= 4 ? parts.slice(3).join(':') : friend.line_user_id;
 }
 
+function resolveWeChatRecipient(friend: MessagingFriendContext): string {
+  if (friend.metadata) {
+    try {
+      const parsed = JSON.parse(friend.metadata) as Record<string, unknown>;
+      if (typeof parsed.openId === 'string' && parsed.openId.trim()) {
+        return parsed.openId.trim();
+      }
+    } catch {
+      // fall back to stored identifier
+    }
+  }
+
+  const parts = friend.line_user_id.split(':');
+  return parts.length >= 3 ? parts.slice(2).join(':') : friend.line_user_id;
+}
+
+function parseFriendMetadata(friend: MessagingFriendContext): Record<string, unknown> {
+  if (!friend.metadata) return {};
+  try {
+    const parsed = JSON.parse(friend.metadata);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveWeChatKfRecipient(friend: MessagingFriendContext): {
+  externalUserId: string;
+  openKfid: string | undefined;
+} {
+  const metadata = parseFriendMetadata(friend);
+  const externalUserId =
+    typeof metadata.externalUserId === 'string' && metadata.externalUserId.trim()
+      ? metadata.externalUserId.trim()
+      : friend.line_user_id.split(':').slice(2).join(':');
+  const openKfid =
+    typeof metadata.openKfid === 'string' && metadata.openKfid.trim()
+      ? metadata.openKfid.trim()
+      : friend.line_user_id.startsWith('wechat-kf:')
+        ? friend.line_user_id.split(':')[1]
+        : undefined;
+  return { externalUserId, openKfid };
+}
+
+function isWeChatKfFriend(friend: MessagingFriendContext): boolean {
+  const metadata = parseFriendMetadata(friend);
+  return metadata.provider === 'wechat_kf' || friend.line_user_id.startsWith('wechat-kf:');
+}
+
+function resolveMetaRecipient(friend: MessagingFriendContext): string {
+  const metadata = parseFriendMetadata(friend);
+  if (typeof metadata.recipientId === 'string' && metadata.recipientId.trim()) {
+    return metadata.recipientId.trim();
+  }
+
+  const parts = friend.line_user_id.split(':');
+  return parts.length >= 3 ? parts.slice(2).join(':') : friend.line_user_id;
+}
+
 export function buildWhatsAppMessagePayload(
   to: string,
   input: OutboundMessageInput,
@@ -372,6 +447,26 @@ export async function dispatchOutboundMessage(opts: {
   input: OutboundMessageInput;
 }): Promise<DispatchedMessage> {
   const messageType = opts.input.messageType ?? 'text';
+
+  if (isMetaMessagingChannel(opts.friend.channel_type)) {
+    if (messageType !== 'text') {
+      throw new Error('Facebook Messenger / Instagram DM は現在テキスト返信のみ対応しています');
+    }
+    if (!opts.friend.channel_access_token || !opts.friend.channel_id) {
+      throw new Error('Meta messaging credentials are not configured');
+    }
+
+    await assertMetaReplyWindow(opts.env.DB, opts.friend.id);
+    const content = serializeOutboundContent(opts.input);
+    await dispatchMetaText({
+      channelType: opts.friend.channel_type,
+      channelId: opts.friend.channel_id,
+      accessToken: opts.friend.channel_access_token,
+      recipientId: resolveMetaRecipient(opts.friend),
+      text: content,
+    });
+    return { messageType, storedContent: content };
+  }
 
   if (opts.friend.channel_type === 'whatsapp') {
     const content = serializeOutboundContent(opts.input);
@@ -426,6 +521,45 @@ export async function dispatchOutboundMessage(opts: {
       messageType,
       storedContent: content,
     };
+  }
+
+  if (opts.friend.channel_type === 'wechat') {
+    if (messageType !== 'text') {
+      throw new Error('WeChat account currently supports only text for manual or scheduled sends');
+    }
+    if (!opts.friend.line_account_id) {
+      throw new Error('No WeChat account configured for this friend');
+    }
+
+    const account = await getLineAccountById(opts.env.DB, opts.friend.line_account_id);
+    if (!account || account.channel_type !== 'wechat') {
+      throw new Error('WeChat account is unavailable');
+    }
+    const content = serializeOutboundContent(opts.input);
+    if (isWeChatKfFriend(opts.friend)) {
+      const recipient = resolveWeChatKfRecipient(opts.friend);
+      if (!recipient.externalUserId) {
+        throw new Error('WeChat Customer Service recipient is unavailable');
+      }
+      await dispatchWeChatKfText({
+        db: opts.env.DB,
+        env: opts.env,
+        account,
+        externalUserId: recipient.externalUserId,
+        openKfid: recipient.openKfid,
+        text: content,
+      });
+    } else {
+      await dispatchWeChatText({
+        db: opts.env.DB,
+        env: opts.env,
+        account,
+        to: resolveWeChatRecipient(opts.friend),
+        text: content,
+      });
+    }
+
+    return { messageType, storedContent: content };
   }
 
   const accessToken =

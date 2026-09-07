@@ -661,4 +661,3 @@ export function travelQuoteReceiptMetadata(intent: TravelQuoteIntent, draft: Fla
     createdAt: intent.createdAt,
   };
 }
-

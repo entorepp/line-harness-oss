@@ -25,6 +25,7 @@ import {
   buildLineContentProxyUrl,
   getLineContentSigningSecret,
 } from '../services/line-content-proxy.js';
+import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 
 const webhook = new Hono<Env>();
 const MAX_KV_VALUE_BYTES = 25 * 1024 * 1024;
@@ -87,6 +88,7 @@ webhook.post('/webhook', async (c) => {
           c.env.UPLOADS,
           c.env.API_KEY,
           c.env.LINE_CHANNEL_SECRET,
+          c.env,
         );
       } catch (err) {
         console.error('Error handling webhook event:', err);
@@ -264,6 +266,7 @@ async function handleEvent(
   uploadsKv?: KVNamespace,
   apiKey?: string,
   defaultLineChannelSecret?: string,
+  env?: Env['Bindings'],
 ): Promise<void> {
   if (event.type === 'follow') {
     const userId =
@@ -503,6 +506,20 @@ async function handleEvent(
 
     // チャットを作成/更新（オペレーター機能連携）
     await upsertChatOnMessage(db, friend.id);
+
+    if (env) {
+      const quoteHandled = await tryDeliverCustomerQuote({
+        env,
+        friendId: friend.id,
+        channel: 'line',
+        providerMessageId: textMessage.id,
+        text: incomingText,
+        replyText: async (reply) => {
+          await lineClient.replyMessage(event.replyToken, [buildMessage('text', reply)]);
+        },
+      });
+      if (quoteHandled) return;
+    }
 
     // キーワードトリガー: テキストに一致するシナリオを発火（リッチメニューのテキスト送信等）
     const allScenarios = await getScenarios(db);

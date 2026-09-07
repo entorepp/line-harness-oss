@@ -51,6 +51,8 @@ export function assertMessagingContract(code) {
     'claimScheduledMessage', 'buildWhatsAppMessagePayload',
     'deliveryMode: body.deliveryMode', 'undoGroupId: body.undoGroupId',
     'processScheduledMessages(env)', 'processAccessibleJapanQuoteJobs',
+    '/webhook/meta', '/webhook/wechat', '/webhook/wechat-kf',
+    '/api/form-files/', '/meta-data-deletion',
   ]) assert.ok(code.includes(marker), `Missing compiled release contract: ${marker}`);
   assert.ok(!code.includes('WhatsApp account currently supports only text'), 'WhatsApp media support regressed');
 }

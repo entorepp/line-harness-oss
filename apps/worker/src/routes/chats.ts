@@ -27,6 +27,10 @@ import {
 } from '../services/whatsapp-display.js';
 import { normalizeFutureScheduledAt } from '../services/schedule-validation.js';
 import { processScheduledMessageById } from '../services/scheduled-messages.js';
+import {
+  isAllowedMetaUndoHold,
+  isMetaMessagingChannel,
+} from '../services/meta-messaging.js';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 
 const chats = new Hono<Env>();
@@ -195,25 +199,23 @@ chats.get('/api/chats', async (c) => {
     const operatorId = c.req.query('operatorId') ?? undefined;
     const lineAccountId = c.req.query('lineAccountId') ?? undefined;
 
-    // JOIN friends to get display_name and picture_url
+    // Resolve the last message from chats.last_message_at. The previous two
+    // correlated scans walked a friend's full message history every five
+    // seconds in each open browser tab and could exhaust D1's daily row-read
+    // allowance. created_at is indexed, and the composite index in migration
+    // 023 makes the tie-break lookup bounded as well.
     let sql = `SELECT c.*, f.display_name, f.picture_url, f.line_user_id, la.channel_type,
-                      (
-                        SELECT ml.id
-                          FROM messages_log ml
-                         WHERE ml.friend_id = c.friend_id
-                         ORDER BY ml.created_at DESC, ml.id DESC
-                         LIMIT 1
-                      ) as last_message_id,
-                      (
-                        SELECT ml.direction
-                          FROM messages_log ml
-                         WHERE ml.friend_id = c.friend_id
-                         ORDER BY ml.created_at DESC, ml.id DESC
-                         LIMIT 1
-                      ) as last_message_direction
+                      ml.id as last_message_id,
+                      ml.direction as last_message_direction
                FROM chats c
                LEFT JOIN friends f ON c.friend_id = f.id
-               LEFT JOIN line_accounts la ON la.id = f.line_account_id`;
+               LEFT JOIN line_accounts la ON la.id = f.line_account_id
+               LEFT JOIN messages_log ml ON ml.id = (
+                 SELECT MAX(latest.id)
+                   FROM messages_log latest
+                  WHERE latest.friend_id = c.friend_id
+                    AND latest.created_at = c.last_message_at
+               )`;
     const conditions: string[] = [];
     const bindings: unknown[] = [];
 
@@ -399,6 +401,19 @@ chats.post('/api/chats/:id/send', async (c) => {
       if (!normalizedSchedule.ok) {
         return c.json({ success: false, error: normalizedSchedule.error }, 400);
       }
+      if (
+        isMetaMessagingChannel(friend.channel_type)
+        && !isAllowedMetaUndoHold({
+          deliveryMode: body.deliveryMode,
+          undoGroupId: body.undoGroupId,
+          scheduledAt: normalizedSchedule.scheduledAt,
+        })
+      ) {
+        return c.json({
+          success: false,
+          error: 'Meta DMは30秒の送信取消待ち以外の予約送信に対応していません',
+        }, 400);
+      }
 
       const scheduled = await createScheduledMessage(c.env.DB, {
         friendId: friend.id,
@@ -542,6 +557,14 @@ chats.put('/api/scheduled-messages/:id', async (c) => {
     const normalizedSchedule = normalizeFutureScheduledAt(body.scheduledAt);
     if (!normalizedSchedule.ok) {
       return c.json({ success: false, error: normalizedSchedule.error }, 400);
+    }
+
+    const friend = await getMessagingFriendContext(c.env.DB, item.friend_id);
+    if (friend && isMetaMessagingChannel(friend.channel_type)) {
+      return c.json({
+        success: false,
+        error: 'Meta DMの送信取消待ちは日時変更できません',
+      }, 400);
     }
 
     const updated = await updateScheduledMessage(c.env.DB, id, {

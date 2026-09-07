@@ -1,9 +1,10 @@
 name = "line-flattravel"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
-# API_KEY is set via `wrangler secret put API_KEY`
+# API_KEY and META_VERIFY_TOKEN are set via `wrangler secret put`
 # Do NOT hardcode secrets here
 
 [vars]
@@ -34,3 +35,15 @@ id = "184a9482110e47eaab42fecd655f00ef"
 
 [triggers]
 crons = ["* * * * *"]
+
+# Keep provider-webhook invocation logs available for production diagnostics.
+# Secrets, request bodies, and authorization headers must never be logged.
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true

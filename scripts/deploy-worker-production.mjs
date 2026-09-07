@@ -51,6 +51,8 @@ run('pnpm', ['--filter', 'worker', 'typecheck']);
 for (const test of [
   'test:whatsapp-send', 'test:accessible-japan-quote-trigger',
   'test:form-response-email', 'test:form-response-email-route', 'test:travel-quote-route',
+  'test:form-file-access', 'test:form-file-upload', 'test:whatsapp-initiation',
+  'test:lead-route-topology', 'test:quote-reference',
 ]) run('pnpm', ['--filter', 'worker', test]);
 run('node', ['scripts/test-worker-release-contract.mjs']);
 

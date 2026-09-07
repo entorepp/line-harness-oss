@@ -123,11 +123,15 @@ async function processSlackNotification(
       const msgType = (payload.eventData?.messageType as string) || 'text';
       const mediaUrl = payload.eventData?.mediaUrl as string | undefined;
       const fileName = payload.eventData?.fileName as string | undefined;
+      const provider = payload.eventData?.provider as string | undefined;
       await notifySlackIncoming({
         slackToken: slack.token,
         slackChannelId,
         friendName: friend.display_name || 'Unknown',
-        friendPictureUrl: friend.picture_url,
+        // Instagram profile URLs can contain long signed query strings that
+        // Slack rejects as invalid image arguments. Do not let an avatar stop
+        // the customer message itself from reaching staff.
+        friendPictureUrl: provider === 'instagram' ? null : friend.picture_url,
         messageText: text,
         messageType: msgType,
         accountName: friend.account_name || undefined,

@@ -9,13 +9,17 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   if (
     path === '/webhook' ||
     path === '/webhook/whatsapp' ||
+    path === '/webhook/meta' ||
     path === '/webhook/kakao' ||
     path === '/webhook/kakao/messages' ||
+    path.startsWith('/webhook/wechat/') ||
+    path.startsWith('/webhook/wechat-kf/') ||
     path === '/docs' ||
     path === '/openapi.json' ||
     path === '/api/affiliates/click' ||
     path.startsWith('/t/') ||
     path.startsWith('/r/') ||
+    path.startsWith('/wechat/') ||
     path.startsWith('/api/liff/') ||
     path.startsWith('/auth/') ||
     path === '/api/integrations/stripe/webhook' ||
@@ -27,7 +31,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     (method === 'GET' && path === '/api/shared-reports/accessible-japan') ||
     path.startsWith('/api/images/') || // Public image serving for LINE (legacy)
     path.startsWith('/api/files/') || // Public file serving
-    path === '/api/travel/quote-intents' // Origin-checked Flat Travel intake
+    path.startsWith('/api/form-files/') || // Signed, expiring private form attachment
+    path === '/api/travel/quote-intents' // Origin-checked Flat Travel intake; profile is transient and redacted before D1/Slack
   ) {
     return next();
   }

@@ -38,7 +38,12 @@ import { entryRoutes } from './routes/entry-routes.js';
 import { uploads } from './routes/uploads.js';
 import { waWebhook } from './routes/wa-webhook.js';
 import { kakaoWebhook } from './routes/kakao-webhook.js';
+import { wechatWebhook } from './routes/wechat-webhook.js';
+import { wechatKfWebhook } from './routes/wechat-kf-webhook.js';
 import { travelQuoteIntents } from './routes/travel-quote-intents.js';
+import { metaWebhook } from './routes/meta-webhook.js';
+import { metaDataDeletion } from './routes/meta-data-deletion.js';
+import { whatsappInitiation } from './routes/whatsapp-initiation.js';
 import { formResponseEmails } from './routes/form-response-emails.js';
 
 export type Env = {
@@ -61,6 +66,9 @@ export type Env = {
     TRAVEL_QUOTE_SLACK_CHANNEL_ID?: string;
     FLATWORKER_API_BASE_URL?: string;
     FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
+    QUOTE_CHAT_DELIVERY_ENABLED?: string;
+    WHATSAPP_INITIAL_CONTACT_MODE?: string;
+    WHATSAPP_INITIAL_CONTACT_TEST_PHONE_HASHES?: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
     FORM_RESPONSE_EMAIL_ENABLED?: string;
@@ -70,9 +78,13 @@ export type Env = {
     GA4_MEASUREMENT_ID: string;
     UPLOADS: KVNamespace;
     WA_BRIDGE_SECRET: string;
+    WHATSAPP_VERIFY_TOKEN?: string;
+    META_VERIFY_TOKEN?: string;
     KAKAO_BIZMESSAGE_ENDPOINT?: string;
     KAKAO_BIZMESSAGE_API_KEY?: string;
     KAKAO_MESSAGE_WEBHOOK_SECRET?: string;
+    WECHAT_API_BASE_URL?: string;
+    WECOM_API_BASE_URL?: string;
   };
 };
 
@@ -110,8 +122,9 @@ app.get('/forms/new', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.
 app.get('/forms/edit', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/forms/edit'), 302));
 app.get('/public-form', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.env.FORMS_APP_URL || c.env.WEB_APP_URL, '/public-form'), 302));
 
-// Public, origin-checked website enquiry intake. Mount before session auth;
-// the route applies its own origin, size, rate and schema guards.
+// Public instructions required by Meta for Messenger and Instagram data-deletion requests.
+app.route('/', metaDataDeletion);
+// Public, origin-checked and rate-limited website estimate notification intake.
 app.route('/', travelQuoteIntents);
 
 // Auth middleware — skips /webhook and /docs automatically
@@ -125,6 +138,7 @@ app.route('/', scenarios);
 app.route('/', broadcasts);
 app.route('/', users);
 app.route('/', lineAccounts);
+app.route('/', whatsappInitiation);
 app.route('/', conversions);
 app.route('/', affiliates);
 app.route('/', openapi);
@@ -149,6 +163,9 @@ app.route('/', entryRoutes);
 app.route('/', uploads);
 app.route('/', waWebhook);
 app.route('/', kakaoWebhook);
+app.route('/', wechatWebhook);
+app.route('/', wechatKfWebhook);
+app.route('/', metaWebhook);
 
 // Short link: /r/:ref → record click with referrer → redirect to LINE add-friend URL
 // Also supports /r/ (no ref) as a universal tracking redirect

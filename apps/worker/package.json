@@ -6,11 +6,16 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test:travel-quote-route": "esbuild scripts/test-travel-quote-route.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-travel-quote-test.mjs && node /tmp/flat-harness-travel-quote-test.mjs",
-    "test:accessible-japan-quote-trigger": "esbuild scripts/test-accessible-japan-quote-trigger.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-accessible-japan-quote-trigger-test.mjs && node /tmp/flat-harness-accessible-japan-quote-trigger-test.mjs",
-    "test:form-response-email": "esbuild scripts/test-form-response-email.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-form-response-email-test.mjs && node /tmp/flat-harness-form-response-email-test.mjs",
-    "test:form-response-email-route": "esbuild scripts/test-form-response-email-route.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-form-response-email-route-test.mjs && node /tmp/flat-harness-form-response-email-route-test.mjs",
-    "test:whatsapp-send": "esbuild scripts/test-whatsapp-send.ts --bundle --platform=node --format=esm --outfile=.wrangler/test-whatsapp-send.mjs && node .wrangler/test-whatsapp-send.mjs"
+    "test:form-file-access": "esbuild scripts/test-form-file-access.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-file-access-test.mjs && node .wrangler/tests/flat-harness-form-file-access-test.mjs",
+    "test:form-file-upload": "esbuild scripts/test-form-file-upload.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-file-upload-test.mjs && node .wrangler/tests/flat-harness-form-file-upload-test.mjs",
+    "test:form-response-email": "esbuild scripts/test-form-response-email.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-response-email-test.mjs && node .wrangler/tests/flat-harness-form-response-email-test.mjs",
+    "test:form-response-email-route": "esbuild scripts/test-form-response-email-route.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-response-email-route-test.mjs && node .wrangler/tests/flat-harness-form-response-email-route-test.mjs",
+    "test:whatsapp-initiation": "esbuild scripts/test-whatsapp-initiation.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-whatsapp-initiation-test.mjs && node .wrangler/tests/flat-harness-whatsapp-initiation-test.mjs",
+    "test:travel-quote-route": "esbuild scripts/test-travel-quote-route.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-travel-quote-test.mjs && node .wrangler/tests/flat-harness-travel-quote-test.mjs",
+    "test:accessible-japan-quote-trigger": "esbuild scripts/test-accessible-japan-quote-trigger.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-accessible-japan-quote-trigger-test.mjs && node .wrangler/tests/flat-harness-accessible-japan-quote-trigger-test.mjs",
+    "test:whatsapp-send": "esbuild scripts/test-whatsapp-send.ts --bundle --platform=node --format=esm --outfile=.wrangler/test-whatsapp-send.mjs && node .wrangler/test-whatsapp-send.mjs",
+    "test:lead-route-topology": "esbuild scripts/test-lead-route-topology.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/test-lead-route-topology.mjs && node .wrangler/tests/test-lead-route-topology.mjs",
+    "test:quote-reference": "esbuild scripts/test-quote-reference.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/test-quote-reference.mjs && node .wrangler/tests/test-quote-reference.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",
@@ -20,6 +25,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
+    "@types/node": "25.5.0",
     "typescript": "^5.7.0",
     "wrangler": "^3.99.0"
   }
