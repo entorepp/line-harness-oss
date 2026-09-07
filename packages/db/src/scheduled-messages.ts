@@ -151,6 +151,32 @@ export async function updateScheduledMessageStatus(
     .run();
 }
 
+/**
+ * Atomically claim a scheduled message for delivery.
+ *
+ * Both the minute cron and the chat UI can notice that a message is due. The
+ * conditional update makes sure only one of them is allowed to dispatch it.
+ */
+export async function claimScheduledMessage(
+  db: D1Database,
+  id: string,
+): Promise<boolean> {
+  const now = jstNow();
+  const result = await db
+    .prepare(
+      `UPDATE scheduled_messages
+          SET status = 'sending',
+              last_error = NULL,
+              updated_at = ?
+        WHERE id = ?
+          AND status = 'scheduled'`,
+    )
+    .bind(now, id)
+    .run();
+
+  return (result.meta.changes ?? 0) > 0;
+}
+
 export async function updateScheduledMessage(
   db: D1Database,
   id: string,

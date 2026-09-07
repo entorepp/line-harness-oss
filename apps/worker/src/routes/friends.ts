@@ -53,8 +53,10 @@ function serializeScheduleMetadata(body: {
   fileName?: string;
   fileSize?: string;
   fileIcon?: string;
+  deliveryMode?: string;
+  undoGroupId?: string;
 }): string | null {
-  if (!body.fileName && !body.fileSize && !body.fileIcon) {
+  if (!body.fileName && !body.fileSize && !body.fileIcon && !body.deliveryMode && !body.undoGroupId) {
     return null;
   }
 
@@ -62,6 +64,8 @@ function serializeScheduleMetadata(body: {
     fileName: body.fileName ?? null,
     fileSize: body.fileSize ?? null,
     fileIcon: body.fileIcon ?? null,
+    deliveryMode: body.deliveryMode ?? null,
+    undoGroupId: body.undoGroupId ?? null,
   });
 }
 
@@ -388,6 +392,8 @@ friends.post('/api/friends/:id/messages', async (c) => {
       fileSize?: string;
       fileIcon?: string;
       scheduledAt?: string | null;
+      deliveryMode?: string;
+      undoGroupId?: string;
     }>();
 
     if (!body.content) {

@@ -9,7 +9,8 @@
     "test:travel-quote-route": "esbuild scripts/test-travel-quote-route.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-travel-quote-test.mjs && node /tmp/flat-harness-travel-quote-test.mjs",
     "test:accessible-japan-quote-trigger": "esbuild scripts/test-accessible-japan-quote-trigger.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-accessible-japan-quote-trigger-test.mjs && node /tmp/flat-harness-accessible-japan-quote-trigger-test.mjs",
     "test:form-response-email": "esbuild scripts/test-form-response-email.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-form-response-email-test.mjs && node /tmp/flat-harness-form-response-email-test.mjs",
-    "test:form-response-email-route": "esbuild scripts/test-form-response-email-route.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-form-response-email-route-test.mjs && node /tmp/flat-harness-form-response-email-route-test.mjs"
+    "test:form-response-email-route": "esbuild scripts/test-form-response-email-route.ts --bundle --platform=node --format=esm --outfile=/tmp/flat-harness-form-response-email-route-test.mjs && node /tmp/flat-harness-form-response-email-route-test.mjs",
+    "test:whatsapp-send": "esbuild scripts/test-whatsapp-send.ts --bundle --platform=node --format=esm --outfile=.wrangler/test-whatsapp-send.mjs && node .wrangler/test-whatsapp-send.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",
