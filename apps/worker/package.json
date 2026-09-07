@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "vite build && wrangler deploy",
+    "deploy": "node ../../scripts/refuse-stale-worker-deploy.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
