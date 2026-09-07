@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import FormTraffic from './form-traffic'
 import {
   ACCESSIBLE_JAPAN_FORM_ID,
   buildAccessibleJapanAttributionInput,
@@ -1585,6 +1586,7 @@ export default function PublicFormPage() {
       </div>
 
       <div className={`relative mx-auto ${isAccessibleJapanForm ? 'max-w-4xl' : 'max-w-3xl'}`}>
+        {!loading && form?.isActive && isAccessibleJapanForm && !issueId && <FormTraffic />}
         {loading ? (
           <div className="rounded-[24px] border border-[#d7e5dc] bg-white/[0.92] p-10 text-center text-sm text-slate-500 shadow-sm backdrop-blur-sm">
             フォームを読み込んでいます...
