@@ -50,6 +50,12 @@ assert.match(
 assert.match(formDefinitionSource, /'A mix of room types'/);
 assert.match(formDefinitionSource, /'4-star \(¥50,000–80,000\/night\)'/);
 assert.match(formDefinitionSource, /'5-star \(¥80,000\+\/night\)'/);
+assert.match(
+  formDefinitionSource,
+  /Around when would you like to travel, and for how many days\?/,
+  'the undecided-dates branch must collect both approximate timing and trip length',
+);
+assert.match(formDefinitionSource, /e\.g\. October 2026 for about 10 days/);
 
 assert.ok(hero.length >= 250_000, 'hero image must be a production-quality asset');
 assert.equal(hero[0], 0xff, 'hero image must begin with the JPEG SOI marker');
