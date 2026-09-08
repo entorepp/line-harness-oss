@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, toJstString, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
+import { linkWhatsappIdentity } from '../services/whatsapp-identity.js';
 import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 
 const waWebhook = new Hono<Env>();
@@ -655,6 +656,7 @@ async function persistWaMessage(
   msg: NormalizedWaMessage,
   account: ResolvedWhatsAppAccount,
   media?: StoredMedia | null,
+  allowIdentityLink = false,
 ): Promise<void> {
   const counterpartyId = resolveCounterpartyId(msg);
   if (!counterpartyId) {
@@ -715,6 +717,10 @@ async function persistWaMessage(
                 ? '📍 位置情報を送信'
                 : `[${msg.type}]`
     );
+
+    if (allowIdentityLink && msg.type === 'text') {
+      await linkWhatsappIdentity(env, friend.id, msg.messageId, msg.text?.trim() || '');
+    }
 
     const quoteHandled = await tryDeliverCustomerQuote({
       env,
@@ -961,7 +967,7 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
         messageId: msg.messageId,
       });
 
-      await persistWaMessage(c.env, db, msg, account);
+      await persistWaMessage(c.env, db, msg, account, null, true);
       return c.text('OK', 200);
     }
 
@@ -1009,7 +1015,7 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
           }
         }
 
-        await persistWaMessage(c.env, db, msg, account, storedMedia);
+        await persistWaMessage(c.env, db, msg, account, storedMedia, bridgeAuthorized || Boolean(account.channel_secret));
       }
 
       return c.text('OK', 200);

@@ -15,7 +15,8 @@
     "test:accessible-japan-quote-trigger": "esbuild scripts/test-accessible-japan-quote-trigger.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-accessible-japan-quote-trigger-test.mjs && node .wrangler/tests/flat-harness-accessible-japan-quote-trigger-test.mjs",
     "test:whatsapp-send": "esbuild scripts/test-whatsapp-send.ts --bundle --platform=node --format=esm --outfile=.wrangler/test-whatsapp-send.mjs && node .wrangler/test-whatsapp-send.mjs",
     "test:lead-route-topology": "esbuild scripts/test-lead-route-topology.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/test-lead-route-topology.mjs && node .wrangler/tests/test-lead-route-topology.mjs",
-    "test:quote-reference": "esbuild scripts/test-quote-reference.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/test-quote-reference.mjs && node .wrangler/tests/test-quote-reference.mjs"
+    "test:quote-reference": "esbuild scripts/test-quote-reference.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/test-quote-reference.mjs && node .wrangler/tests/test-quote-reference.mjs",
+    "test:whatsapp-identity": "esbuild scripts/test-whatsapp-identity.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-identity.mjs && node .wrangler/tests/whatsapp-identity.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",
