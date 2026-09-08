@@ -1,7 +1,8 @@
 import { ACCESSIBLE_JAPAN_FORM_ID } from '@line-crm/shared';
+import { completeFormWhatsappIdentity } from './whatsapp-identity.js';
+import type { WhatsappIdentityEnv } from './whatsapp-identity.js';
 
-type QuoteJobEnv = {
-  DB: D1Database;
+type QuoteJobEnv = WhatsappIdentityEnv & {
   ACCESSIBLE_JAPAN_QUOTE_INTAKE_URL?: string;
   ACCESSIBLE_JAPAN_QUOTE_INTAKE_TOKEN?: string;
 };
@@ -180,6 +181,7 @@ async function processOne(env: QuoteJobEnv, job: QuoteJobRow, endpoint: URL, int
          SET status = 'complete', case_id = ?, lease_until = NULL, last_error_code = NULL, updated_at = ?
          WHERE submission_id = ?`,
       ).bind(caseId || null, nowIso(), job.submission_id).run();
+      if (caseId && !job.case_id) await completeFormWhatsappIdentity(env, job.submission_id);
       return;
     }
     if (response.ok && (response.status === 202 || resultStatus === 'searching')) {
@@ -189,6 +191,7 @@ async function processOne(env: QuoteJobEnv, job: QuoteJobRow, endpoint: URL, int
              last_error_code = NULL, updated_at = ?
          WHERE submission_id = ?`,
       ).bind(caseId || null, nowIso(30_000), nowIso(), job.submission_id).run();
+      if (caseId && !job.case_id) await completeFormWhatsappIdentity(env, job.submission_id);
       return;
     }
     if (response.status >= 500 || response.status === 409 || response.status === 429) {

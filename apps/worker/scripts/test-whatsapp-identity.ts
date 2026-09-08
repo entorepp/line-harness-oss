@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-import { extractIdentityEvidence, linkWhatsappIdentity, reconcileWhatsappIdentity } from '../src/services/whatsapp-identity.js';
+import { completeFormWhatsappIdentity, extractIdentityEvidence, linkWhatsappIdentity, reconcileWhatsappIdentity } from '../src/services/whatsapp-identity.js';
 import { whatsappIdentity } from '../src/routes/whatsapp-identity.js';
 import { waWebhook } from '../src/routes/wa-webhook.js';
 import { authMiddleware } from '../src/middleware/auth.js';
+import { ACCESSIBLE_JAPAN_FORM_ID } from '@line-crm/shared';
+import { enqueueAccessibleJapanQuoteJob, processAccessibleJapanQuoteJobs } from '../src/services/accessible-japan-quote-jobs.js';
 
 assert.deepEqual(extractIdentityEvidence('The email was andrea@example.com, in case you need to access the quotation.'), { type: 'customer_email', value: 'andrea@example.com' });
 assert.deepEqual(extractIdentityEvidence('My email address is CUSTOMER@example.com.'), { type: 'customer_email', value: 'customer@example.com' });
@@ -94,3 +96,43 @@ console.log('Registered case reconciliation: unique friend channel, shared chann
 
 assert.equal((await linkWhatsappIdentity({ ...env, DB: { prepare() { throw new Error('mock D1 unavailable'); } } }, 'friend-test', 'provider-error', 'My email is customer@example.com')).status, 'unavailable');
 console.log('Identity database failures remain isolated from incoming messages.');
+
+const formId='12345678-1234-1234-1234-123456789abc';
+sqlite.exec(`INSERT INTO messages_log (id,friend_id,direction,message_type,content) VALUES
+  ('form-before-case','friend-test','incoming','text','Reference: FTR-${formId}'),
+  ('form-outgoing','linked-friend','outgoing','text','Reference: FTR-${formId}')`);
+const beforeForm=calls.length;
+assert.equal((await completeFormWhatsappIdentity(env,formId)).status,'linked');
+assert.equal(calls.length,beforeForm+1);
+assert.equal(calls.at(-1).body.providerMessageId,'stored:form-before-case');
+assert.equal(calls.at(-1).body.friendId,'friend-test');
+assert.equal(calls.at(-1).body.evidence.value,formId);
+const beforeUnknown=calls.length;
+assert.equal((await completeFormWhatsappIdentity(env,'87654321-4321-4321-4321-cba987654321')).status,'unlinked');
+assert.equal(calls.length,beforeUnknown);
+sqlite.exec(`INSERT INTO messages_log (id,friend_id,direction,message_type,content) VALUES ('form-forwarded','linked-friend','incoming','text','Reference: FTR-${formId}')`);
+assert.equal((await completeFormWhatsappIdentity(env,formId)).status,'review_required');
+assert.equal(calls.length,beforeUnknown);
+assert.equal((await completeFormWhatsappIdentity({...env, DB:{prepare(){throw new Error('mock D1 failure');}}},formId)).status,'unavailable');
+console.log('Form intake ordering: exact received reference, one sender, no outgoing replay and isolated failure passed.');
+
+sqlite.exec(`DELETE FROM messages_log WHERE id='form-forwarded';
+INSERT INTO forms (id,name) VALUES ('${ACCESSIBLE_JAPAN_FORM_ID}','Test intake');
+INSERT INTO form_submissions (id,form_id,data) VALUES ('${formId}','${ACCESSIBLE_JAPAN_FORM_ID}','{}');`);
+env.ACCESSIBLE_JAPAN_QUOTE_INTAKE_URL='https://test.invalid/api/integrations/accessible-japan-quote-intents';
+env.ACCESSIBLE_JAPAN_QUOTE_INTAKE_TOKEN='intake-only';
+const identityFetch=globalThis.fetch;
+globalThis.fetch=(async(input:any,init?:RequestInit)=>{
+  if(String(input).endsWith('/accessible-japan-quote-intents'))return Response.json({status:'searching',caseId:'case-from-form'},{status:202});
+  return identityFetch(input,init);
+}) as typeof fetch;
+await enqueueAccessibleJapanQuoteJob(env.DB,formId);
+const beforeJob=calls.length;
+await processAccessibleJapanQuoteJobs(env,{submissionId:formId,limit:1});
+assert.equal(calls.length,beforeJob+1,'first case acknowledgement completes the already received FTR identity');
+assert.equal(calls.at(-1).body.providerMessageId,'stored:form-before-case');
+assert.equal((sqlite.prepare('SELECT case_id FROM accessible_japan_quote_jobs WHERE submission_id=?').get(formId) as any).case_id,'case-from-form');
+sqlite.prepare("UPDATE accessible_japan_quote_jobs SET next_attempt_at='2000-01-01' WHERE submission_id=?").run(formId);
+await processAccessibleJapanQuoteJobs(env,{limit:1});
+assert.equal(calls.length,beforeJob+1,'search continuation never replays the identity handoff');
+console.log('Real SQL form job: first case acknowledgement links a prior received reference exactly once.');
