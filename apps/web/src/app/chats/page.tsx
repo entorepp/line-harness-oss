@@ -6,6 +6,7 @@ import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
 import ChatComposer from '@/components/chat-composer'
 import ChatMessageContent from '@/components/chat-message-content'
+import WhatsappContactCard from '@/components/whatsapp-contact-card'
 
 interface Chat {
   id: string
@@ -31,6 +32,7 @@ interface ChatMessage {
 }
 
 interface ChatDetail extends Chat {
+  channelType?: string
   friendName: string
   friendPictureUrl: string | null
   slackChannelId: string | null
@@ -167,6 +169,7 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
           <p className="text-xs text-gray-400">メッセージ履歴</p>
         </div>
       </div>
+      {channelType === 'whatsapp' && <WhatsappContactCard key={friendId} friendId={friendId} />}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {loadingMessages ? (
           <p className="text-center text-gray-400 text-sm">読み込み中...</p>
@@ -963,6 +966,8 @@ export default function ChatsPage() {
                   )}
                 </div>
               </div>
+
+              {(chatDetail.channelType === 'whatsapp' || selectedAccount?.channelType === 'whatsapp') && <WhatsappContactCard key={chatDetail.friendId} friendId={chatDetail.friendId} />}
 
               {settingsOpen && (
                 <div className="border-b border-gray-100 bg-gray-50/70 px-4 py-3">
