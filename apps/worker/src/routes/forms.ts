@@ -68,6 +68,7 @@ type AccessibleJapanReportLead = {
   citySchedule: string[];
   preferredCities: string[];
   approximateTiming: string;
+  approximateDuration: string;
   notes: string;
 };
 
@@ -143,6 +144,7 @@ function serializeAccessibleJapanReportLead(row: DbFormSubmission): AccessibleJa
     citySchedule,
     preferredCities: normalizeReportList(data.preferred_cities),
     approximateTiming: normalizeReportText(data.approximate_timing),
+    approximateDuration: normalizeReportText(data.approximate_duration),
     notes: normalizeReportText(data.notes),
   };
 }
