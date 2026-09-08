@@ -30,6 +30,7 @@ type ReportLead = {
   citySchedule: string[]
   preferredCities: string[]
   approximateTiming: string
+  approximateDuration: string
   notes: string
 }
 
@@ -285,7 +286,8 @@ export default function SharedReportPage() {
                         <Detail label="日程は確定済みか" value={lead.datesDecided} />
                         <Detail label="都市・確定日程" value={lead.citySchedule.join('\n')} />
                         <Detail label="行きたい都市（日程未定）" value={lead.preferredCities.join(', ')} />
-                        <Detail label="大まかな時期・日数" value={lead.approximateTiming} />
+                        <Detail label="大まかな時期" value={lead.approximateTiming} />
+                        <Detail label="大まかな旅行期間" value={lead.approximateDuration} />
                         <div className="sm:col-span-2 lg:col-span-3">
                           <Detail label="Notes" value={lead.notes} />
                         </div>
