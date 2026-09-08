@@ -14,6 +14,7 @@ type Identity = {
 
 const evidenceLabels: Record<string, string> = {
   customer_email: 'WhatsAppで申告されたメール',
+  staff_case_channel: '登録済みの案件チャンネル',
   email_handoff: 'メール内のWhatsAppボタン',
   journey_reference: 'Journeyの回答',
   form_submission: 'Accessible Japanのフォーム回答',
