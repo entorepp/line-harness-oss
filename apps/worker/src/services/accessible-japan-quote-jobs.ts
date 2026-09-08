@@ -123,7 +123,7 @@ async function markRetry(db: D1Database, job: QuoteJobRow, errorCode: string): P
   ).run();
 }
 
-async function processOne(env: QuoteJobEnv, job: QuoteJobRow, endpoint: URL): Promise<void> {
+async function processOne(env: QuoteJobEnv, job: QuoteJobRow, endpoint: URL, intakeOnly: boolean): Promise<void> {
   const submission = await env.DB.prepare(
     `SELECT id, form_id, data, created_at FROM form_submissions WHERE id = ? AND form_id = ?`,
   ).bind(job.submission_id, ACCESSIBLE_JAPAN_FORM_ID).first<SubmissionRow>();
@@ -160,6 +160,7 @@ async function processOne(env: QuoteJobEnv, job: QuoteJobRow, endpoint: URL): Pr
         submissionId: submission.id,
         submittedAt: submission.created_at,
         submissionData,
+        ...(intakeOnly ? { intakeOnly: true } : {}),
       }),
     });
     let result: Record<string, unknown> = {};
@@ -214,6 +215,9 @@ export async function processAccessibleJapanQuoteJobs(
   for (const row of rows) {
     const claimed = await claimJob(env.DB, row);
     if (!claimed) continue;
-    await processOne(env, claimed, endpoint);
+    // The immediate HTTP waitUntil has only 30 seconds after form acceptance.
+    // Persist/acknowledge a visible FW shell there; DIDA and PDFs are resumed
+    // by the already registered cron, using this same durable job and case ID.
+    await processOne(env, claimed, endpoint, Boolean(options.submissionId) && claimed.attempts === 1);
   }
 }
