@@ -1,5 +1,7 @@
 import type { Env } from '../index.js';
 
+export type WhatsappIdentityEnv = Pick<Env['Bindings'], 'DB' | 'FLATWORKER_API_BASE_URL' | 'FLATWORKER_TRAVEL_QUOTE_TOKEN'>;
+
 type Evidence = { type: 'journey_reference' | 'email_handoff' | 'customer_email' | 'form_submission'; value: string };
 export type IdentityResult = {
   status: 'linked' | 'unlinked' | 'review_required' | 'unavailable';
@@ -30,7 +32,7 @@ export function extractIdentityEvidence(text: string): Evidence | null {
   return { type: 'customer_email', value: emails[0] };
 }
 
-async function contact(env: Env['Bindings'], friendId: string) {
+async function contact(env: WhatsappIdentityEnv, friendId: string) {
   const row = await env.DB.prepare(`SELECT f.id, f.line_user_id, f.line_account_id
     FROM friends f JOIN line_accounts a ON a.id = f.line_account_id
     WHERE f.id = ? AND a.channel_type = 'whatsapp' AND a.is_active = 1`).bind(friendId)
@@ -39,7 +41,7 @@ async function contact(env: Env['Bindings'], friendId: string) {
   return { accountId: row.line_account_id, friendId: row.id, whatsappNumber: '+' + row.line_user_id.replace(/^\+/, '') };
 }
 
-async function callIdentity(env: Env['Bindings'], mode: 'read' | 'link', payload: Record<string, unknown>): Promise<IdentityResult> {
+async function callIdentity(env: WhatsappIdentityEnv, mode: 'read' | 'link', payload: Record<string, unknown>): Promise<IdentityResult> {
   const base = env.FLATWORKER_API_BASE_URL?.replace(/\/+$/, '');
   const token = env.FLATWORKER_TRAVEL_QUOTE_TOKEN?.trim();
   if (!base || !token) return { status: 'unavailable' };
@@ -58,12 +60,12 @@ async function callIdentity(env: Env['Bindings'], mode: 'read' | 'link', payload
   }
 }
 
-export async function readWhatsappIdentity(env: Env['Bindings'], friendId: string): Promise<IdentityResult> {
+export async function readWhatsappIdentity(env: WhatsappIdentityEnv, friendId: string): Promise<IdentityResult> {
   const current = await contact(env, friendId);
   return current ? callIdentity(env, 'read', current) : { status: 'unlinked' };
 }
 
-export async function linkWhatsappIdentity(env: Env['Bindings'], friendId: string, providerMessageId: string, text: string): Promise<IdentityResult> {
+export async function linkWhatsappIdentity(env: WhatsappIdentityEnv, friendId: string, providerMessageId: string, text: string): Promise<IdentityResult> {
   const evidence = extractIdentityEvidence(text);
   if (!evidence) return { status: 'unlinked', reason: 'no_unique_customer_evidence' };
   try {
@@ -76,7 +78,7 @@ export async function linkWhatsappIdentity(env: Env['Bindings'], friendId: strin
   }
 }
 
-export async function reconcileWhatsappIdentity(env: Env['Bindings'], friendId: string): Promise<IdentityResult> {
+export async function reconcileWhatsappIdentity(env: WhatsappIdentityEnv, friendId: string): Promise<IdentityResult> {
   // Explicit staff action only. Never send/replay the original webhook or events.
   const rows = await env.DB.prepare(`SELECT id, content FROM messages_log
     WHERE friend_id = ? AND direction = 'incoming' AND message_type = 'text'
@@ -101,4 +103,26 @@ export async function reconcileWhatsappIdentity(env: Env['Bindings'], friendId: 
   }
   const candidate = candidates[0].row;
   return linkWhatsappIdentity(env, friendId, `stored:${candidate.id}`, candidate.content);
+}
+
+export async function completeFormWhatsappIdentity(env: WhatsappIdentityEnv, submissionId: string): Promise<IdentityResult> {
+  // Finish the same intake if its case was persisted after the inbound message.
+  // This never replays the webhook, event bus or an outgoing message.
+  if (!env.FLATWORKER_API_BASE_URL || !env.FLATWORKER_TRAVEL_QUOTE_TOKEN || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(submissionId)) return { status: 'unlinked' };
+  try {
+    const rows = await env.DB.prepare(`SELECT id, friend_id, content FROM messages_log
+      WHERE direction = 'incoming' AND message_type = 'text' AND content LIKE ?
+      ORDER BY created_at DESC LIMIT 21`).bind(`%FTR-${submissionId}%`).all<{ id: string; friend_id: string; content: string }>();
+    if (rows.results.length > 20) return { status: 'review_required', reason: 'multiple_form_messages' };
+    const candidates = rows.results.filter(row => {
+      const evidence = extractIdentityEvidence(row.content);
+      return evidence?.type === 'form_submission' && evidence.value === submissionId;
+    });
+    if (!candidates.length) return { status: 'unlinked' };
+    if (new Set(candidates.map(row => row.friend_id)).size !== 1) return { status: 'review_required', reason: 'multiple_form_senders' };
+    const candidate = candidates[0];
+    return await linkWhatsappIdentity(env, candidate.friend_id, `stored:${candidate.id}`, candidate.content);
+  } catch {
+    return { status: 'unavailable' };
+  }
 }
