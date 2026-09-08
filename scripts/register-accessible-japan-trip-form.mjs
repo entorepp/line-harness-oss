@@ -213,10 +213,11 @@ const payload = {
     },
     {
       name: 'approximate_timing',
-      label: 'Around when would you like to travel?',
+      label: 'Around when would you like to travel, and for how many days?',
       type: 'text',
       required: true,
-      placeholder: 'e.g. Spring 2027, around October, or not sure yet',
+      helperText: 'A rough estimate is fine.',
+      placeholder: 'e.g. October 2026 for about 10 days',
       visibleWhen: {
         field: 'dates_decided',
         operator: 'equals',
