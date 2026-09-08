@@ -72,12 +72,27 @@ function statement(sqlInput: string) {
         job.last_error_code = null;
         return { success: true, meta: { changes: 1 } };
       }
+      if (sql.startsWith("UPDATE accessible_japan_quote_jobs SET status = 'retry', case_id")) {
+        const job = jobs.get(String(bindings[3]))!;
+        job.status = 'retry';
+        job.case_id = bindings[0] ? String(bindings[0]) : job.case_id;
+        job.next_attempt_at = String(bindings[1]);
+        job.lease_until = null;
+        job.last_error_code = null;
+        return { success: true, meta: { changes: 1 } };
+      }
       throw new Error(`Unexpected run SQL: ${sql}`);
     },
     async all<T>() {
-      if (sql.includes('FROM accessible_japan_quote_jobs') && sql.includes('WHERE submission_id = ?')) {
-        const job = jobs.get(String(bindings[0]));
-        return { results: job ? [job as T] : [] };
+      if (sql.includes('FROM accessible_japan_quote_jobs')) {
+        const exact = sql.includes('WHERE submission_id = ?');
+        const due = String(bindings[exact ? 1 : 0]);
+        const rows = [...jobs.values()].filter(job =>
+          (!exact || job.submission_id === bindings[0]) &&
+          ((['pending', 'retry'].includes(job.status) && job.next_attempt_at <= due) ||
+           (job.status === 'processing' && (job.lease_until || '') <= due))
+        );
+        return { results: rows.slice(0, exact ? 1 : Number(bindings[2])) as T[] };
       }
       throw new Error(`Unexpected all SQL: ${sql}`);
     },
@@ -113,9 +128,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   );
   assert.equal((init?.headers as Record<string, string>)['x-accessible-japan-quote-token'], 'test-token');
   posts.push(JSON.parse(String(init?.body || '{}')));
+  const intakeOnly = posts.at(-1)?.intakeOnly === true;
   return new Response(
-    JSON.stringify({ status: 'ready', caseId: 'flatworker-auto-test' }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
+    JSON.stringify({ status: intakeOnly ? 'searching' : 'ready', caseId: 'flatworker-auto-test' }),
+    { status: intakeOnly ? 202 : 200, headers: { 'content-type': 'application/json' } },
   );
 }) as typeof fetch;
 
@@ -130,6 +146,18 @@ try {
   assert.equal(posts.length, 1, 'the submission should call TravelWorker immediately');
   assert.equal(posts[0].submissionId, submission.id);
   assert.equal(posts[0].formId, ACCESSIBLE_JAPAN_FORM_ID);
+  assert.equal(posts[0].intakeOnly, true, 'HTTP event must not wait for DIDA searches');
+  assert.equal(jobs.get(submission.id)?.status, 'retry');
+  assert.equal(jobs.get(submission.id)?.lease_until, null, 'do not wait five minutes for the HTTP lease');
+  assert.equal(jobs.get(submission.id)?.case_id, 'flatworker-auto-test');
+
+  await processAccessibleJapanQuoteJobs(env, { limit: 3 });
+  assert.equal(posts.length, 1, 'cron respects the normal 30-second resume boundary');
+  jobs.get(submission.id)!.next_attempt_at = '2000-01-01T00:00:00.000Z';
+  await processAccessibleJapanQuoteJobs(env, { limit: 3 });
+  assert.equal(posts.length, 2, 'existing cron resumes the initial case');
+  assert.equal(posts[1].intakeOnly, undefined, 'cron performs normal resumable searches');
+  assert.deepEqual(posts[1], Object.fromEntries(Object.entries(posts[0]).filter(([key]) => key !== 'intakeOnly')));
   assert.equal(jobs.get(submission.id)?.status, 'complete');
   assert.equal(jobs.get(submission.id)?.case_id, 'flatworker-auto-test');
 } finally {
