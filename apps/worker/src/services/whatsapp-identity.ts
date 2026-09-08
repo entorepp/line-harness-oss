@@ -66,9 +66,14 @@ export async function readWhatsappIdentity(env: Env['Bindings'], friendId: strin
 export async function linkWhatsappIdentity(env: Env['Bindings'], friendId: string, providerMessageId: string, text: string): Promise<IdentityResult> {
   const evidence = extractIdentityEvidence(text);
   if (!evidence) return { status: 'unlinked', reason: 'no_unique_customer_evidence' };
-  const current = await contact(env, friendId);
-  if (!current) return { status: 'unlinked' };
-  return callIdentity(env, 'link', { ...current, providerMessageId, evidence });
+  try {
+    const current = await contact(env, friendId);
+    if (!current) return { status: 'unlinked' };
+    return await callIdentity(env, 'link', { ...current, providerMessageId, evidence });
+  } catch {
+    // Identity enrichment must not interrupt incoming messages or Slack routing.
+    return { status: 'unavailable' };
+  }
 }
 
 export async function reconcileWhatsappIdentity(env: Env['Bindings'], friendId: string): Promise<IdentityResult> {

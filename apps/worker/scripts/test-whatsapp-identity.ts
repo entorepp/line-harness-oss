@@ -91,3 +91,6 @@ assert.equal(calls.length,beforeShared+1);
 sqlite.exec(`UPDATE line_accounts SET default_slack_channel='C1234567890' WHERE id='wa-test'`);
 assert.equal((await reconcileWhatsappIdentity(env,'linked-friend')).status,'unlinked');
 console.log('Registered case reconciliation: unique friend channel, shared channel and default channel guards passed.');
+
+assert.equal((await linkWhatsappIdentity({ ...env, DB: { prepare() { throw new Error('mock D1 unavailable'); } } }, 'friend-test', 'provider-error', 'My email is customer@example.com')).status, 'unavailable');
+console.log('Identity database failures remain isolated from incoming messages.');
