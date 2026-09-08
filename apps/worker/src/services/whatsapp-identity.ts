@@ -79,7 +79,21 @@ export async function reconcileWhatsappIdentity(env: Env['Bindings'], friendId: 
   const candidates = rows.results.map(row => ({ row, evidence: extractIdentityEvidence(row.content) })).filter(item => item.evidence);
   const identities = new Set(candidates.map(item => JSON.stringify(item.evidence)));
   if (identities.size > 1) return { status: 'review_required', reason: 'multiple_inbound_identities' };
-  if (!candidates.length) return readWhatsappIdentity(env, friendId);
+  if (!candidates.length) {
+    const saved = await readWhatsappIdentity(env, friendId);
+    if (saved.status !== 'unlinked') return saved;
+    const channel = await env.DB.prepare(`SELECT f.slack_channel_id, a.default_slack_channel,
+      (SELECT COUNT(*) FROM friends linked WHERE linked.slack_channel_id = f.slack_channel_id) AS friend_count
+      FROM friends f JOIN line_accounts a ON a.id = f.line_account_id
+      WHERE f.id = ? AND a.channel_type = 'whatsapp' AND a.is_active = 1`).bind(friendId)
+      .first<{ slack_channel_id: string | null; default_slack_channel: string | null; friend_count: number }>();
+    if (!channel?.slack_channel_id || channel.slack_channel_id === channel.default_slack_channel) return saved;
+    if (channel.friend_count !== 1) return { status: 'review_required', reason: 'shared_case_channel' };
+    const current = await contact(env, friendId);
+    if (!current) return saved;
+    return callIdentity(env, 'link', { ...current, providerMessageId: `staff-channel:${friendId}:${channel.slack_channel_id}`,
+      evidence: { type: 'staff_case_channel', value: channel.slack_channel_id } });
+  }
   const candidate = candidates[0].row;
   return linkWhatsappIdentity(env, friendId, `stored:${candidate.id}`, candidate.content);
 }

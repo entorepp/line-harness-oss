@@ -34,12 +34,14 @@ const env = {DB:db,API_KEY:'staff-only',WA_BRIDGE_SECRET:'bridge-only',FLATWORKE
 const app=new Hono(); app.use('*',authMiddleware as any);app.route('/',whatsappIdentity);app.route('/',waWebhook);
 const calls:any[]=[];
 let unavailable=false;
+let readStatus='linked';
 globalThis.fetch=(async(input:any,init?:RequestInit)=>{
   assert.match(String(input), /^https:\/\/test.invalid\/api\/integrations\/whatsapp-identity\/(read|link)$/);
   assert.equal(new Headers(init?.headers).get('X-Flat-Travel-Quote-Token'),'integration-only');
   const body=JSON.parse(String(init?.body));calls.push({url:String(input),body});
   assert.deepEqual(Object.keys(body).filter(key=>['text','content','profile','customerSent','booked'].includes(key)),[]);
   if(unavailable)throw new Error('unavailable');
+  if (String(input).endsWith('/read') && readStatus === 'unlinked') return Response.json({status:'unlinked'});
   return Response.json({status:'linked',email:'customer@example.com',whatsappNumber:body.whatsappNumber,cases:[]});
 }) as typeof fetch;
 
@@ -74,3 +76,18 @@ assert.equal(calls.length,beforeWebhook+1);
 assert.equal((await webhook('outgoing','bridge-out')).status,200);
 assert.equal(calls.length,beforeWebhook+1);
 console.log('WhatsApp identity: extraction, real SQL, staff auth, inbound webhook, idempotency, conflict, failure isolation and no sends passed.');
+
+readStatus='unlinked';
+sqlite.exec(`INSERT INTO friends (id,line_user_id,display_name,line_account_id,slack_channel_id) VALUES ('linked-friend','15555550200','Registered','wa-test','C1234567890')`);
+const beforeChannel=calls.length;
+assert.equal((await reconcileWhatsappIdentity(env,'linked-friend')).status,'linked');
+assert.equal(calls.at(-1).body.evidence.type,'staff_case_channel');
+assert.equal(calls.at(-1).body.evidence.value,'C1234567890');
+assert.equal(calls.length,beforeChannel+2);
+sqlite.exec(`INSERT INTO friends (id,line_user_id,display_name,line_account_id,slack_channel_id) VALUES ('shared-friend','15555550300','Shared','wa-test','C1234567890')`);
+const beforeShared=calls.length;
+assert.equal((await reconcileWhatsappIdentity(env,'linked-friend')).status,'review_required');
+assert.equal(calls.length,beforeShared+1);
+sqlite.exec(`UPDATE line_accounts SET default_slack_channel='C1234567890' WHERE id='wa-test'`);
+assert.equal((await reconcileWhatsappIdentity(env,'linked-friend')).status,'unlinked');
+console.log('Registered case reconciliation: unique friend channel, shared channel and default channel guards passed.');
