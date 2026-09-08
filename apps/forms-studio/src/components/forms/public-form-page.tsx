@@ -198,7 +198,10 @@ function ChannelIcon({ channel }: { channel: keyof typeof FLAT_TRAVEL_CHANNELS }
   )
 }
 
-function AccessibleJapanSuccessChannels() {
+function AccessibleJapanSuccessChannels({ submissionId }: { submissionId: string }) {
+  const whatsappUrl = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(submissionId)
+    ? `https://wa.me/817036209459?text=${encodeURIComponent(`Hello, I have submitted my travel enquiry. Reference: FTR-${submissionId}`)}`
+    : FLAT_TRAVEL_CHANNELS.whatsapp
   return (
     <section className="border-t border-[#d7e5dc] bg-[#f5f8f5] px-6 py-8 text-left sm:px-10 sm:py-10" aria-labelledby="continue-by-message-title">
       <div className="mx-auto max-w-2xl">
@@ -211,7 +214,7 @@ function AccessibleJapanSuccessChannels() {
         </p>
 
         <a
-          href={FLAT_TRAVEL_CHANNELS.whatsapp}
+          href={whatsappUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-6 flex min-h-14 items-center justify-between gap-4 rounded-2xl bg-[#176b45] px-5 py-4 font-semibold text-white shadow-[0_12px_28px_rgba(23,107,69,0.18)] transition hover:-translate-y-0.5 hover:bg-[#125a3a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#176b45]"
@@ -877,6 +880,7 @@ export default function PublicFormPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [submissionId, setSubmissionId] = useState('')
   const [error, setError] = useState('')
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false)
   const [hearingTemplateCopied, setHearingTemplateCopied] = useState(false)
@@ -1153,6 +1157,8 @@ export default function PublicFormPage() {
         return
       }
 
+      const savedSubmission = json.data as { id?: string } | undefined
+      setSubmissionId(savedSubmission?.id || '')
       setSubmitted(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : '送信に失敗しました')
@@ -1689,7 +1695,7 @@ export default function PublicFormPage() {
                 {form?.successDescription || localizedTexts.successDescription}
               </p>
             </div>
-            {isAccessibleJapanForm ? <AccessibleJapanSuccessChannels /> : null}
+            {isAccessibleJapanForm ? <AccessibleJapanSuccessChannels submissionId={submissionId} /> : null}
           </div>
         ) : form ? (
           <>
