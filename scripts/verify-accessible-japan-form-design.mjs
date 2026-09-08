@@ -52,10 +52,14 @@ assert.match(formDefinitionSource, /'4-star \(¥50,000–80,000\/night\)'/);
 assert.match(formDefinitionSource, /'5-star \(¥80,000\+\/night\)'/);
 assert.match(
   formDefinitionSource,
-  /Around when would you like to travel, and for how many days\?/,
-  'the undecided-dates branch must collect both approximate timing and trip length',
+  /name: 'approximate_timing',[\s\S]*?Around when would you like to travel\?[\s\S]*?e\.g\. October 2026[\s\S]*?value: 'No'/,
+  'the undecided-dates branch must collect approximate timing separately',
 );
-assert.match(formDefinitionSource, /e\.g\. October 2026 for about 10 days/);
+assert.match(
+  formDefinitionSource,
+  /name: 'approximate_duration',[\s\S]*?About how long would you like your trip to be\?[\s\S]*?e\.g\. About 10 days[\s\S]*?value: 'No'/,
+  'the undecided-dates branch must collect approximate trip length separately',
+);
 
 assert.ok(hero.length >= 250_000, 'hero image must be a production-quality asset');
 assert.equal(hero[0], 0xff, 'hero image must begin with the JPEG SOI marker');
