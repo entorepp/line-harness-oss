@@ -28,6 +28,7 @@ jobs:
       - run: pnpm --filter @line-crm/db typecheck
       - run: pnpm --filter worker typecheck
       - run: pnpm --filter worker test:whatsapp-send
+      - run: pnpm --filter worker test:whatsapp-identity
       - run: pnpm --filter worker test:accessible-japan-quote-trigger
       - run: pnpm --filter worker test:form-response-email
       - run: pnpm --filter worker test:form-response-email-route

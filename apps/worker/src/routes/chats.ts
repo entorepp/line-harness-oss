@@ -313,6 +313,7 @@ chats.get('/api/chats/:id', async (c) => {
             ? presentWhatsappDisplayName(friend.display_name, friend.line_user_id) || '名前なし'
             : friend?.display_name || '名前なし',
         friendPictureUrl: friend?.picture_url || null,
+        channelType: friend?.channel_type || null,
         slackChannelId: friend?.slack_channel_id || null,
         operatorId: item.operator_id,
         status: item.status,

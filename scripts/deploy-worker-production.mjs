@@ -49,7 +49,7 @@ run('pnpm', ['--filter', '@line-crm/line-sdk', 'build']);
 run('pnpm', ['--filter', '@line-crm/db', 'typecheck']);
 run('pnpm', ['--filter', 'worker', 'typecheck']);
 for (const test of [
-  'test:whatsapp-send', 'test:accessible-japan-quote-trigger',
+  'test:whatsapp-send', 'test:whatsapp-identity', 'test:accessible-japan-quote-trigger',
   'test:form-response-email', 'test:form-response-email-route', 'test:travel-quote-route',
   'test:form-file-access', 'test:form-file-upload', 'test:whatsapp-initiation',
   'test:lead-route-topology', 'test:quote-reference',
