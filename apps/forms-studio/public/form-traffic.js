@@ -8,6 +8,10 @@
   let sent = false;
   if (window.location.origin !== origin || window.parent === window) return;
 
+  // The existing website tag has an inherited automatic-event destination.
+  // Opt this isolated form document out of that destination before loading it.
+  window['ga-disable-G-H3DN10035R'] = true;
+
   window.addEventListener('message', (event) => {
     if (sent || event.origin !== origin || event.source !== window.parent
       || event.data?.type !== 'liffform:page-view') return;

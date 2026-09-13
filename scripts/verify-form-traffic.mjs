@@ -35,6 +35,8 @@ function runtime({ origin = TRAFFIC_ORIGIN, standalone = false } = {}) {
 }
 
 const rt = runtime()
+assert.equal(rt.window['ga-disable-G-H3DN10035R'], true,
+  'Inherited website-only automatic-event collection must be disabled in the form frame')
 assert.equal(rt.appended.length, 0, 'Loading the frame alone must not contact Google')
 rt.message(aj, { origin: 'https://attacker.example' })
 rt.message(aj, { source: {} })
