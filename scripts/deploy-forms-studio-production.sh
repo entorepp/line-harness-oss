@@ -6,7 +6,8 @@ SCRIPT_DIR="${SCRIPT_PATH:A:h}"
 ROOT_DIR="${SCRIPT_DIR:h}"
 source "$ROOT_DIR/scripts/cloudflare-env.sh"
 
-PRODUCTION_BRANCH="main"
+PRODUCTION_BRANCH="production/liffform-studio"
+PAGES_BRANCH="main"
 PRODUCTION_PROJECT="liffform-studio"
 PRODUCTION_URL="https://liffform-studio.pages.dev"
 CURRENT_BRANCH="${GITHUB_REF_NAME:-}"
@@ -15,13 +16,17 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   CURRENT_BRANCH="$(git -C "$ROOT_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 fi
 
-if [[ "${ALLOW_NON_MAIN_DEPLOY:-0}" != "1" && "$CURRENT_BRANCH" != "$PRODUCTION_BRANCH" ]]; then
+if [[ "$CURRENT_BRANCH" != "$PRODUCTION_BRANCH" ]]; then
   echo "Refusing to deploy forms-studio from branch '$CURRENT_BRANCH'."
-  echo "Switch to '$PRODUCTION_BRANCH' or set ALLOW_NON_MAIN_DEPLOY=1 to override."
+  echo "Use the registered '$PRODUCTION_BRANCH' source branch."
   exit 1
 fi
 
 cloudflare_require_token
+
+cd "$ROOT_DIR"
+node scripts/verify-forms-studio-release.mjs
+node scripts/verify-form-traffic.mjs
 
 echo "=== Building shared package ==="
 cd "$ROOT_DIR"
@@ -35,8 +40,10 @@ if [[ ! -d "$ROOT_DIR/apps/forms-studio/out" ]]; then
   exit 1
 fi
 
+node scripts/verify-forms-studio-release.mjs --built
+
 echo "=== Deploying forms-studio to ${PRODUCTION_URL} ==="
 cd "$ROOT_DIR"
 cloudflare_wrangler pages deploy apps/forms-studio/out \
   --project-name="${PRODUCTION_PROJECT}" \
-  --branch="${PRODUCTION_BRANCH}"
+  --branch="${PAGES_BRANCH}"
