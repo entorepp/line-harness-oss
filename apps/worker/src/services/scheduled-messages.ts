@@ -15,6 +15,7 @@ import {
   summarizeOutboundMessage,
 } from './outbound-messages.js';
 import { notifySlackOutgoing, resolveSlackChannelId } from './slack.js';
+import { recordWhatsappDelivery } from './whatsapp-delivery.js';
 
 function parseMetadata(metadata: string | null): {
   fileName?: string | null;
@@ -85,7 +86,8 @@ export async function processScheduledMessageById(
     }
 
     const metadata = parseMetadata(item.metadata);
-    const { messageType, storedContent } = await dispatchOutboundMessage({
+    const logId = crypto.randomUUID();
+    const dispatchResult = await dispatchOutboundMessage({
       env,
       friend,
       input: {
@@ -96,15 +98,26 @@ export async function processScheduledMessageById(
         fileIcon: metadata.fileIcon,
       },
     });
-
+    const { messageType, storedContent } = dispatchResult;
     const now = jstNow();
+    if (friend.channel_type === 'whatsapp' && friend.line_account_id && dispatchResult.providerMessageId) {
+      await recordWhatsappDelivery({
+        db: env.DB,
+        lineAccountId: friend.line_account_id,
+        providerMessageId: dispatchResult.providerMessageId,
+        messageLogId: logId,
+        scheduledMessageId: item.id,
+        status: 'accepted',
+      }).catch((error) => {
+        console.error(`Scheduled WhatsApp message ${item.id} accepted but delivery receipt persistence failed:`, error);
+      });
+    }
     await updateScheduledMessageStatus(env.DB, item.id, 'sent', {
       sentAt: now,
       lastError: null,
     });
 
     try {
-      const logId = crypto.randomUUID();
       await env.DB
         .prepare(
           `INSERT INTO messages_log

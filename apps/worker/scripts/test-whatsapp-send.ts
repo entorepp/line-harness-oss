@@ -58,8 +58,9 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
     providerStarted = null;
     await new Promise<void>((resolve) => { releaseProvider = resolve; started(); });
   }
+  const providerMessageId = `mock-provider-id-${providerCalls.length}`;
   return new Response(JSON.stringify(providerStatus === 200
-    ? { messages: [{ id: 'mock-provider-id' }] }
+    ? { messages: [{ id: providerMessageId }] }
     : { error: { message: 'Mock provider rejection' } }), {
     status: providerStatus, headers: { 'content-type': 'application/json' },
   });
@@ -119,6 +120,12 @@ try {
   assert.equal((await sendNow(text.id)).status, 200);
   assert.equal(providerCalls[0].type, 'text');
   assert.equal(row(text.id).status, 'sent');
+  const textDelivery = sqlite.prepare(
+    'SELECT * FROM whatsapp_delivery_receipts WHERE scheduled_message_id = ?',
+  ).get(text.id) as any;
+  assert.equal(textDelivery.status, 'accepted');
+  assert.equal(textDelivery.provider_message_id, 'mock-provider-id-1');
+  assert.ok(textDelivery.message_log_id);
   assert.equal((await sendNow(text.id)).status, 200);
   assert.equal(providerCalls.length, 1, 'completed sends must not repeat');
 
@@ -129,6 +136,9 @@ try {
   assert.equal(row(pdf.id).status, 'sent');
   assert.equal(row(pdf.id).last_error, null);
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM messages_log').get()?.n, 2);
+  assert.equal(sqlite.prepare(
+    'SELECT status FROM whatsapp_delivery_receipts WHERE scheduled_message_id = ?',
+  ).get(pdf.id)?.status, 'accepted');
 
   const direct = await schedule({}, true);
   assert.equal(JSON.parse(direct.metadata).deliveryMode, 'undo_hold');
@@ -168,6 +178,9 @@ try {
   // Old clients that explicitly omit a schedule still send immediately.
   assert.equal((await request('/api/chats/test-chat/send', { content: 'Immediate test' })).status, 200);
   assert.equal(providerCalls.at(-1)?.text.body, 'Immediate test');
+  assert.equal(sqlite.prepare(
+    'SELECT COUNT(*) AS n FROM whatsapp_delivery_receipts WHERE message_log_id IS NOT NULL',
+  ).get()?.n, 4);
   assert.equal((await request('/api/chats/test-chat/send', {
     content: 'Past schedule', scheduledAt: new Date(Date.now() - 60_000).toISOString(),
   })).status, 400);

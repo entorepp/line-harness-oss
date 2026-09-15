@@ -33,6 +33,7 @@ export interface OutboundMessageInput {
 export interface DispatchedMessage {
   messageType: string;
   storedContent: string;
+  providerMessageId?: string | null;
 }
 
 interface StickerPayload {
@@ -486,14 +487,27 @@ export async function dispatchOutboundMessage(opts: {
       body: JSON.stringify(buildWhatsAppMessagePayload(opts.friend.line_user_id, opts.input)),
     });
 
+    const responseText = await res.text().catch(() => '');
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
+      const text = responseText;
       throw new Error(`WhatsApp send failed: ${text}`);
+    }
+
+    let providerMessageId: string | null = null;
+    try {
+      const body = JSON.parse(responseText) as { messages?: Array<{ id?: string }> };
+      providerMessageId = body.messages?.[0]?.id?.trim() || null;
+    } catch {
+      providerMessageId = null;
+    }
+    if (!providerMessageId) {
+      console.error('WhatsApp accepted a send without a provider message ID');
     }
 
     return {
       messageType,
       storedContent: content,
+      providerMessageId,
     };
   }
 

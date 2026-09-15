@@ -49,6 +49,7 @@ export function assertMessagingContract(code) {
   for (const marker of [
     '/api/scheduled-messages/:id/send-now', 'processScheduledMessageById',
     'claimScheduledMessage', 'buildWhatsAppMessagePayload',
+    'whatsapp_delivery_receipts', 'providerMessageId', 'statusCount',
     'deliveryMode: body.deliveryMode', 'undoGroupId: body.undoGroupId',
     'processAccessibleJapanQuoteJobs',
     '/webhook/meta', '/webhook/wechat', '/webhook/wechat-kf',

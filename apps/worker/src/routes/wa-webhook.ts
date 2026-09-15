@@ -4,6 +4,11 @@ import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
 import { linkWhatsappIdentity } from '../services/whatsapp-identity.js';
 import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
+import {
+  normalizeWhatsappDeliveryStatus,
+  recordWhatsappDelivery,
+  type WhatsappDeliveryStatus,
+} from '../services/whatsapp-delivery.js';
 
 const waWebhook = new Hono<Env>();
 const GRAPH_API = 'https://graph.facebook.com/v25.0';
@@ -67,7 +72,25 @@ interface MetaWebhookValue {
   contacts?: MetaContact[];
   messages?: MetaMessage[];
   message_echoes?: MetaMessage[];
-  statuses?: unknown[];
+  statuses?: MetaMessageStatus[];
+}
+
+interface MetaMessageStatus {
+  id?: string;
+  status?: string;
+  timestamp?: string;
+  errors?: Array<{
+    code?: string | number;
+    error_subcode?: string | number;
+  }>;
+}
+
+interface NormalizedWaDeliveryStatus {
+  providerMessageId: string;
+  status: WhatsappDeliveryStatus;
+  occurredAt: string;
+  errorCode: string | number | null;
+  errorSubcode: string | number | null;
 }
 
 interface MetaMessage {
@@ -691,14 +714,26 @@ async function persistWaMessage(
     .bind(friend.id, msg.direction, stored.messageType, stored.content, msg.occurredAt)
     .first<{ id: string }>();
 
+  const messageLogId = duplicate?.id || crypto.randomUUID();
   if (!duplicate) {
     await db
       .prepare(
         `INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .bind(crypto.randomUUID(), friend.id, msg.direction, stored.messageType, stored.content, msg.occurredAt)
+      .bind(messageLogId, friend.id, msg.direction, stored.messageType, stored.content, msg.occurredAt)
       .run();
+  }
+
+  if (msg.direction === 'outgoing') {
+    await recordWhatsappDelivery({
+      db,
+      lineAccountId: account.id,
+      providerMessageId: msg.messageId,
+      messageLogId,
+      status: 'accepted',
+      providerStatusAt: msg.occurredAt,
+    });
   }
 
   await updateChatForWaMessage(db, friend.id, msg.direction, msg.occurredAt);
@@ -837,6 +872,31 @@ function extractMetaWebhookMessages(payload: MetaWebhookPayload): NormalizedWaMe
             occurredAt: resolveOccurredAt(message.timestamp),
           });
         }
+      }
+    }
+  }
+
+  return normalized;
+}
+
+function extractMetaWebhookStatuses(payload: MetaWebhookPayload): NormalizedWaDeliveryStatus[] {
+  const normalized: NormalizedWaDeliveryStatus[] = [];
+
+  for (const entry of payload.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== 'messages') continue;
+      for (const statusEvent of change.value?.statuses ?? []) {
+        const providerMessageId = statusEvent.id?.trim();
+        const status = normalizeWhatsappDeliveryStatus(statusEvent.status);
+        if (!providerMessageId || !status) continue;
+        const error = statusEvent.errors?.[0];
+        normalized.push({
+          providerMessageId,
+          status,
+          occurredAt: resolveOccurredAt(statusEvent.timestamp),
+          errorCode: error?.code ?? null,
+          errorSubcode: error?.error_subcode ?? null,
+        });
       }
     }
   }
@@ -989,13 +1049,27 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
 
     if (isMetaWebhookPayload(payload) && account) {
       const messages = extractMetaWebhookMessages(payload);
+      const statuses = extractMetaWebhookStatuses(payload);
       console.log('WA Meta webhook received', {
         source: bridgeAuthorized ? 'bridge' : 'meta',
         accountId: account.id,
         phoneNumberId: account.channel_id,
         incomingCount: messages.filter((msg) => msg.direction === 'incoming').length,
         echoCount: messages.filter((msg) => msg.direction === 'outgoing').length,
+        statusCount: statuses.length,
+        failedStatusCount: statuses.filter((item) => item.status === 'failed').length,
       });
+      for (const statusEvent of statuses) {
+        await recordWhatsappDelivery({
+          db,
+          lineAccountId: account.id,
+          providerMessageId: statusEvent.providerMessageId,
+          status: statusEvent.status,
+          providerStatusAt: statusEvent.occurredAt,
+          errorCode: statusEvent.errorCode,
+          errorSubcode: statusEvent.errorSubcode,
+        });
+      }
       for (const msg of messages) {
         const mediaId = msg.mediaUrl?.trim();
         let storedMedia: StoredMedia | null = null;

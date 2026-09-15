@@ -33,6 +33,7 @@ import {
   isAllowedMetaUndoHold,
   isMetaMessagingChannel,
 } from '../services/meta-messaging.js';
+import { recordWhatsappDelivery } from '../services/whatsapp-delivery.js';
 
 const friends = new Hono<Env>();
 
@@ -365,11 +366,25 @@ friends.get('/api/friends/:id/messages', async (c) => {
     const friendId = c.req.param('id');
     const result = await c.env.DB
       .prepare(
-        `SELECT id, direction, message_type as messageType, content, created_at as createdAt
-         FROM messages_log WHERE friend_id = ? ORDER BY created_at ASC LIMIT 200`,
+        `SELECT ml.id, ml.direction, ml.message_type as messageType, ml.content,
+                ml.created_at as createdAt, wd.status as deliveryStatus,
+                wd.provider_status_at as deliveryStatusAt,
+                wd.error_code as deliveryErrorCode
+           FROM messages_log ml
+           LEFT JOIN whatsapp_delivery_receipts wd ON wd.message_log_id = ml.id
+          WHERE ml.friend_id = ? ORDER BY ml.created_at ASC LIMIT 200`,
       )
       .bind(friendId)
-      .all<{ id: string; direction: string; messageType: string; content: string; createdAt: string }>();
+      .all<{
+        id: string;
+        direction: string;
+        messageType: string;
+        content: string;
+        createdAt: string;
+        deliveryStatus: string | null;
+        deliveryStatusAt: string | null;
+        deliveryErrorCode: string | null;
+      }>();
     return c.json({ success: true, data: result.results });
   } catch (err) {
     console.error('GET /api/friends/:id/messages error:', err);
@@ -457,6 +472,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
       }, 201);
     }
 
+    const logId = crypto.randomUUID();
     const dispatchResult = await dispatchOutboundMessage({
       env: c.env,
       friend,
@@ -471,7 +487,17 @@ friends.post('/api/friends/:id/messages', async (c) => {
 
     // Log outgoing message
     const now = jstNow();
-    const logId = crypto.randomUUID();
+    if (friend.channel_type === 'whatsapp' && friend.line_account_id && dispatchResult.providerMessageId) {
+      await recordWhatsappDelivery({
+        db,
+        lineAccountId: friend.line_account_id,
+        providerMessageId: dispatchResult.providerMessageId,
+        messageLogId: logId,
+        status: 'accepted',
+      }).catch((error) => {
+        console.error('WhatsApp send accepted but delivery receipt persistence failed:', error);
+      });
+    }
     await db
       .prepare(
         `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
@@ -493,7 +519,13 @@ friends.post('/api/friends/:id/messages', async (c) => {
       });
     }
 
-    return c.json({ success: true, data: { messageId: logId } });
+    return c.json({
+      success: true,
+      data: {
+        messageId: logId,
+        deliveryStatus: dispatchResult.providerMessageId ? 'accepted' : null,
+      },
+    });
   } catch (err) {
     console.error('POST /api/friends/:id/messages error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

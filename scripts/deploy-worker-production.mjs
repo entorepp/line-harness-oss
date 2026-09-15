@@ -49,7 +49,7 @@ run('pnpm', ['--filter', '@line-crm/line-sdk', 'build']);
 run('pnpm', ['--filter', '@line-crm/db', 'typecheck']);
 run('pnpm', ['--filter', 'worker', 'typecheck']);
 for (const test of [
-  'test:whatsapp-send', 'test:whatsapp-identity', 'test:accessible-japan-quote-trigger',
+  'test:whatsapp-send', 'test:whatsapp-delivery-status', 'test:whatsapp-identity', 'test:accessible-japan-quote-trigger',
   'test:form-response-email', 'test:form-response-email-route', 'test:travel-quote-route',
   'test:form-file-access', 'test:form-file-upload', 'test:whatsapp-initiation',
   'test:lead-route-topology', 'test:quote-reference',
@@ -58,6 +58,7 @@ run('node', ['scripts/test-worker-release-contract.mjs']);
 
 const workerRoot = resolve(root, 'apps/worker');
 const wrangler = resolve(workerRoot, 'node_modules/.bin/wrangler');
+const deliveryMigration = resolve(root, 'packages/db/migrations/025_whatsapp_delivery_receipts.sql');
 const buildDir = resolve(workerRoot, '.wrangler/production-release');
 const bundlePath = resolve(buildDir, 'index.js');
 run(wrangler, ['deploy', '--dry-run', '--outdir', buildDir], workerRoot);
@@ -80,6 +81,10 @@ if (mode === '--check') {
 }
 
 // Publish the checked artifact with no rebundle or automatic retry.
+run(wrangler, [
+  'd1', 'execute', 'line-crm', '--remote', '--file', deliveryMigration,
+  '--config', resolve(workerRoot, 'wrangler.toml'),
+], root);
 run(wrangler, [
   'deploy', bundlePath, '--no-bundle', '--keep-vars',
   '--var', `${contract.sourceBinding}:${head}`,
