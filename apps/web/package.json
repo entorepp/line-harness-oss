@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev --port 3001",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:whatsapp-send-contract": "node scripts/test-whatsapp-send-contract.mjs"
   },
   "dependencies": {
     "@line-crm/shared": "workspace:*",

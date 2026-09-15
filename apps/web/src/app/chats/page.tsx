@@ -28,6 +28,9 @@ interface ChatMessage {
   messageType: string
   content: string
   createdAt: string
+  deliveryStatus?: 'accepted' | 'sent' | 'delivered' | 'read' | 'failed' | null
+  deliveryStatusAt?: string | null
+  deliveryErrorCode?: string | null
 }
 
 interface ChatDetail extends Chat {
@@ -106,6 +109,38 @@ interface MessageLog {
   messageType: string
   content: string
   createdAt: string
+  deliveryStatus?: 'accepted' | 'sent' | 'delivered' | 'read' | 'failed' | null
+  deliveryStatusAt?: string | null
+  deliveryErrorCode?: string | null
+}
+
+function WhatsappDeliveryIndicator({
+  message,
+  channelType,
+  className,
+}: {
+  message: ChatMessage | MessageLog
+  channelType?: string
+  className: string
+}) {
+  if (channelType !== 'whatsapp' || message.direction !== 'outgoing') return null
+
+  const label = message.deliveryStatus === 'accepted'
+    ? 'Meta受付'
+    : message.deliveryStatus === 'sent'
+      ? '送信済み'
+      : message.deliveryStatus === 'delivered'
+        ? '配達済み'
+        : message.deliveryStatus === 'read'
+          ? '既読'
+          : message.deliveryStatus === 'failed'
+            ? `配達失敗${message.deliveryErrorCode ? ` (${message.deliveryErrorCode})` : ''}`
+            : '送達未確認'
+  const title = message.deliveryStatusAt
+    ? `最終更新: ${formatDatetime(message.deliveryStatusAt)}`
+    : '以前の送信にはMetaの送達記録がありません'
+
+  return <span className={className} title={title}>{label}</span>
 }
 
 function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onError }: {
@@ -186,6 +221,11 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
                 </div>
                 <p className={`text-xs mt-1 ${msg.direction === 'outgoing' ? 'text-green-200' : 'text-gray-400'}`}>
                   {new Date(msg.createdAt).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                  <WhatsappDeliveryIndicator
+                    message={msg}
+                    channelType={channelType}
+                    className={msg.deliveryStatus === 'failed' ? 'ml-2 text-red-100 font-bold' : 'ml-2'}
+                  />
                 </p>
               </div>
             </div>
@@ -1106,6 +1146,11 @@ export default function ChatsPage() {
                           {/* 時刻 */}
                           <span className="text-xs text-white/50 mt-0.5 px-1">
                             {new Date(msg.createdAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                            <WhatsappDeliveryIndicator
+                              message={msg}
+                              channelType={chatDetail.channelType}
+                              className={msg.deliveryStatus === 'failed' ? 'ml-2 text-red-200 font-bold' : 'ml-2'}
+                            />
                           </span>
                         </div>
                       </div>

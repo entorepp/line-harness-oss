@@ -139,6 +139,7 @@ export type WeChatKfLink = {
 export type ApiSendMessageResult = {
   sent?: boolean
   messageId?: string
+  deliveryStatus?: 'accepted' | 'sent' | 'delivered' | 'read' | 'failed' | null
   scheduled?: boolean
   scheduledMessage?: ApiScheduledMessage
 }
@@ -578,6 +579,9 @@ export const api = {
           messageType: string
           content: string
           createdAt: string
+          deliveryStatus?: 'accepted' | 'sent' | 'delivered' | 'read' | 'failed' | null
+          deliveryStatusAt?: string | null
+          deliveryErrorCode?: string | null
         }[]
         hasMoreMessages?: boolean
         oldestMessageId?: string | null

@@ -414,7 +414,10 @@ export default function ChatComposer({
   const isKakao = channelType === 'kakao'
   const isWeChat = channelType === 'wechat'
   const isMetaDm = channelType === 'facebook' || channelType === 'instagram'
-  const supportsUndoSend = !isKakao
+  // WhatsApp operator replies must reach Meta immediately. The former undo
+  // hold queued every send for 30 seconds and then depended on cron/send-now,
+  // which made successful sends look delayed or failed to staff.
+  const supportsUndoSend = !isKakao && !isWhatsApp
   const attachmentsDisabled = isKakao || isWeChat || isMetaDm
   const attachmentAccept = isWhatsApp ? WHATSAPP_ATTACHMENT_ACCEPT : DEFAULT_ATTACHMENT_ACCEPT
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
