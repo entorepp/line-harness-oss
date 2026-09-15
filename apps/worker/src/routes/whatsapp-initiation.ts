@@ -12,6 +12,7 @@ import {
   validateTemplateValues,
   type WhatsAppTemplateValues,
 } from '../services/whatsapp-initiation.js';
+import { recordWhatsappDelivery } from '../services/whatsapp-delivery.js';
 
 const whatsappInitiation = new Hono<Env>();
 
@@ -208,6 +209,17 @@ async function finalizeAcceptedInitiation(db: D1Database, row: InitiationRow): P
         WHERE id = ?`,
     ).bind(friendId, chatId, now, row.id),
   ]);
+
+  await recordWhatsappDelivery({
+    db,
+    lineAccountId: row.line_account_id,
+    providerMessageId: row.provider_message_id,
+    messageLogId: row.message_log_id,
+    status: 'accepted',
+    providerStatusAt: row.updated_at,
+  }).catch((error) => {
+    console.error('WhatsApp initiation accepted but delivery receipt persistence failed:', error);
+  });
 
   return (await getInitiationByKey(db, row.idempotency_key))!;
 }

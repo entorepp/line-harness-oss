@@ -64,6 +64,7 @@ const initiatives: Row[] = [];
 const friends: Row[] = [];
 const chats: Row[] = [];
 const messages: Row[] = [];
+const deliveries: Row[] = [];
 
 function normalizedSql(sql: string): string {
   return sql.replace(/\s+/g, ' ').trim();
@@ -89,6 +90,9 @@ function statement(sqlInput: string) {
       }
       if (sql.startsWith('SELECT id FROM chats WHERE friend_id = ?')) {
         return (chats.find((row) => row.friend_id === bindings[0]) || null) as T | null;
+      }
+      if (sql.startsWith('SELECT * FROM whatsapp_delivery_receipts WHERE provider_message_id = ?')) {
+        return (deliveries.find((row) => row.provider_message_id === bindings[0]) || null) as T | null;
       }
       throw new Error(`Unexpected first SQL: ${sql}`);
     },
@@ -204,6 +208,38 @@ function statement(sqlInput: string) {
         }
         return { success: true };
       }
+      if (sql.startsWith('INSERT INTO whatsapp_delivery_receipts')) {
+        const [
+          providerMessageId, lineAccountId, messageLogId, scheduledMessageId,
+          status, providerStatusAt, errorCode, errorSubcode, createdAt, updatedAt,
+        ] = bindings;
+        const existing = deliveries.find((row) => row.provider_message_id === providerMessageId);
+        if (existing) {
+          Object.assign(existing, {
+            message_log_id: existing.message_log_id || messageLogId,
+            scheduled_message_id: existing.scheduled_message_id || scheduledMessageId,
+            status,
+            provider_status_at: providerStatusAt,
+            error_code: errorCode,
+            error_subcode: errorSubcode,
+            updated_at: updatedAt,
+          });
+        } else {
+          deliveries.push({
+            provider_message_id: providerMessageId,
+            line_account_id: lineAccountId,
+            message_log_id: messageLogId,
+            scheduled_message_id: scheduledMessageId,
+            status,
+            provider_status_at: providerStatusAt,
+            error_code: errorCode,
+            error_subcode: errorSubcode,
+            created_at: createdAt,
+            updated_at: updatedAt,
+          });
+        }
+        return { success: true };
+      }
       if (sql.startsWith("UPDATE chats SET status = 'in_progress'")) {
         const [lastMessageAt, updatedAt, id] = bindings;
         Object.assign(chats.find((row) => row.id === id)!, {
@@ -310,12 +346,17 @@ assert.equal(chats.length, 1);
 assert.equal(messages.length, 1);
 assert.match(messages[0].content, /Hello Alex/);
 assert.equal(messageSends, 1);
+assert.equal(deliveries.length, 1);
+assert.equal(deliveries[0].provider_message_id, 'wamid.test-1');
+assert.equal(deliveries[0].message_log_id, messages[0].id);
+assert.equal(deliveries[0].status, 'accepted');
 
 const duplicate = await postInitialMessage(baseRequest);
 assert.equal(duplicate.status, 200);
 assert.equal((await duplicate.json() as any).data.duplicate, true);
 assert.equal(messageSends, 1);
 assert.equal(messages.length, 1);
+assert.equal(deliveries.length, 1);
 
 sendMode = 'rejected';
 const rejectedRequest = {
@@ -335,6 +376,8 @@ const retried = await postInitialMessage(rejectedRequest);
 assert.equal(retried.status, 201);
 assert.equal((await retried.json() as any).data.accepted, true);
 assert.equal(friends.length, 2);
+assert.equal(deliveries.length, 2);
+assert.equal(deliveries[1].provider_message_id, 'wamid.test-3');
 
 sendMode = 'unknown';
 const unknownRequest = {

@@ -31,6 +31,7 @@ import {
   isAllowedMetaUndoHold,
   isMetaMessagingChannel,
 } from '../services/meta-messaging.js';
+import { recordWhatsappDelivery } from '../services/whatsapp-delivery.js';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 
 const chats = new Hono<Env>();
@@ -44,6 +45,9 @@ type MessageLogRow = {
   message_type: string;
   content: string;
   created_at: string;
+  delivery_status: string | null;
+  delivery_status_at: string | null;
+  delivery_error_code: string | null;
 };
 
 function parseMessagePageSize(value: string | undefined): number {
@@ -71,16 +75,20 @@ async function getMessagePage(
       return { rows: [] as MessageLogRow[], hasMore: false, oldestMessageId: null as string | null };
     }
 
-    beforeClause = ' AND (created_at < ? OR (created_at = ? AND id < ?))';
+    beforeClause = ' AND (ml.created_at < ? OR (ml.created_at = ? AND ml.id < ?))';
     bindings.push(cursor.created_at, cursor.created_at, cursor.id);
   }
 
   const result = await db
     .prepare(
-      `SELECT id, friend_id, direction, message_type, content, created_at
-         FROM messages_log
-        WHERE friend_id = ?${beforeClause}
-        ORDER BY created_at DESC, id DESC
+      `SELECT ml.id, ml.friend_id, ml.direction, ml.message_type, ml.content, ml.created_at,
+              wd.status AS delivery_status,
+              wd.provider_status_at AS delivery_status_at,
+              wd.error_code AS delivery_error_code
+         FROM messages_log ml
+         LEFT JOIN whatsapp_delivery_receipts wd ON wd.message_log_id = ml.id
+        WHERE ml.friend_id = ?${beforeClause}
+        ORDER BY ml.created_at DESC, ml.id DESC
         LIMIT ?`,
     )
     .bind(...bindings, limit + 1)
@@ -326,6 +334,9 @@ chats.get('/api/chats/:id', async (c) => {
           messageType: m.message_type,
           content: m.content,
           createdAt: m.created_at,
+          deliveryStatus: m.delivery_status,
+          deliveryStatusAt: m.delivery_status_at,
+          deliveryErrorCode: m.delivery_error_code,
         })),
         hasMoreMessages: messagePage.hasMore,
         oldestMessageId: messagePage.oldestMessageId,
@@ -435,6 +446,7 @@ chats.post('/api/chats/:id/send', async (c) => {
     }
 
     const now = jstNow();
+    const logId = crypto.randomUUID();
     const dispatchResult = await dispatchOutboundMessage({
       env: c.env,
       friend,
@@ -448,7 +460,17 @@ chats.post('/api/chats/:id/send', async (c) => {
     });
 
     // メッセージログに記録
-    const logId = crypto.randomUUID();
+    if (friend.channel_type === 'whatsapp' && friend.line_account_id && dispatchResult.providerMessageId) {
+      await recordWhatsappDelivery({
+        db: c.env.DB,
+        lineAccountId: friend.line_account_id,
+        providerMessageId: dispatchResult.providerMessageId,
+        messageLogId: logId,
+        status: 'accepted',
+      }).catch((error) => {
+        console.error('WhatsApp send accepted but delivery receipt persistence failed:', error);
+      });
+    }
     await c.env.DB
       .prepare(`INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at) VALUES (?, ?, 'outgoing', ?, ?, ?)`)
       .bind(logId, friend.id, dispatchResult.messageType, dispatchResult.storedContent, now)
@@ -486,7 +508,14 @@ chats.post('/api/chats/:id/send', async (c) => {
       }
     }
 
-    return c.json({ success: true, data: { sent: true, messageId: logId } });
+    return c.json({
+      success: true,
+      data: {
+        sent: true,
+        messageId: logId,
+        deliveryStatus: dispatchResult.providerMessageId ? 'accepted' : null,
+      },
+    });
   } catch (err) {
     console.error('POST /api/chats/:id/send error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

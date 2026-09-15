@@ -1,4 +1,5 @@
 import type { Env } from '../index.js';
+import { recordWhatsappDelivery } from './whatsapp-delivery.js';
 import {
   dispatchOutboundMessage,
   getMessagingFriendContext,
@@ -130,16 +131,28 @@ export async function tryDeliverCustomerQuote(opts: {
       throw new Error('FlatWorker quote resolver returned an invalid projection');
     }
     const reply = customerReply(result);
+    const logId = crypto.randomUUID();
     if (opts.replyText) {
       await opts.replyText(reply);
     } else {
       const friend = await getMessagingFriendContext(opts.env.DB, opts.friendId);
       if (!friend) throw new Error('Quote delivery recipient is unavailable');
-      await dispatchOutboundMessage({
+      const dispatchResult = await dispatchOutboundMessage({
         env: opts.env,
         friend,
         input: { messageType: 'text', content: reply },
       });
+      if (friend.channel_type === 'whatsapp' && friend.line_account_id && dispatchResult.providerMessageId) {
+        await recordWhatsappDelivery({
+          db: opts.env.DB,
+          lineAccountId: friend.line_account_id,
+          providerMessageId: dispatchResult.providerMessageId,
+          messageLogId: logId,
+          status: 'accepted',
+        }).catch((error) => {
+          console.error('WhatsApp quote reply accepted but delivery receipt persistence failed:', error);
+        });
+      }
     }
     await opts.env.DB
       .prepare(
@@ -147,7 +160,7 @@ export async function tryDeliverCustomerQuote(opts: {
            (id, friend_id, direction, message_type, content, created_at)
          VALUES (?, ?, 'outgoing', 'text', ?, datetime('now'))`,
       )
-      .bind(crypto.randomUUID(), opts.friendId, reply)
+      .bind(logId, opts.friendId, reply)
       .run();
     await finalizeDeliveryReceipt(
       opts.env.DB,
