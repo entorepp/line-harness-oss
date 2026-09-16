@@ -24,7 +24,7 @@
     if (event.origin !== origin || event.source !== window.parent) return;
     const input = event.data;
     if (input?.type === 'liffform:analytics-event') {
-      if (!initialized || !['form_start', 'form_progress', 'generate_lead'].includes(input.event_name)) return;
+      if (!initialized || !['lead_form_start', 'form_progress', 'generate_lead'].includes(input.event_name)) return;
       const fieldIndex = allowedFields.get(input.field_key);
       if (input.event_name === 'form_progress' && !fieldIndex) return;
       gtag('event', input.event_name, {

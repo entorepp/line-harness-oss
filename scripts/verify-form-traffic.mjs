@@ -72,14 +72,14 @@ assert.equal(config.page_location, base)
 assert.equal(commands[0][2].analytics_storage, 'granted')
 assert.equal(commands[0][2].ad_user_data, 'denied')
 assert.doesNotMatch(JSON.stringify(commands), /person@example|private|secret|prefill|email|issue=/i)
-rt.message({ type: 'liffform:analytics-event', event_name: 'form_start' })
+rt.message({ type: 'liffform:analytics-event', event_name: 'lead_form_start' })
 rt.message({ type: 'liffform:analytics-event', event_name: 'form_progress', field_key: 'hotel_grade', field_value: 'private' })
 rt.message({ type: 'liffform:analytics-event', event_name: 'generate_lead' })
 rt.message({ type: 'liffform:analytics-event', event_name: 'form_progress', field_key: 'private_field' })
 const funnelEvents = rt.window.dataLayer
   .map((args) => Array.from(args))
-  .filter(([name, event]) => name === 'event' && ['form_start', 'form_progress', 'generate_lead'].includes(event))
-assert.deepEqual(JSON.parse(JSON.stringify(funnelEvents.map(([, event]) => event))), ['form_start', 'form_progress', 'generate_lead'])
+  .filter(([name, event]) => name === 'event' && ['lead_form_start', 'form_progress', 'generate_lead'].includes(event))
+assert.deepEqual(JSON.parse(JSON.stringify(funnelEvents.map(([, event]) => event))), ['lead_form_start', 'form_progress', 'generate_lead'])
 assert.deepEqual(JSON.parse(JSON.stringify(funnelEvents[1][2])), {
   send_to: 'G-WNH9JBCLFH', form_id: TRAFFIC_FORM_ID, field_key: 'hotel_grade', form_step: 6, transport_type: 'beacon',
 })
