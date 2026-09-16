@@ -79,7 +79,10 @@ function hasAccessibleJapanHotelContext(url) {
 }
 
 function getCountryCode(request) {
-  const value = String(request.cf?.country || request.headers.get('CF-IPCountry') || '')
+  const testCountry = request.headers.get('X-Flatcare-Traffic-Test') === '1'
+    ? request.headers.get('X-Flatcare-Traffic-Test-Country')
+    : null;
+  const value = String(testCountry || request.cf?.country || request.headers.get('CF-IPCountry') || '')
     .trim()
     .toUpperCase();
   return /^[A-Z]{2}$/.test(value) && value !== 'XX' ? value : null;
