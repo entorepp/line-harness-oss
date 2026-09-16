@@ -119,6 +119,24 @@ assert.deepEqual(Array.from(inferredForeignArrival.db.writes[0].values.slice(1))
   '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', 'US', 'non_jp_inferred', 0,
 ])
 
+const testCountryOverride = await execute(new Request(form, {
+  headers: {
+    'CF-IPCountry': 'JP',
+    'X-Flatcare-Traffic-Test': '1',
+    'X-Flatcare-Traffic-Test-Country': 'US',
+  },
+}))
+assert.deepEqual(Array.from(testCountryOverride.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', 'US', 'non_jp_inferred', 1,
+])
+
+const ignoredCountryOverride = await execute(new Request(form, {
+  headers: { 'CF-IPCountry': 'JP', 'X-Flatcare-Traffic-Test-Country': 'US' },
+}))
+assert.deepEqual(Array.from(ignoredCountryOverride.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'direct', 'direct', 'JP', 'direct', 0,
+])
+
 const directJapanArrival = await execute(new Request(form, {
   headers: { 'CF-IPCountry': 'JP' },
 }))
