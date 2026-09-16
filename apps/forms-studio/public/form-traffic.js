@@ -33,8 +33,12 @@
       cookie_flags: 'SameSite=Lax;Secure',
       ...(aj ? {
         campaign_source: 'accessible_japan',
-        campaign_medium: input.campaign_medium === 'cpc' ? 'cpc' : 'referral',
-        campaign_name: 'accessible_japan_forms',
+        campaign_medium: ['cpc', 'cta'].includes(input.campaign_medium)
+          ? input.campaign_medium
+          : 'referral',
+        campaign_name: input.campaign_name === 'hotel_detail'
+          ? 'hotel_detail'
+          : 'accessible_japan_forms',
       } : {}),
     };
     sent = true;

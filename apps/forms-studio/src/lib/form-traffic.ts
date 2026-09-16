@@ -30,15 +30,30 @@ export function buildTrafficContext(href: string, referrer: string): TrafficCont
     }
   } catch { /* Missing or invalid referrers remain direct/unknown. */ }
 
-  const source = url.searchParams.get('utm_source')?.toLowerCase() || ''
-  const isAccessibleJapan = ['accessible_japan', 'accessible-japan', 'accessible-japan.com', 'www.accessible-japan.com'].includes(source)
-    || (!source && accessibleJapanReferrer)
-  const paid = isAccessibleJapan && url.searchParams.get('utm_medium')?.toLowerCase() === 'cpc'
+  const source = url.searchParams.get('utm_source')?.trim().toLowerCase() || ''
+  const recognizedSource = ['accessiblejapan', 'accessible_japan', 'accessible-japan', 'accessible-japan.com', 'www.accessible-japan.com'].includes(source)
+  const hasHotelContext = [
+    'source_hotel_name',
+    'hotel_name',
+    'prefill_Hotel Name',
+    'prefill_hotel_name',
+    'prefill_Hotel_Name',
+    'source_hotel_slug',
+    'hotel_slug',
+    'hotel',
+  ].some((key) => Boolean(url.searchParams.get(key)?.trim()))
+  const isAccessibleJapan = recognizedSource || (!source && (hasHotelContext || accessibleJapanReferrer))
+  const requestedMedium = url.searchParams.get('utm_medium')?.trim().toLowerCase() || ''
+  const campaignMedium = ['cpc', 'cta'].includes(requestedMedium)
+    ? requestedMedium
+    : hasHotelContext ? 'cta' : 'referral'
+  const requestedCampaign = url.searchParams.get('utm_campaign')?.trim().toLowerCase() || ''
+  const campaignName = requestedCampaign === 'hotel_detail' ? 'hotel_detail' : 'accessible_japan_forms'
   return {
     type: 'liffform:page-view',
     page_referrer: referrerOrigin,
     campaign_source: isAccessibleJapan ? 'accessible_japan' : '',
-    campaign_medium: isAccessibleJapan ? (paid ? 'cpc' : 'referral') : '',
-    campaign_name: isAccessibleJapan ? 'accessible_japan_forms' : '',
+    campaign_medium: isAccessibleJapan ? campaignMedium : '',
+    campaign_name: isAccessibleJapan ? campaignName : '',
   }
 }

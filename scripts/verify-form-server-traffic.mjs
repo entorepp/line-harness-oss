@@ -73,6 +73,33 @@ assert.deepEqual(Array.from(arrival.db.writes[0].values.slice(1)), [
 ])
 assert.doesNotMatch(JSON.stringify(arrival.db.writes), /private@example|accessible-japan\.com\/private/i)
 
+const joshArrival = await execute(new Request(
+  `${form}&utm_source=accessiblejapan&utm_medium=cta&utm_campaign=hotel_detail&email=private@example.com`,
+))
+assert.equal(joshArrival.response.status, 200)
+assert.equal(joshArrival.db.writes.length, 1)
+assert.deepEqual(Array.from(joshArrival.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', 0,
+])
+assert.doesNotMatch(JSON.stringify(joshArrival.db.writes), /private@example|hotel_detail/i)
+
+const hotelOnlyArrival = await execute(new Request(
+  `${form}&prefill_Hotel+Name=Hilton+Tokyo&email=private@example.com`,
+))
+assert.equal(hotelOnlyArrival.response.status, 200)
+assert.equal(hotelOnlyArrival.db.writes.length, 1)
+assert.deepEqual(Array.from(hotelOnlyArrival.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', 0,
+])
+assert.doesNotMatch(JSON.stringify(hotelOnlyArrival.db.writes), /Hilton|private@example/i)
+
+const explicitOtherSource = await execute(new Request(
+  `${form}&utm_source=google&prefill_Hotel+Name=Hilton+Tokyo`,
+))
+assert.deepEqual(Array.from(explicitOtherSource.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'direct', 'direct', 0,
+])
+
 for (const request of [
   new Request(`${form}&issue=private-issue`),
   new Request(form.replace('9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'another-form')),

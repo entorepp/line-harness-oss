@@ -10,9 +10,18 @@ assert.deepEqual(aj, {
   type: 'liffform:page-view', page_referrer: 'https://www.accessible-japan.com/',
   campaign_source: 'accessible_japan', campaign_medium: 'cpc', campaign_name: 'accessible_japan_forms',
 })
+const joshUtm = buildTrafficContext(`${base}&utm_source=accessiblejapan&utm_medium=cta&utm_campaign=hotel_detail`, '')
+assert.deepEqual(joshUtm, {
+  type: 'liffform:page-view', page_referrer: '',
+  campaign_source: 'accessible_japan', campaign_medium: 'cta', campaign_name: 'hotel_detail',
+})
 assert.equal(buildTrafficContext(base, 'https://accessible-japan.com/hotel/').campaign_medium, 'referral')
 assert.equal(buildTrafficContext(base, '').campaign_source, '')
-assert.equal(buildTrafficContext(base + '&prefill_Hotel+Name=Hilton', '').campaign_source, '')
+assert.deepEqual(buildTrafficContext(base + '&prefill_Hotel+Name=Hilton+Tokyo', ''), {
+  type: 'liffform:page-view', page_referrer: '',
+  campaign_source: 'accessible_japan', campaign_medium: 'cta', campaign_name: 'accessible_japan_forms',
+})
+assert.equal(buildTrafficContext(base + '&utm_source=google&prefill_Hotel+Name=Hilton+Tokyo', '').campaign_source, '')
 assert.equal(buildTrafficContext(base, 'https://accessible-japan.com.evil.example/hotel').campaign_source, '')
 assert.equal(buildTrafficContext(base, 'https://www.google.com/search?q=person%40example.com').page_referrer, 'https://www.google.com/')
 assert.equal(buildTrafficContext(base, 'https://person@example.com/path').page_referrer, '')
@@ -69,4 +78,10 @@ direct.message(buildTrafficContext(base, ''))
 assert.equal(direct.window.dataLayer.length, 6)
 const directConfig = Array.from(direct.window.dataLayer[4])[2]
 assert.equal(directConfig.campaign_source, undefined, 'Direct visits must not be inferred to come from AJ')
+const joshRuntime = runtime()
+joshRuntime.message(joshUtm)
+const joshConfig = Array.from(joshRuntime.window.dataLayer[4])[2]
+assert.equal(joshConfig.campaign_source, 'accessible_japan')
+assert.equal(joshConfig.campaign_medium, 'cta')
+assert.equal(joshConfig.campaign_name, 'hotel_detail')
 console.log('PASS: form scope, consent handshake, campaign attribution, origin checks, preview exclusion, PII sanitization and page-view deduplication')

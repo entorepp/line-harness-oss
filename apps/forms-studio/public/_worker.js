@@ -3,6 +3,7 @@ const ACCESSIBLE_JAPAN_FORM_ID = '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477';
 const ACCESSIBLE_JAPAN_TRAFFIC_PATH = '/api/shared-reports/accessible-japan-traffic';
 const ACCESSIBLE_JAPAN_TRACKED_PATH = '/go/accessible-japan';
 const ACCESSIBLE_JAPAN_SOURCE_VALUES = new Set([
+  'accessiblejapan',
   'accessible_japan',
   'accessible-japan',
   'accessible-japan.com',
@@ -64,15 +65,30 @@ function isPrefetch(request) {
     .some((value) => value?.toLowerCase().includes('prefetch'));
 }
 
+function hasAccessibleJapanHotelContext(url) {
+  return [
+    'source_hotel_name',
+    'hotel_name',
+    'prefill_Hotel Name',
+    'prefill_hotel_name',
+    'prefill_Hotel_Name',
+    'source_hotel_slug',
+    'hotel_slug',
+    'hotel',
+  ].some((key) => (url.searchParams.get(key) || '').trim());
+}
+
 function classifyArrival(request, url) {
   const utmSource = (url.searchParams.get('utm_source') || '').trim().toLowerCase();
   if (ACCESSIBLE_JAPAN_SOURCE_VALUES.has(utmSource)) {
+    const utmMedium = (url.searchParams.get('utm_medium') || '').trim().toLowerCase();
     return {
       source: 'accessible_japan',
-      medium: (url.searchParams.get('utm_medium') || '').trim().toLowerCase() === 'cpc'
-        ? 'cpc'
-        : 'referral',
+      medium: utmMedium === 'cpc' ? 'cpc' : 'referral',
     };
+  }
+  if (!utmSource && hasAccessibleJapanHotelContext(url)) {
+    return { source: 'accessible_japan', medium: 'referral' };
   }
 
   try {
