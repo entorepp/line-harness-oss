@@ -69,6 +69,56 @@ type TrafficCountry = {
   inferredAccessibleJapanArrivals: number
 }
 
+type TrafficSessionSummary = {
+  firstRecordedAt: string | null
+  total: number
+  submitted: number
+  active: number
+  abandoned: number
+  conversionRate: number
+  dropoffRate: number
+  accessibleJapan: number
+  accessibleJapanStarted: number
+  accessibleJapanNotStarted: number
+  accessibleJapanSubmitted: number
+  accessibleJapanActive: number
+  accessibleJapanAbandoned: number
+  accessibleJapanConversionRate: number
+  accessibleJapanDropoffRate: number
+}
+
+type TrafficSessionDay = {
+  date: string
+  total: number
+  submitted: number
+  accessibleJapan: number
+  accessibleJapanSubmitted: number
+  accessibleJapanActive: number
+  accessibleJapanAbandoned: number
+}
+
+type TrafficChannel = {
+  source: string
+  medium: string
+  campaign: string
+  sessions: number
+  submitted: number
+}
+
+type TrafficSourcePage = {
+  sourcePageKey: string
+  sessions: number
+  submitted: number
+}
+
+type TrafficFieldFunnel = {
+  fieldIndex: number
+  fieldKey: string
+  fieldLabel: string
+  reachedSessions: number
+  dropoffSessions: number
+}
+
 type TrafficData = {
   generatedAt: string
   firstRecordedAt: string | null
@@ -81,6 +131,11 @@ type TrafficData = {
   formUrl: string
   daily: TrafficDay[]
   countries: TrafficCountry[]
+  sessions: TrafficSessionSummary
+  sessionDaily: TrafficSessionDay[]
+  channels: TrafficChannel[]
+  sourcePages: TrafficSourcePage[]
+  fieldFunnel: TrafficFieldFunnel[]
 }
 
 type TrafficResponse = {
@@ -106,6 +161,15 @@ function dateTimeLabel(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(parsed)
+}
+
+function percentLabel(value: number) {
+  if (!Number.isFinite(value)) return '0.0%'
+  return new Intl.NumberFormat('ja-JP', {
+    style: 'percent',
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value)
 }
 
 function displayName(lead: ReportLead) {
@@ -236,12 +300,136 @@ export default function SharedReportPage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ff3945]">Traffic</p>
                     <h2 className="mt-1 text-2xl font-semibold">クリック・フォーム到達</h2>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                      Cloudflareでサーバー記録した件数です。UTM・ホテル名・参照元が一致した到達を確定、情報が無い国外到達を推定として分けています。フォーム到達はページ再読込を含みます。
+                      Cloudflareで匿名30分セッションとして記録した正式な流入・離脱指標です。UTMを一次判定にし、回答値・氏名・メール・旅行日は保存しません。
                     </p>
                   </div>
                   <p className="text-xs text-slate-400">最終取得 {dateTimeLabel(trafficReport.generatedAt)}</p>
                 </div>
 
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl bg-[#fff2f3] p-5">
+                    <p className="text-sm font-semibold text-[#b71924]">AJ流入セッション</p>
+                    <p className="mt-2 text-3xl font-semibold text-[#b71924]">{trafficReport.sessions.accessibleJapan}<span className="ml-1 text-sm">件</span></p>
+                    <p className="mt-1 text-xs text-[#b71924]/70">操作開始 {trafficReport.sessions.accessibleJapanStarted}件・未開始 {trafficReport.sessions.accessibleJapanNotStarted}件・進行中 {trafficReport.sessions.accessibleJapanActive}件</p>
+                  </div>
+                  <div className="rounded-2xl bg-emerald-50 p-5">
+                    <p className="text-sm font-semibold text-emerald-800">AJ送信成功</p>
+                    <p className="mt-2 text-3xl font-semibold text-emerald-800">{trafficReport.sessions.accessibleJapanSubmitted}<span className="ml-1 text-sm">件</span></p>
+                  </div>
+                  <div className="rounded-2xl bg-amber-50 p-5">
+                    <p className="text-sm font-semibold text-amber-800">AJ離脱</p>
+                    <p className="mt-2 text-3xl font-semibold text-amber-800">{trafficReport.sessions.accessibleJapanAbandoned}<span className="ml-1 text-sm">件</span></p>
+                  </div>
+                  <div className="rounded-2xl bg-[#151515] p-5 text-white">
+                    <p className="text-sm font-semibold text-white/70">AJ離脱率</p>
+                    <p className="mt-2 text-3xl font-semibold">{percentLabel(trafficReport.sessions.accessibleJapanDropoffRate)}</p>
+                    <p className="mt-1 text-xs text-white/60">CVR {percentLabel(trafficReport.sessions.accessibleJapanConversionRate)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
+                      <tr>
+                        <th className="px-3 py-3 font-semibold">日付（JST）</th>
+                        <th className="px-3 py-3 text-right font-semibold">AJ流入</th>
+                        <th className="px-3 py-3 text-right font-semibold">送信成功</th>
+                        <th className="px-3 py-3 text-right font-semibold">進行中</th>
+                        <th className="px-3 py-3 text-right font-semibold">離脱</th>
+                        <th className="px-3 py-3 text-right font-semibold">CVR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trafficReport.sessionDaily.length > 0 ? trafficReport.sessionDaily.map((day) => {
+                        return (
+                          <tr key={day.date} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-3 font-semibold">{day.date}</td>
+                            <td className="px-3 py-3 text-right">{day.accessibleJapan}</td>
+                            <td className="px-3 py-3 text-right">{day.accessibleJapanSubmitted}</td>
+                            <td className="px-3 py-3 text-right">{day.accessibleJapanActive}</td>
+                            <td className="px-3 py-3 text-right">{day.accessibleJapanAbandoned}</td>
+                            <td className="px-3 py-3 text-right">{percentLabel((day.accessibleJapanSubmitted + day.accessibleJapanAbandoned) > 0 ? day.accessibleJapanSubmitted / (day.accessibleJapanSubmitted + day.accessibleJapanAbandoned) : 0)}</td>
+                          </tr>
+                        )
+                      }) : (
+                        <tr><td className="px-3 py-6 text-center text-slate-500" colSpan={6}>セッション計測開始後の本番アクセスはまだありません。</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {trafficReport.channels.length > 0 ? (
+                  <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
+                        <tr>
+                          <th className="px-3 py-3 font-semibold">チャネル</th>
+                          <th className="px-3 py-3 font-semibold">キャンペーン</th>
+                          <th className="px-3 py-3 text-right font-semibold">流入</th>
+                          <th className="px-3 py-3 text-right font-semibold">送信</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trafficReport.channels.map((channel) => (
+                          <tr key={`${channel.source}/${channel.medium}/${channel.campaign}`} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-3 font-semibold">{channel.source} / {channel.medium}</td>
+                            <td className="px-3 py-3">{channel.campaign}</td>
+                            <td className="px-3 py-3 text-right">{channel.sessions}</td>
+                            <td className="px-3 py-3 text-right">{channel.submitted}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                {trafficReport.sourcePages.length > 0 ? (
+                  <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
+                        <tr>
+                          <th className="px-3 py-3 font-semibold">流入元ページキー</th>
+                          <th className="px-3 py-3 text-right font-semibold">流入</th>
+                          <th className="px-3 py-3 text-right font-semibold">送信</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trafficReport.sourcePages.map((page) => (
+                          <tr key={page.sourcePageKey} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-3 font-semibold">{page.sourcePageKey}</td>
+                            <td className="px-3 py-3 text-right">{page.sessions}</td>
+                            <td className="px-3 py-3 text-right">{page.submitted}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                {trafficReport.fieldFunnel.length > 0 ? (
+                  <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
+                        <tr>
+                          <th className="px-3 py-3 font-semibold">項目</th>
+                          <th className="px-3 py-3 text-right font-semibold">到達セッション</th>
+                          <th className="px-3 py-3 text-right font-semibold">ここで離脱</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trafficReport.fieldFunnel.map((field) => (
+                          <tr key={field.fieldKey} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-3"><span className="mr-2 text-slate-400">{field.fieldIndex}</span><span className="font-semibold">{field.fieldLabel}</span></td>
+                            <td className="px-3 py-3 text-right">{field.reachedSessions}</td>
+                            <td className="px-3 py-3 text-right">{field.dropoffSessions}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                <h3 className="mt-7 text-sm font-semibold text-slate-700">監査用リクエスト件数（再読込を含む）</h3>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-2xl bg-slate-100 p-5">
                     <p className="text-sm font-semibold text-slate-500">フォーム到達（全流入）</p>

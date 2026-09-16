@@ -9,18 +9,22 @@ const aj = buildTrafficContext(`${base}&utm_source=accessible_japan&utm_medium=c
 assert.deepEqual(aj, {
   type: 'liffform:page-view', page_referrer: 'https://www.accessible-japan.com/',
   campaign_source: 'accessible_japan', campaign_medium: 'cpc', campaign_name: 'accessible_japan_forms',
+  traffic_type: '',
 })
 const joshUtm = buildTrafficContext(`${base}&utm_source=accessiblejapan&utm_medium=cta&utm_campaign=hotel_detail`, '')
 assert.deepEqual(joshUtm, {
   type: 'liffform:page-view', page_referrer: '',
   campaign_source: 'accessible_japan', campaign_medium: 'cta', campaign_name: 'hotel_detail',
+  traffic_type: '',
 })
 assert.equal(buildTrafficContext(base, 'https://accessible-japan.com/hotel/').campaign_medium, 'referral')
 assert.equal(buildTrafficContext(base, '').campaign_source, '')
 assert.deepEqual(buildTrafficContext(base + '&prefill_Hotel+Name=Hilton+Tokyo', ''), {
   type: 'liffform:page-view', page_referrer: '',
   campaign_source: 'accessible_japan', campaign_medium: 'cta', campaign_name: 'accessible_japan_forms',
+  traffic_type: '',
 })
+assert.equal(buildTrafficContext(base + '&aj_test=1', '').traffic_type, 'internal')
 assert.equal(buildTrafficContext(base + '&utm_source=google&prefill_Hotel+Name=Hilton+Tokyo', '').campaign_source, '')
 assert.equal(buildTrafficContext(base, 'https://accessible-japan.com.evil.example/hotel').campaign_source, '')
 assert.equal(buildTrafficContext(base, 'https://www.google.com/search?q=person%40example.com').page_referrer, 'https://www.google.com/')
@@ -68,6 +72,18 @@ assert.equal(config.page_location, base)
 assert.equal(commands[0][2].analytics_storage, 'granted')
 assert.equal(commands[0][2].ad_user_data, 'denied')
 assert.doesNotMatch(JSON.stringify(commands), /person@example|private|secret|prefill|email|issue=/i)
+rt.message({ type: 'liffform:analytics-event', event_name: 'form_start' })
+rt.message({ type: 'liffform:analytics-event', event_name: 'form_progress', field_key: 'hotel_grade', field_value: 'private' })
+rt.message({ type: 'liffform:analytics-event', event_name: 'generate_lead' })
+rt.message({ type: 'liffform:analytics-event', event_name: 'form_progress', field_key: 'private_field' })
+const funnelEvents = rt.window.dataLayer
+  .map((args) => Array.from(args))
+  .filter(([name, event]) => name === 'event' && ['form_start', 'form_progress', 'generate_lead'].includes(event))
+assert.deepEqual(JSON.parse(JSON.stringify(funnelEvents.map(([, event]) => event))), ['form_start', 'form_progress', 'generate_lead'])
+assert.deepEqual(JSON.parse(JSON.stringify(funnelEvents[1][2])), {
+  send_to: 'G-WNH9JBCLFH', form_id: TRAFFIC_FORM_ID, field_key: 'hotel_grade', form_step: 6, transport_type: 'beacon',
+})
+assert.doesNotMatch(JSON.stringify(funnelEvents), /private/i)
 for (const options of [{ standalone: true }, { origin: 'https://preview.liffform-studio.pages.dev' }]) {
   const disabled = runtime(options)
   disabled.message(aj)

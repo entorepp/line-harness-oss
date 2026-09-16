@@ -1,6 +1,7 @@
 export const TRAFFIC_FORM_ID = '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477'
 export const TRAFFIC_ORIGIN = 'https://liffform-studio.pages.dev'
 export const TRAFFIC_CONSENT_KEY = 'liffform.analytics-consent.v1'
+export const TRAFFIC_EVENT_NAME = 'liffform:traffic-event'
 
 export type TrafficContext = {
   type: 'liffform:page-view'
@@ -8,6 +9,14 @@ export type TrafficContext = {
   campaign_source: string
   campaign_medium: string
   campaign_name: string
+  traffic_type: '' | 'internal'
+}
+
+export type TrafficAnalyticsEvent = {
+  type: 'liffform:analytics-event'
+  event_name: 'form_start' | 'form_progress' | 'generate_lead'
+  field_key?: string
+  field_index?: number
 }
 
 // Only campaign constants and a referrer origin cross into the analytics frame.
@@ -55,5 +64,6 @@ export function buildTrafficContext(href: string, referrer: string): TrafficCont
     campaign_source: isAccessibleJapan ? 'accessible_japan' : '',
     campaign_medium: isAccessibleJapan ? campaignMedium : '',
     campaign_name: isAccessibleJapan ? campaignName : '',
+    traffic_type: url.searchParams.get('aj_test') === '1' ? 'internal' : '',
   }
 }
