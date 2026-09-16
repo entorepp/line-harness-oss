@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import FormTraffic from './form-traffic'
+import { TRAFFIC_EVENT_NAME, type TrafficAnalyticsEvent } from '@/lib/form-traffic'
 import {
   ACCESSIBLE_JAPAN_FORM_ID,
   buildAccessibleJapanAttributionInput,
@@ -873,6 +874,8 @@ export default function PublicFormPage() {
 
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
   const submitAreaRef = useRef<HTMLDivElement | null>(null)
+  const trafficStartedRef = useRef(false)
+  const trafficFieldsRef = useRef(new Set<string>())
 
   const [form, setForm] = useState<HarnessForm | null>(null)
   const [issue, setIssue] = useState<PublicIssue | null>(null)
@@ -1003,6 +1006,46 @@ export default function PublicFormPage() {
   const agencyHearingCopyText = agencyHearingCopyTexts[normalizeLocale(form?.locale || issue?.locale)] || agencyHearingCopyTexts.ja
   const showCustomerHearingCopy = Boolean(form && isAgencyAccessibleTravelForm(form))
   const isAccessibleJapanForm = (form?.id || formId) === ACCESSIBLE_JAPAN_FORM_ID
+
+  const emitGa4TrafficEvent = (detail: TrafficAnalyticsEvent) => {
+    window.dispatchEvent(new CustomEvent<TrafficAnalyticsEvent>(TRAFFIC_EVENT_NAME, { detail }))
+  }
+
+  const recordFormProgress = (fieldKey: string) => {
+    if (!isAccessibleJapanForm || issueId || !fieldKey) return
+    if (!trafficStartedRef.current) {
+      trafficStartedRef.current = true
+      void fetch('/api/form-traffic/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventType: 'form_start' }),
+        credentials: 'same-origin',
+        keepalive: true,
+      }).catch(() => undefined)
+      emitGa4TrafficEvent({ type: 'liffform:analytics-event', event_name: 'form_start' })
+    }
+    if (trafficFieldsRef.current.has(fieldKey)) return
+    trafficFieldsRef.current.add(fieldKey)
+    void fetch('/api/form-traffic/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventType: 'form_progress', fieldKey }),
+      credentials: 'same-origin',
+      keepalive: true,
+    }).catch(() => undefined)
+    emitGa4TrafficEvent({
+      type: 'liffform:analytics-event',
+      event_name: 'form_progress',
+      field_key: fieldKey,
+    })
+  }
+
+  const recordFieldInteraction = (event: React.SyntheticEvent<HTMLFormElement>) => {
+    const target = event.target as HTMLElement | null
+    const field = target?.closest<HTMLElement>('[data-traffic-field]')
+    const fieldKey = field?.dataset.trafficField || ''
+    if (fieldKey) recordFormProgress(fieldKey)
+  }
 
   const scrollToField = (fieldName: string) => {
     const target = fieldRefs.current[fieldName]
@@ -1151,6 +1194,10 @@ export default function PublicFormPage() {
       const json = await res.json() as ApiResponse<unknown>
       if (!res.ok || !json.success) {
         throw new Error(json.error || '送信に失敗しました')
+      }
+
+      if (isAccessibleJapanForm && !issueId) {
+        emitGa4TrafficEvent({ type: 'liffform:analytics-event', event_name: 'generate_lead' })
       }
 
       if (successRedirectUrl) {
@@ -1701,7 +1748,12 @@ export default function PublicFormPage() {
           </div>
         ) : form ? (
           <>
-            <form onSubmit={handleSubmit} className={isAccessibleJapanForm ? 'space-y-5' : 'space-y-4'}>
+            <form
+              onSubmit={handleSubmit}
+              onFocusCapture={recordFieldInteraction}
+              onChangeCapture={recordFieldInteraction}
+              className={isAccessibleJapanForm ? 'space-y-5' : 'space-y-4'}
+            >
               {isAccessibleJapanForm ? (
                 <section className="overflow-hidden rounded-[30px] border border-[#e4d8c7] bg-[#fffaf1] shadow-[0_24px_70px_rgba(54,74,62,0.16)] sm:rounded-[36px]">
                   <div className="grid md:grid-cols-[0.92fr_1.08fr]">
@@ -1855,6 +1907,7 @@ export default function PublicFormPage() {
                   <section
                     key={field.name}
                     id={`field-${field.name}`}
+                    data-traffic-field={isAccessibleJapanForm ? field.name : undefined}
                     ref={(node) => {
                       fieldRefs.current[field.name] = node
                     }}

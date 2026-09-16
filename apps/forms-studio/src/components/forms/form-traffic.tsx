@@ -1,7 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { buildTrafficContext, TRAFFIC_CONSENT_KEY, TRAFFIC_ORIGIN, type TrafficContext } from '@/lib/form-traffic'
+import {
+  buildTrafficContext,
+  TRAFFIC_CONSENT_KEY,
+  TRAFFIC_EVENT_NAME,
+  TRAFFIC_ORIGIN,
+  type TrafficAnalyticsEvent,
+  type TrafficContext,
+} from '@/lib/form-traffic'
 
 type Choice = 'granted' | 'denied' | null
 
@@ -11,6 +18,9 @@ export default function FormTraffic() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
   const counted = useRef(false)
+  const frameReady = useRef(false)
+  const choiceRef = useRef<Choice>(null)
+  const queuedEvents = useRef<TrafficAnalyticsEvent[]>([])
 
   useEffect(() => {
     setContext(buildTrafficContext(window.location.href, document.referrer))
@@ -20,6 +30,29 @@ export default function FormTraffic() {
         setChoice(saved.choice)
       }
     } catch { /* Storage is optional; the form remains usable. */ }
+  }, [])
+
+  useEffect(() => {
+    choiceRef.current = choice
+    if (choice !== 'granted') {
+      frameReady.current = false
+      counted.current = false
+      queuedEvents.current = []
+    }
+  }, [choice])
+
+  useEffect(() => {
+    const forward = (event: Event) => {
+      const detail = (event as CustomEvent<TrafficAnalyticsEvent>).detail
+      if (choiceRef.current !== 'granted' || !detail) return
+      if (!frameReady.current) {
+        if (queuedEvents.current.length < 20) queuedEvents.current.push(detail)
+        return
+      }
+      frame.current?.contentWindow?.postMessage(detail, TRAFFIC_ORIGIN)
+    }
+    window.addEventListener(TRAFFIC_EVENT_NAME, forward)
+    return () => window.removeEventListener(TRAFFIC_EVENT_NAME, forward)
   }, [])
 
   const choose = (next: Exclude<Choice, null>) => {
@@ -52,9 +85,14 @@ export default function FormTraffic() {
       hidden
       aria-hidden="true"
       onLoad={() => {
+        frameReady.current = true
         if (counted.current) return
         counted.current = true
         frame.current?.contentWindow?.postMessage(context, TRAFFIC_ORIGIN)
+        for (const event of queuedEvents.current) {
+          frame.current?.contentWindow?.postMessage(event, TRAFFIC_ORIGIN)
+        }
+        queuedEvents.current = []
       }}
     />}
     {choice === null || settingsOpen ? <aside
