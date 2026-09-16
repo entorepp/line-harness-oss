@@ -14,7 +14,7 @@ export type TrafficContext = {
 
 export type TrafficAnalyticsEvent = {
   type: 'liffform:analytics-event'
-  event_name: 'form_start' | 'form_progress' | 'generate_lead'
+  event_name: 'lead_form_start' | 'form_progress' | 'generate_lead'
   field_key?: string
   field_index?: number
 }

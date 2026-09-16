@@ -1022,7 +1022,7 @@ export default function PublicFormPage() {
         credentials: 'same-origin',
         keepalive: true,
       }).catch(() => undefined)
-      emitGa4TrafficEvent({ type: 'liffform:analytics-event', event_name: 'form_start' })
+      emitGa4TrafficEvent({ type: 'liffform:analytics-event', event_name: 'lead_form_start' })
     }
     if (trafficFieldsRef.current.has(fieldKey)) return
     trafficFieldsRef.current.add(fieldKey)
