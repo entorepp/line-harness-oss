@@ -78,46 +78,81 @@ function hasAccessibleJapanHotelContext(url) {
   ].some((key) => (url.searchParams.get(key) || '').trim());
 }
 
+function getCountryCode(request) {
+  const value = String(request.cf?.country || request.headers.get('CF-IPCountry') || '')
+    .trim()
+    .toUpperCase();
+  return /^[A-Z]{2}$/.test(value) && value !== 'XX' ? value : null;
+}
+
 function classifyArrival(request, url) {
+  const countryCode = getCountryCode(request);
   const utmSource = (url.searchParams.get('utm_source') || '').trim().toLowerCase();
   if (ACCESSIBLE_JAPAN_SOURCE_VALUES.has(utmSource)) {
     const utmMedium = (url.searchParams.get('utm_medium') || '').trim().toLowerCase();
     return {
       source: 'accessible_japan',
       medium: utmMedium === 'cpc' ? 'cpc' : 'referral',
+      attributionMethod: 'utm',
+      countryCode,
     };
   }
+  if (utmSource) {
+    return { source: 'other', medium: 'other', attributionMethod: 'explicit_other', countryCode };
+  }
   if (!utmSource && hasAccessibleJapanHotelContext(url)) {
-    return { source: 'accessible_japan', medium: 'referral' };
+    return {
+      source: 'accessible_japan',
+      medium: 'referral',
+      attributionMethod: 'hotel_query',
+      countryCode,
+    };
   }
 
   try {
     const referrer = new URL(request.headers.get('Referer') || '');
     if (['http:', 'https:'].includes(referrer.protocol) && isAccessibleJapanHost(referrer.hostname)) {
-      return { source: 'accessible_japan', medium: 'referral' };
+      return {
+        source: 'accessible_japan',
+        medium: 'referral',
+        attributionMethod: 'referrer',
+        countryCode,
+      };
     }
     if (referrer.protocol === 'http:' || referrer.protocol === 'https:') {
-      return { source: 'other', medium: 'other' };
+      return { source: 'other', medium: 'other', attributionMethod: 'other_referrer', countryCode };
     }
   } catch { /* Missing or invalid referrers remain direct. */ }
 
-  return { source: 'direct', medium: 'direct' };
+  if (countryCode && countryCode !== 'JP') {
+    return {
+      source: 'accessible_japan',
+      medium: 'referral',
+      attributionMethod: 'non_jp_inferred',
+      countryCode,
+    };
+  }
+
+  return { source: 'direct', medium: 'direct', attributionMethod: 'direct', countryCode };
 }
 
 function recordTraffic(env, request, eventType, attribution) {
   if (!env.FORM_TRAFFIC_DB?.prepare) return Promise.resolve();
 
   const isTest = request.headers.get('X-Flatcare-Traffic-Test') === '1' ? 1 : 0;
+  const countryCode = attribution.countryCode ?? getCountryCode(request);
   return env.FORM_TRAFFIC_DB.prepare(`
     INSERT INTO accessible_japan_form_traffic
-      (id, form_id, event_type, source, medium, is_test, occurred_at)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      (id, form_id, event_type, source, medium, country_code, attribution_method, is_test, occurred_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `).bind(
     crypto.randomUUID(),
     ACCESSIBLE_JAPAN_FORM_ID,
     eventType,
     attribution.source,
     attribution.medium,
+    countryCode,
+    attribution.attributionMethod || 'unknown',
     isTest,
   ).run();
 }
@@ -200,12 +235,14 @@ async function getTrafficReport(request, env) {
   }
 
   try {
-    const [totals, daily] = await Promise.all([
+    const [totals, daily, countries] = await Promise.all([
       env.FORM_TRAFFIC_DB.prepare(`
         SELECT
           MIN(occurred_at) AS first_recorded_at,
           SUM(CASE WHEN event_type = 'form_arrival' THEN 1 ELSE 0 END) AS total_arrivals,
           SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method != 'non_jp_inferred' THEN 1 ELSE 0 END) AS confirmed_accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND attribution_method = 'non_jp_inferred' THEN 1 ELSE 0 END) AS inferred_accessible_japan_arrivals,
           SUM(CASE WHEN event_type = 'tracked_click' THEN 1 ELSE 0 END) AS tracked_clicks
         FROM accessible_japan_form_traffic
         WHERE form_id = ? AND is_test = 0
@@ -215,12 +252,25 @@ async function getTrafficReport(request, env) {
           date(occurred_at, '+9 hours') AS date,
           SUM(CASE WHEN event_type = 'form_arrival' THEN 1 ELSE 0 END) AS total_arrivals,
           SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method != 'non_jp_inferred' THEN 1 ELSE 0 END) AS confirmed_accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND attribution_method = 'non_jp_inferred' THEN 1 ELSE 0 END) AS inferred_accessible_japan_arrivals,
           SUM(CASE WHEN event_type = 'tracked_click' THEN 1 ELSE 0 END) AS tracked_clicks
         FROM accessible_japan_form_traffic
         WHERE form_id = ? AND is_test = 0
         GROUP BY date(occurred_at, '+9 hours')
         ORDER BY date DESC
         LIMIT 366
+      `).bind(ACCESSIBLE_JAPAN_FORM_ID).all(),
+      env.FORM_TRAFFIC_DB.prepare(`
+        SELECT
+          country_code,
+          SUM(CASE WHEN event_type = 'form_arrival' THEN 1 ELSE 0 END) AS total_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND attribution_method = 'non_jp_inferred' THEN 1 ELSE 0 END) AS inferred_accessible_japan_arrivals
+        FROM accessible_japan_form_traffic
+        WHERE form_id = ? AND is_test = 0 AND country_code IS NOT NULL
+        GROUP BY country_code
+        ORDER BY total_arrivals DESC, country_code ASC
       `).bind(ACCESSIBLE_JAPAN_FORM_ID).all(),
     ]);
 
@@ -233,6 +283,8 @@ async function getTrafficReport(request, env) {
           : null,
         totalArrivals: asCount(totals?.total_arrivals),
         accessibleJapanArrivals: asCount(totals?.accessible_japan_arrivals),
+        confirmedAccessibleJapanArrivals: asCount(totals?.confirmed_accessible_japan_arrivals),
+        inferredAccessibleJapanArrivals: asCount(totals?.inferred_accessible_japan_arrivals),
         trackedClicks: asCount(totals?.tracked_clicks),
         trackedUrl: new URL(ACCESSIBLE_JAPAN_TRACKED_PATH, request.url).origin
           + ACCESSIBLE_JAPAN_TRACKED_PATH,
@@ -241,7 +293,15 @@ async function getTrafficReport(request, env) {
           date: row.date,
           totalArrivals: asCount(row.total_arrivals),
           accessibleJapanArrivals: asCount(row.accessible_japan_arrivals),
+          confirmedAccessibleJapanArrivals: asCount(row.confirmed_accessible_japan_arrivals),
+          inferredAccessibleJapanArrivals: asCount(row.inferred_accessible_japan_arrivals),
           trackedClicks: asCount(row.tracked_clicks),
+        })),
+        countries: (countries.results || []).map((row) => ({
+          countryCode: row.country_code,
+          totalArrivals: asCount(row.total_arrivals),
+          accessibleJapanArrivals: asCount(row.accessible_japan_arrivals),
+          inferredAccessibleJapanArrivals: asCount(row.inferred_accessible_japan_arrivals),
         })),
       },
     });
@@ -270,7 +330,7 @@ export default {
         env,
         request,
         'tracked_click',
-        { source: 'accessible_japan', medium: 'cpc' },
+        { source: 'accessible_japan', medium: 'cpc', attributionMethod: 'tracked_link' },
       ));
       return new Response(null, {
         status: 302,
