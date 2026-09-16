@@ -35,8 +35,8 @@ function runtime({ origin = TRAFFIC_ORIGIN, standalone = false } = {}) {
 }
 
 const rt = runtime()
-assert.equal(rt.window['ga-disable-G-H3DN10035R'], true,
-  'Inherited website-only automatic-event collection must be disabled in the form frame')
+assert.equal(rt.window['ga-disable-G-NJMJ3ZPR24'], true,
+  'The connected legacy Flat Travel destination must be disabled in the form frame')
 assert.equal(rt.appended.length, 0, 'Loading the frame alone must not contact Google')
 rt.message(aj, { origin: 'https://attacker.example' })
 rt.message(aj, { source: {} })
@@ -45,7 +45,7 @@ assert.equal(rt.appended.length, 0)
 rt.message({ ...aj, page_referrer: 'https://www.accessible-japan.com/private?email=person@example.com#secret', email: 'person@example.com', campaign_name: 'private-name' })
 rt.message(aj)
 assert.equal(rt.appended.length, 1, 'Only one tag and page view per loaded document')
-assert.equal(rt.appended[0].src, 'https://www.googletagmanager.com/gtag/js?id=G-NJMJ3ZPR24')
+assert.equal(rt.appended[0].src, 'https://www.googletagmanager.com/gtag/js?id=G-H3DN10035R')
 assert.equal(rt.appended[0].referrerPolicy, 'no-referrer')
 const commands = rt.window.dataLayer.map((args) => Array.from(args))
 const config = commands.find(([name]) => name === 'config')[2]

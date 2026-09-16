@@ -3,14 +3,14 @@
 (() => {
   'use strict';
   const origin = 'https://liffform-studio.pages.dev';
-  const measurementId = 'G-NJMJ3ZPR24';
+  const measurementId = 'G-H3DN10035R';
   const location = origin + '/public-form?id=9ab583b2-e42e-4ca2-bcb9-13a3c59f5477';
   let sent = false;
   if (window.location.origin !== origin || window.parent === window) return;
 
-  // The existing website tag has an inherited automatic-event destination.
-  // Opt this isolated form document out of that destination before loading it.
-  window['ga-disable-G-H3DN10035R'] = true;
+  // The active property tag is connected to the legacy Flat Travel tag.
+  // Keep this isolated form document in property 542113884 only.
+  window['ga-disable-G-NJMJ3ZPR24'] = true;
 
   window.addEventListener('message', (event) => {
     if (sent || event.origin !== origin || event.source !== window.parent
