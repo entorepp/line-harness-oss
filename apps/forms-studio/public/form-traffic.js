@@ -3,9 +3,8 @@
 (() => {
   'use strict';
   const origin = 'https://liffform-studio.pages.dev';
-  // Property 542113884 uses the existing G-NJMJ3ZPR24 Google tag. Its
-  // connected destination is the property's G-H3DN10035R data stream.
-  const measurementId = 'G-NJMJ3ZPR24';
+  // Dedicated liffform-studio.pages.dev web stream in GA4 property 542113884.
+  const measurementId = 'G-WNH9JBCLFH';
   const location = origin + '/public-form?id=9ab583b2-e42e-4ca2-bcb9-13a3c59f5477';
   let sent = false;
   if (window.location.origin !== origin || window.parent === window) return;
