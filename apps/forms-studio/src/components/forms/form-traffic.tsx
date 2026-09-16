@@ -79,7 +79,7 @@ export default function FormTraffic() {
     {choice === 'granted' && <iframe
       ref={frame}
       title="Form visit analytics"
-      src="/form-traffic.html"
+      src="/form-traffic.html?v=20260917-2"
       sandbox="allow-scripts allow-same-origin"
       referrerPolicy="no-referrer"
       hidden
