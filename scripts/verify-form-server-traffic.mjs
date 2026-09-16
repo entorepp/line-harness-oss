@@ -33,11 +33,23 @@ function createDb() {
             first_recorded_at: '2026-09-16 12:00:00',
             total_arrivals: 7,
             accessible_japan_arrivals: 5,
+            confirmed_accessible_japan_arrivals: 4,
+            inferred_accessible_japan_arrivals: 1,
             tracked_clicks: 4,
           }
         },
         async all() {
-          return { results: [{ date: '2026-09-16', total_arrivals: 7, accessible_japan_arrivals: 5, tracked_clicks: 4 }] }
+          if (sql.includes('GROUP BY country_code')) {
+            return { results: [{ country_code: 'US', total_arrivals: 2, accessible_japan_arrivals: 2, inferred_accessible_japan_arrivals: 1 }] }
+          }
+          return { results: [{
+            date: '2026-09-16',
+            total_arrivals: 7,
+            accessible_japan_arrivals: 5,
+            confirmed_accessible_japan_arrivals: 4,
+            inferred_accessible_japan_arrivals: 1,
+            tracked_clicks: 4,
+          }] }
         },
       }
     },
@@ -69,7 +81,7 @@ const arrival = await execute(new Request(`${form}&utm_source=accessible_japan&u
 assert.equal(arrival.response.status, 200)
 assert.equal(arrival.db.writes.length, 1)
 assert.deepEqual(Array.from(arrival.db.writes[0].values.slice(1)), [
-  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'cpc', 0,
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'cpc', null, 'utm', 0,
 ])
 assert.doesNotMatch(JSON.stringify(arrival.db.writes), /private@example|accessible-japan\.com\/private/i)
 
@@ -79,7 +91,7 @@ const joshArrival = await execute(new Request(
 assert.equal(joshArrival.response.status, 200)
 assert.equal(joshArrival.db.writes.length, 1)
 assert.deepEqual(Array.from(joshArrival.db.writes[0].values.slice(1)), [
-  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', 0,
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', null, 'utm', 0,
 ])
 assert.doesNotMatch(JSON.stringify(joshArrival.db.writes), /private@example|hotel_detail/i)
 
@@ -89,7 +101,7 @@ const hotelOnlyArrival = await execute(new Request(
 assert.equal(hotelOnlyArrival.response.status, 200)
 assert.equal(hotelOnlyArrival.db.writes.length, 1)
 assert.deepEqual(Array.from(hotelOnlyArrival.db.writes[0].values.slice(1)), [
-  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', 0,
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', null, 'hotel_query', 0,
 ])
 assert.doesNotMatch(JSON.stringify(hotelOnlyArrival.db.writes), /Hilton|private@example/i)
 
@@ -97,7 +109,42 @@ const explicitOtherSource = await execute(new Request(
   `${form}&utm_source=google&prefill_Hotel+Name=Hilton+Tokyo`,
 ))
 assert.deepEqual(Array.from(explicitOtherSource.db.writes[0].values.slice(1)), [
-  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'direct', 'direct', 0,
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'other', 'other', null, 'explicit_other', 0,
+])
+
+const inferredForeignArrival = await execute(new Request(form, {
+  headers: { 'CF-IPCountry': 'US' },
+}))
+assert.deepEqual(Array.from(inferredForeignArrival.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'accessible_japan', 'referral', 'US', 'non_jp_inferred', 0,
+])
+
+const directJapanArrival = await execute(new Request(form, {
+  headers: { 'CF-IPCountry': 'JP' },
+}))
+assert.deepEqual(Array.from(directJapanArrival.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'direct', 'direct', 'JP', 'direct', 0,
+])
+
+const unknownCountryArrival = await execute(new Request(form, {
+  headers: { 'CF-IPCountry': 'XX' },
+}))
+assert.deepEqual(Array.from(unknownCountryArrival.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'direct', 'direct', null, 'direct', 0,
+])
+
+const foreignExplicitOther = await execute(new Request(`${form}&utm_source=google`, {
+  headers: { 'CF-IPCountry': 'US' },
+}))
+assert.deepEqual(Array.from(foreignExplicitOther.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'other', 'other', 'US', 'explicit_other', 0,
+])
+
+const foreignOtherReferrer = await execute(new Request(form, {
+  headers: { 'CF-IPCountry': 'US', Referer: 'https://www.google.com/search?q=hotel' },
+}))
+assert.deepEqual(Array.from(foreignOtherReferrer.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'form_arrival', 'other', 'other', 'US', 'other_referrer', 0,
 ])
 
 for (const request of [
@@ -114,6 +161,9 @@ const redirect = await execute(new Request(
 ))
 assert.equal(redirect.response.status, 302)
 assert.equal(redirect.db.writes.length, 1)
+assert.deepEqual(Array.from(redirect.db.writes[0].values.slice(1)), [
+  '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477', 'tracked_click', 'accessible_japan', 'cpc', null, 'tracked_link', 0,
+])
 const location = new URL(redirect.response.headers.get('Location'))
 assert.equal(location.pathname, '/public-form')
 assert.equal(location.searchParams.get('id'), '9ab583b2-e42e-4ca2-bcb9-13a3c59f5477')
@@ -136,8 +186,21 @@ const authorized = await execute(new Request(
 assert.equal(authorized.response.status, 200)
 const report = await authorized.response.json()
 assert.deepEqual(JSON.parse(JSON.stringify(report.data.daily)), [{
-  date: '2026-09-16', totalArrivals: 7, accessibleJapanArrivals: 5, trackedClicks: 4,
+  date: '2026-09-16',
+  totalArrivals: 7,
+  accessibleJapanArrivals: 5,
+  confirmedAccessibleJapanArrivals: 4,
+  inferredAccessibleJapanArrivals: 1,
+  trackedClicks: 4,
 }])
+assert.deepEqual(JSON.parse(JSON.stringify(report.data.countries)), [{
+  countryCode: 'US',
+  totalArrivals: 2,
+  accessibleJapanArrivals: 2,
+  inferredAccessibleJapanArrivals: 1,
+}])
+assert.equal(report.data.confirmedAccessibleJapanArrivals, 4)
+assert.equal(report.data.inferredAccessibleJapanArrivals, 1)
 assert.equal(report.data.trackedUrl, 'https://liffform-studio.pages.dev/go/accessible-japan')
 assert.equal(report.data.formUrl, form)
 

@@ -57,7 +57,16 @@ type TrafficDay = {
   date: string
   totalArrivals: number
   accessibleJapanArrivals: number
+  confirmedAccessibleJapanArrivals: number
+  inferredAccessibleJapanArrivals: number
   trackedClicks: number
+}
+
+type TrafficCountry = {
+  countryCode: string
+  totalArrivals: number
+  accessibleJapanArrivals: number
+  inferredAccessibleJapanArrivals: number
 }
 
 type TrafficData = {
@@ -65,10 +74,13 @@ type TrafficData = {
   firstRecordedAt: string | null
   totalArrivals: number
   accessibleJapanArrivals: number
+  confirmedAccessibleJapanArrivals: number
+  inferredAccessibleJapanArrivals: number
   trackedClicks: number
   trackedUrl: string
   formUrl: string
   daily: TrafficDay[]
+  countries: TrafficCountry[]
 }
 
 type TrafficResponse = {
@@ -224,20 +236,26 @@ export default function SharedReportPage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ff3945]">Traffic</p>
                     <h2 className="mt-1 text-2xl font-semibold">クリック・フォーム到達</h2>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                      Cloudflareでサーバー記録した件数です。フォーム到達はページ再読込を含みます。専用リンククリックは、下記の計測URLを経由したクリックだけを数えます。
+                      Cloudflareでサーバー記録した件数です。UTM・ホテル名・参照元が一致した到達を確定、情報が無い国外到達を推定として分けています。フォーム到達はページ再読込を含みます。
                     </p>
                   </div>
                   <p className="text-xs text-slate-400">最終取得 {dateTimeLabel(trafficReport.generatedAt)}</p>
                 </div>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-2xl bg-slate-100 p-5">
                     <p className="text-sm font-semibold text-slate-500">フォーム到達（全流入）</p>
                     <p className="mt-2 text-3xl font-semibold">{trafficReport.totalArrivals}<span className="ml-1 text-sm text-slate-500">件</span></p>
                   </div>
                   <div className="rounded-2xl bg-[#fff2f3] p-5">
-                    <p className="text-sm font-semibold text-[#b71924]">Accessible Japan判定の到達</p>
-                    <p className="mt-2 text-3xl font-semibold text-[#b71924]">{trafficReport.accessibleJapanArrivals}<span className="ml-1 text-sm">件</span></p>
+                    <p className="text-sm font-semibold text-[#b71924]">AJ確定の到達</p>
+                    <p className="mt-2 text-3xl font-semibold text-[#b71924]">{trafficReport.confirmedAccessibleJapanArrivals}<span className="ml-1 text-sm">件</span></p>
+                    <p className="mt-1 text-xs text-[#b71924]/70">UTM・ホテル名・参照元</p>
+                  </div>
+                  <div className="rounded-2xl bg-amber-50 p-5">
+                    <p className="text-sm font-semibold text-amber-800">AJ推定（国外・流入元不明）</p>
+                    <p className="mt-2 text-3xl font-semibold text-amber-800">{trafficReport.inferredAccessibleJapanArrivals}<span className="ml-1 text-sm">件</span></p>
+                    <p className="mt-1 text-xs text-amber-700">国コードが日本以外</p>
                   </div>
                   <div className="rounded-2xl bg-[#151515] p-5 text-white">
                     <p className="text-sm font-semibold text-white/70">専用リンククリック</p>
@@ -259,7 +277,8 @@ export default function SharedReportPage() {
                       <tr>
                         <th className="px-3 py-3 font-semibold">日付（JST）</th>
                         <th className="px-3 py-3 text-right font-semibold">専用リンククリック</th>
-                        <th className="px-3 py-3 text-right font-semibold">AJ判定の到達</th>
+                        <th className="px-3 py-3 text-right font-semibold">AJ確定</th>
+                        <th className="px-3 py-3 text-right font-semibold">AJ推定</th>
                         <th className="px-3 py-3 text-right font-semibold">全フォーム到達</th>
                       </tr>
                     </thead>
@@ -268,18 +287,44 @@ export default function SharedReportPage() {
                         <tr key={day.date} className="border-b border-slate-100 last:border-0">
                           <td className="px-3 py-3 font-semibold">{day.date}</td>
                           <td className="px-3 py-3 text-right">{day.trackedClicks}</td>
-                          <td className="px-3 py-3 text-right">{day.accessibleJapanArrivals}</td>
+                          <td className="px-3 py-3 text-right">{day.confirmedAccessibleJapanArrivals}</td>
+                          <td className="px-3 py-3 text-right">{day.inferredAccessibleJapanArrivals}</td>
                           <td className="px-3 py-3 text-right">{day.totalArrivals}</td>
                         </tr>
                       )) : (
-                        <tr><td className="px-3 py-6 text-center text-slate-500" colSpan={4}>計測開始後の本番アクセスはまだありません。</td></tr>
+                        <tr><td className="px-3 py-6 text-center text-slate-500" colSpan={5}>計測開始後の本番アクセスはまだありません。</td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
 
+                {trafficReport.countries.length > 0 ? (
+                  <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
+                        <tr>
+                          <th className="px-3 py-3 font-semibold">国コード</th>
+                          <th className="px-3 py-3 text-right font-semibold">AJ判定</th>
+                          <th className="px-3 py-3 text-right font-semibold">うち国外推定</th>
+                          <th className="px-3 py-3 text-right font-semibold">全到達</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trafficReport.countries.map((country) => (
+                          <tr key={country.countryCode} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-3 font-semibold">{country.countryCode}</td>
+                            <td className="px-3 py-3 text-right">{country.accessibleJapanArrivals}</td>
+                            <td className="px-3 py-3 text-right">{country.inferredAccessibleJapanArrivals}</td>
+                            <td className="px-3 py-3 text-right">{country.totalArrivals}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
                 <p className="mt-4 text-xs leading-5 text-amber-800">
-                  計測開始前のCloudflare履歴はURL単位で保持されていないため、この表には遡及反映していません。初回記録: {trafficReport.firstRecordedAt ? dateTimeLabel(trafficReport.firstRecordedAt) : 'まだありません'}
+                  国コードだけを保存し、IPアドレスは保存しません。国外判定は推定であり、VPNや別経路の流入を含む可能性があります。国情報追加前の履歴には遡及反映していません。初回記録: {trafficReport.firstRecordedAt ? dateTimeLabel(trafficReport.firstRecordedAt) : 'まだありません'}
                 </p>
               </section>
             ) : trafficError ? (
