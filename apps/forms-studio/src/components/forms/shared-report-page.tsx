@@ -53,6 +53,30 @@ type ReportResponse = {
   error?: string
 }
 
+type TrafficDay = {
+  date: string
+  totalArrivals: number
+  accessibleJapanArrivals: number
+  trackedClicks: number
+}
+
+type TrafficData = {
+  generatedAt: string
+  firstRecordedAt: string | null
+  totalArrivals: number
+  accessibleJapanArrivals: number
+  trackedClicks: number
+  trackedUrl: string
+  formUrl: string
+  daily: TrafficDay[]
+}
+
+type TrafficResponse = {
+  success: boolean
+  data?: TrafficData
+  error?: string
+}
+
 function monthLabel(value: string) {
   const [year, month] = value.split('-').map(Number)
   if (!year || !month) return value
@@ -88,9 +112,11 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 export default function SharedReportPage() {
   const [report, setReport] = useState<ReportData | null>(null)
+  const [trafficReport, setTrafficReport] = useState<TrafficData | null>(null)
   const [selectedMonth, setSelectedMonth] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [trafficError, setTrafficError] = useState('')
 
   const loadReport = useCallback(async () => {
     const accessToken = window.location.hash.replace(/^#/, '').trim()
@@ -102,25 +128,46 @@ export default function SharedReportPage() {
 
     setLoading(true)
     setError('')
+    setTrafficError('')
     try {
-      const response = await fetch('/api/shared-reports/accessible-japan', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        cache: 'no-store',
-      })
-      const body = await response.json() as ReportResponse
-      if (!response.ok || !body.success || !body.data) {
-        throw new Error(body.error || '共有レポートを取得できませんでした。')
+      const headers = { Authorization: `Bearer ${accessToken}` }
+      const [leadResult, trafficResult] = await Promise.allSettled([
+        fetch('/api/shared-reports/accessible-japan', { headers, cache: 'no-store' }),
+        fetch('/api/shared-reports/accessible-japan-traffic', { headers, cache: 'no-store' }),
+      ])
+
+      if (leadResult.status === 'rejected') throw leadResult.reason
+      const leadBody = await leadResult.value.json() as ReportResponse
+      if (!leadResult.value.ok || !leadBody.success || !leadBody.data) {
+        throw new Error(leadBody.error || '共有レポートを取得できませんでした。')
       }
-      setReport(body.data)
+      setReport(leadBody.data)
       setSelectedMonth((current) => (
-        body.data?.months.some((item) => item.month === current)
+        leadBody.data?.months.some((item) => item.month === current)
           ? current
-          : body.data?.months[0]?.month || ''
+          : leadBody.data?.months[0]?.month || ''
       ))
+
+      if (trafficResult.status === 'fulfilled') {
+        try {
+          const trafficBody = await trafficResult.value.json() as TrafficResponse
+          if (trafficResult.value.ok && trafficBody.success && trafficBody.data) {
+            setTrafficReport(trafficBody.data)
+          } else {
+            setTrafficReport(null)
+            setTrafficError(trafficBody.error || '流入レポートを取得できませんでした。')
+          }
+        } catch {
+          setTrafficReport(null)
+          setTrafficError('流入レポートを取得できませんでした。')
+        }
+      } else {
+        setTrafficReport(null)
+        setTrafficError('流入レポートを取得できませんでした。')
+      }
     } catch (caught) {
       setReport(null)
+      setTrafficReport(null)
       setError(caught instanceof Error ? caught.message : '共有レポートを取得できませんでした。')
     } finally {
       setLoading(false)
@@ -143,9 +190,9 @@ export default function SharedReportPage() {
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#ff3945]">Flat Travel × Accessible Japan</p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">リード共有レポート</h1>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">流入・リード共有レポート</h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70">
-                Accessible Japan専用フォームの回答だけを表示します。他のアンケートや管理機能にはアクセスできません。
+                Accessible Japan専用フォームへの流入と回答だけを表示します。他のアンケートや管理機能にはアクセスできません。
               </p>
             </div>
             <button
@@ -170,6 +217,78 @@ export default function SharedReportPage() {
           </div>
         ) : report ? (
           <>
+            {trafficReport ? (
+              <section className="mt-6 rounded-[24px] bg-white p-5 shadow-sm sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ff3945]">Traffic</p>
+                    <h2 className="mt-1 text-2xl font-semibold">クリック・フォーム到達</h2>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                      Cloudflareでサーバー記録した件数です。フォーム到達はページ再読込を含みます。専用リンククリックは、下記の計測URLを経由したクリックだけを数えます。
+                    </p>
+                  </div>
+                  <p className="text-xs text-slate-400">最終取得 {dateTimeLabel(trafficReport.generatedAt)}</p>
+                </div>
+
+                <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-slate-100 p-5">
+                    <p className="text-sm font-semibold text-slate-500">フォーム到達（全流入）</p>
+                    <p className="mt-2 text-3xl font-semibold">{trafficReport.totalArrivals}<span className="ml-1 text-sm text-slate-500">件</span></p>
+                  </div>
+                  <div className="rounded-2xl bg-[#fff2f3] p-5">
+                    <p className="text-sm font-semibold text-[#b71924]">Accessible Japan判定の到達</p>
+                    <p className="mt-2 text-3xl font-semibold text-[#b71924]">{trafficReport.accessibleJapanArrivals}<span className="ml-1 text-sm">件</span></p>
+                  </div>
+                  <div className="rounded-2xl bg-[#151515] p-5 text-white">
+                    <p className="text-sm font-semibold text-white/70">専用リンククリック</p>
+                    <p className="mt-2 text-3xl font-semibold">{trafficReport.trackedClicks}<span className="ml-1 text-sm text-white/70">件</span></p>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Accessible Japan用 計測URL</p>
+                  <code className="mt-2 block break-all text-sm font-semibold text-slate-900">{trafficReport.trackedUrl}</code>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    現在のフォームURLも到達数は記録しますが、参照元が消える場合があります。今後の掲載リンクはこの計測URLを使うと、クリックと到達を分けて確認できます。
+                  </p>
+                </div>
+
+                <div className="mt-5 overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-xs text-slate-500">
+                      <tr>
+                        <th className="px-3 py-3 font-semibold">日付（JST）</th>
+                        <th className="px-3 py-3 text-right font-semibold">専用リンククリック</th>
+                        <th className="px-3 py-3 text-right font-semibold">AJ判定の到達</th>
+                        <th className="px-3 py-3 text-right font-semibold">全フォーム到達</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trafficReport.daily.length > 0 ? trafficReport.daily.map((day) => (
+                        <tr key={day.date} className="border-b border-slate-100 last:border-0">
+                          <td className="px-3 py-3 font-semibold">{day.date}</td>
+                          <td className="px-3 py-3 text-right">{day.trackedClicks}</td>
+                          <td className="px-3 py-3 text-right">{day.accessibleJapanArrivals}</td>
+                          <td className="px-3 py-3 text-right">{day.totalArrivals}</td>
+                        </tr>
+                      )) : (
+                        <tr><td className="px-3 py-6 text-center text-slate-500" colSpan={4}>計測開始後の本番アクセスはまだありません。</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="mt-4 text-xs leading-5 text-amber-800">
+                  計測開始前のCloudflare履歴はURL単位で保持されていないため、この表には遡及反映していません。初回記録: {trafficReport.firstRecordedAt ? dateTimeLabel(trafficReport.firstRecordedAt) : 'まだありません'}
+                </p>
+              </section>
+            ) : trafficError ? (
+              <section className="mt-6 rounded-[24px] border border-amber-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-amber-800">流入レポートのみ取得できません</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{trafficError}</p>
+              </section>
+            ) : null}
+
             <section className="mt-6 grid gap-4 sm:grid-cols-2">
               <div className="rounded-[24px] bg-white p-6 shadow-sm">
                 <p className="text-sm font-semibold text-slate-500">累計リード数</p>
