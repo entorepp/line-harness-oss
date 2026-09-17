@@ -34,6 +34,7 @@ import {
   isMetaMessagingChannel,
 } from '../services/meta-messaging.js';
 import { recordWhatsappDelivery } from '../services/whatsapp-delivery.js';
+import { assertWhatsappReplyWindow, getWhatsappReplyWindow, WhatsappReplyWindowError } from '../services/whatsapp-reply-window.js';
 
 const friends = new Hono<Env>();
 
@@ -385,7 +386,11 @@ friends.get('/api/friends/:id/messages', async (c) => {
         deliveryStatusAt: string | null;
         deliveryErrorCode: string | null;
       }>();
-    return c.json({ success: true, data: result.results });
+    const friend = await getMessagingFriendContext(c.env.DB, friendId);
+    return c.json({ success: true, data: result.results,
+      whatsappReplyWindow: friend?.channel_type === 'whatsapp'
+        ? await getWhatsappReplyWindow(c.env.DB, friendId) : null,
+    });
   } catch (err) {
     console.error('GET /api/friends/:id/messages error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -454,6 +459,9 @@ friends.post('/api/friends/:id/messages', async (c) => {
         }, 400);
       }
 
+      if (friend.channel_type === 'whatsapp') {
+        await assertWhatsappReplyWindow(db, friend.id, normalizedSchedule.scheduledAt);
+      }
       const scheduled = await createScheduledMessage(db, {
         friendId,
         chatId: existingChat?.id ?? null,
@@ -527,6 +535,9 @@ friends.post('/api/friends/:id/messages', async (c) => {
       },
     });
   } catch (err) {
+    if (err instanceof WhatsappReplyWindowError) {
+      return c.json({ success: false, error: err.message, code: err.code, whatsappReplyWindow: err.replyWindow }, 409);
+    }
     console.error('POST /api/friends/:id/messages error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }

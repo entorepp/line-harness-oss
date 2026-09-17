@@ -32,6 +32,7 @@ import {
   isMetaMessagingChannel,
 } from '../services/meta-messaging.js';
 import { recordWhatsappDelivery } from '../services/whatsapp-delivery.js';
+import { assertWhatsappReplyWindow, getWhatsappReplyWindow, WhatsappReplyWindowError } from '../services/whatsapp-reply-window.js';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 
 const chats = new Hono<Env>();
@@ -322,6 +323,8 @@ chats.get('/api/chats/:id', async (c) => {
             : friend?.display_name || '名前なし',
         friendPictureUrl: friend?.picture_url || null,
         channelType: friend?.channel_type || null,
+        whatsappReplyWindow: friend?.channel_type === 'whatsapp'
+          ? await getWhatsappReplyWindow(c.env.DB, item.friend_id) : null,
         slackChannelId: friend?.slack_channel_id || null,
         operatorId: item.operator_id,
         status: item.status,
@@ -427,6 +430,9 @@ chats.post('/api/chats/:id/send', async (c) => {
         }, 400);
       }
 
+      if (friend.channel_type === 'whatsapp') {
+        await assertWhatsappReplyWindow(c.env.DB, friend.id, normalizedSchedule.scheduledAt);
+      }
       const scheduled = await createScheduledMessage(c.env.DB, {
         friendId: friend.id,
         chatId,
@@ -517,6 +523,9 @@ chats.post('/api/chats/:id/send', async (c) => {
       },
     });
   } catch (err) {
+    if (err instanceof WhatsappReplyWindowError) {
+      return c.json({ success: false, error: err.message, code: err.code, whatsappReplyWindow: err.replyWindow }, 409);
+    }
     console.error('POST /api/chats/:id/send error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
@@ -597,6 +606,9 @@ chats.put('/api/scheduled-messages/:id', async (c) => {
       }, 400);
     }
 
+    if (friend?.channel_type === 'whatsapp') {
+      await assertWhatsappReplyWindow(c.env.DB, friend.id, normalizedSchedule.scheduledAt);
+    }
     const updated = await updateScheduledMessage(c.env.DB, id, {
       scheduledAt: normalizedSchedule.scheduledAt,
     });
@@ -609,6 +621,9 @@ chats.put('/api/scheduled-messages/:id', async (c) => {
       data: serializeScheduledMessage(updated),
     });
   } catch (err) {
+    if (err instanceof WhatsappReplyWindowError) {
+      return c.json({ success: false, error: err.message, code: err.code, whatsappReplyWindow: err.replyWindow }, 409);
+    }
     console.error('PUT /api/scheduled-messages/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }

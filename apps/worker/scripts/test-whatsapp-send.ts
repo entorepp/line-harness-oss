@@ -19,6 +19,9 @@ sqlite.exec(`
     VALUES ('test-friend', '15555550100', 'Test only', 'wa-test');
   INSERT INTO chats (id, friend_id) VALUES ('test-chat', 'test-friend');
 `);
+sqlite.prepare(`INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at)
+  VALUES ('customer-reply', 'test-friend', 'incoming', 'text', 'Test only', ?)`)
+  .run(new Date().toISOString());
 
 const db = {
   prepare(sql: string) {
@@ -135,7 +138,7 @@ try {
   assert.deepEqual(providerCalls[1].document, { link: 'https://example.com/quote.pdf', filename: 'quote.pdf' });
   assert.equal(row(pdf.id).status, 'sent');
   assert.equal(row(pdf.id).last_error, null);
-  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM messages_log').get()?.n, 2);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM messages_log WHERE direction = 'outgoing'").get()?.n, 2);
   assert.equal(sqlite.prepare(
     'SELECT status FROM whatsapp_delivery_receipts WHERE scheduled_message_id = ?',
   ).get(pdf.id)?.status, 'accepted');

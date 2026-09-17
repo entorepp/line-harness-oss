@@ -11,6 +11,7 @@ import {
 } from './meta-messaging.js';
 import { dispatchWeChatKfText } from './wechat-kf.js';
 import { dispatchWeChatText } from './wechat.js';
+import { assertWhatsappReplyWindow } from './whatsapp-reply-window.js';
 
 export interface MessagingFriendContext {
   id: string;
@@ -470,6 +471,7 @@ export async function dispatchOutboundMessage(opts: {
   }
 
   if (opts.friend.channel_type === 'whatsapp') {
+    await assertWhatsappReplyWindow(opts.env.DB, opts.friend.id);
     const content = serializeOutboundContent(opts.input);
     const waToken = opts.friend.channel_access_token;
     const waPhoneNumberId = opts.friend.channel_id;

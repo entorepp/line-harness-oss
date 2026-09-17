@@ -29,6 +29,7 @@ jobs:
       - run: pnpm --filter worker typecheck
       - run: pnpm --filter worker test:whatsapp-send
       - run: pnpm --filter worker test:whatsapp-delivery-status
+      - run: pnpm --filter worker test:whatsapp-reply-window
       - run: pnpm --filter worker test:whatsapp-identity
       - run: pnpm --filter worker test:accessible-japan-quote-trigger
       - run: pnpm --filter worker test:form-response-email
