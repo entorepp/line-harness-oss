@@ -6,6 +6,7 @@ import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
 import ChatComposer from '@/components/chat-composer'
 import ChatMessageContent from '@/components/chat-message-content'
+import type { WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
 
 interface Chat {
   id: string
@@ -35,6 +36,7 @@ interface ChatMessage {
 
 interface ChatDetail extends Chat {
   channelType?: string
+  whatsappReplyWindow?: WhatsappReplyWindow | null
   friendName: string
   friendPictureUrl: string | null
   slackChannelId: string | null
@@ -126,9 +128,9 @@ function WhatsappDeliveryIndicator({
   if (channelType !== 'whatsapp' || message.direction !== 'outgoing') return null
 
   const label = message.deliveryStatus === 'accepted'
-    ? 'Meta受付'
+    ? '受付済み・配達待ち'
     : message.deliveryStatus === 'sent'
-      ? '送信済み'
+      ? '送信済み・配達待ち'
       : message.deliveryStatus === 'delivered'
         ? '配達済み'
         : message.deliveryStatus === 'read'
@@ -153,14 +155,18 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
 }) {
   const [messages, setMessages] = useState<MessageLog[]>([])
   const [loadingMessages, setLoadingMessages] = useState(true)
+  const [whatsappReplyWindow, setWhatsappReplyWindow] = useState<WhatsappReplyWindow | null>(null)
 
   const loadMessages = useCallback(async (silent = false) => {
     if (!silent) setLoadingMessages(true)
     try {
-      const res = await fetchApi<{ success: boolean; data: MessageLog[] }>(
+      const res = await fetchApi<{ success: boolean; data: MessageLog[]; whatsappReplyWindow?: WhatsappReplyWindow | null }>(
         `/api/friends/${friendId}/messages`
       )
-      if (res.success) setMessages(res.data)
+      if (res.success) {
+        setMessages(res.data)
+        setWhatsappReplyWindow(res.whatsappReplyWindow ?? null)
+      }
     } catch { /* silent */ }
     if (!silent) setLoadingMessages(false)
   }, [friendId])
@@ -236,6 +242,7 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
         <ChatComposer
           friendId={friendId}
           channelType={channelType}
+          whatsappReplyWindow={whatsappReplyWindow}
           onSent={() => {
             void loadMessages()
             onSent()
@@ -1165,6 +1172,7 @@ export default function ChatsPage() {
                   friendId={chatDetail.friendId}
                   chatId={selectedChatId}
                   channelType={selectedAccount?.channelType}
+                  whatsappReplyWindow={chatDetail.whatsappReplyWindow}
                   onSent={() => {
                     if (selectedChatId) {
                       shouldStickToBottomRef.current = true

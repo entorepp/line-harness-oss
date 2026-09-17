@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ClipboardEvent, KeyboardEvent } from 'react'
 import { replaceEmojiShortcodes } from '@line-crm/shared'
 import { api, fetchApi, type ApiScheduledMessage } from '@/lib/api'
+import { whatsappReplyBlock, type WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
 
 type AttachmentDraft = {
   file: File
@@ -379,12 +380,14 @@ export default function ChatComposer({
   friendId,
   chatId,
   channelType,
+  whatsappReplyWindow,
   onSent,
   onError,
 }: {
   friendId: string
   chatId?: string | null
   channelType?: 'line' | 'whatsapp' | 'kakao' | 'wechat' | 'facebook' | 'instagram'
+  whatsappReplyWindow?: WhatsappReplyWindow | null
   onSent?: () => void | Promise<void>
   onError?: (message: string) => void
 }) {
@@ -395,6 +398,7 @@ export default function ChatComposer({
   const [sending, setSending] = useState(false)
   const [reserveMode, setReserveMode] = useState(false)
   const [scheduledAt, setScheduledAt] = useState('')
+  const [replyNow, setReplyNow] = useState(Date.now)
   const [customEmojiPresets, setCustomEmojiPresets] = useState<EmojiPreset[]>([])
   const [emojiPanelOpen, setEmojiPanelOpen] = useState(false)
   const [emojiEditorOpen, setEmojiEditorOpen] = useState(false)
@@ -421,6 +425,17 @@ export default function ChatComposer({
   const attachmentsDisabled = isKakao || isWeChat || isMetaDm
   const attachmentAccept = isWhatsApp ? WHATSAPP_ATTACHMENT_ACCEPT : DEFAULT_ATTACHMENT_ACCEPT
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
+  const whatsappBlock = isWhatsApp
+    ? whatsappReplyBlock(whatsappReplyWindow, friendId, replyNow,
+      reserveMode && DATETIME_LOCAL_PATTERN.test(scheduledAt) ? `${scheduledAt}:00+09:00` : undefined)
+    : null
+
+  useEffect(() => {
+    if (!isWhatsApp) return
+    setReplyNow(Date.now())
+    const interval = window.setInterval(() => setReplyNow(Date.now()), 15_000)
+    return () => window.clearInterval(interval)
+  }, [isWhatsApp, friendId])
 
   useEffect(() => {
     if (isMetaDm) {
@@ -784,9 +799,17 @@ export default function ChatComposer({
   }
 
   async function handleSubmit(schedule: boolean) {
+    if (sending) return
     setSending(true)
 
     try {
+      // Recheck on keyboard submit and before uploading attachments. The
+      // server independently enforces the window again at actual dispatch.
+      if (isWhatsApp) {
+        const blocked = whatsappReplyBlock(whatsappReplyWindow, friendId, Date.now(),
+          schedule ? validateFutureJstSchedule(scheduledAt) : undefined)
+        if (blocked) throw new Error(blocked)
+      }
       const { scheduledItems, undoGroupId } = await sendPayloads(schedule)
 
       setMessageContent('')
@@ -869,6 +892,10 @@ export default function ChatComposer({
     let nextScheduledAt: string
     try {
       nextScheduledAt = validateFutureJstSchedule(editingScheduledAt)
+      if (isWhatsApp) {
+        const blocked = whatsappReplyBlock(whatsappReplyWindow, friendId, Date.now(), nextScheduledAt)
+        if (blocked) throw new Error(blocked)
+      }
     } catch (err) {
       onError?.(err instanceof Error ? err.message : '予約日時を指定してください。')
       return
@@ -936,6 +963,11 @@ export default function ChatComposer({
 
   return (
     <div className="space-y-3 rounded-[32px] border border-[#DDE4E8] bg-white p-3 shadow-[0_16px_50px_rgba(28,39,60,0.08)]">
+      {isWhatsApp && (
+        <p role="status" aria-live="polite" className={`rounded-xl px-3 py-2 text-xs ${whatsappBlock ? 'bg-amber-50 text-amber-900' : 'bg-gray-50 text-gray-600'}`}>
+          {whatsappBlock || `WhatsApp送信期限: ${formatDatetime(whatsappReplyWindow!.expiresAt!)}（お客様の返信から24時間）`}
+        </p>
+      )}
       {(emojiPanelOpen || emojiEditorOpen) && (
         <div className="rounded-3xl border border-gray-200 bg-white p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1177,7 +1209,7 @@ export default function ChatComposer({
               <button
                 type="button"
                 onClick={() => void handleSubmit(reserveMode)}
-                disabled={sending}
+                disabled={sending || Boolean(whatsappBlock)}
                 className="rounded-full px-4 py-2 text-sm font-medium text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                 style={{ backgroundColor: '#06C755' }}
               >
