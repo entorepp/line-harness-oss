@@ -11,7 +11,7 @@ assert.match(
   'WhatsApp manual replies must bypass the 30-second undo hold',
 )
 assert.match(chats, /function WhatsappDeliveryIndicator/)
-for (const label of ['Meta受付', '送信済み', '配達済み', '既読', '配達失敗', '送達未確認']) {
+for (const label of ['受付済み・配達待ち', '送信済み・配達待ち', '配達済み', '既読', '配達失敗', '送達未確認']) {
   assert.ok(chats.includes(label), `Missing WhatsApp delivery label: ${label}`)
 }
 for (const field of ['deliveryStatus', 'deliveryStatusAt', 'deliveryErrorCode']) {
