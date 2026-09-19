@@ -19,7 +19,6 @@ export default function FormTraffic() {
   const frame = useRef<HTMLIFrameElement>(null)
   const counted = useRef(false)
   const frameReady = useRef(false)
-  const choiceRef = useRef<Choice>(null)
   const queuedEvents = useRef<TrafficAnalyticsEvent[]>([])
 
   useEffect(() => {
@@ -33,18 +32,9 @@ export default function FormTraffic() {
   }, [])
 
   useEffect(() => {
-    choiceRef.current = choice
-    if (choice !== 'granted') {
-      frameReady.current = false
-      counted.current = false
-      queuedEvents.current = []
-    }
-  }, [choice])
-
-  useEffect(() => {
     const forward = (event: Event) => {
       const detail = (event as CustomEvent<TrafficAnalyticsEvent>).detail
-      if (choiceRef.current !== 'granted' || !detail) return
+      if (!detail) return
       if (!frameReady.current) {
         if (queuedEvents.current.length < 20) queuedEvents.current.push(detail)
         return
@@ -54,6 +44,14 @@ export default function FormTraffic() {
     window.addEventListener(TRAFFIC_EVENT_NAME, forward)
     return () => window.removeEventListener(TRAFFIC_EVENT_NAME, forward)
   }, [])
+
+  useEffect(() => {
+    if (!frameReady.current || choice === null) return
+    frame.current?.contentWindow?.postMessage({
+      type: 'liffform:consent-update',
+      analytics_storage: choice,
+    }, TRAFFIC_ORIGIN)
+  }, [choice])
 
   const choose = (next: Exclude<Choice, null>) => {
     setChoice(next)
@@ -76,10 +74,10 @@ export default function FormTraffic() {
   if (!context) return null
 
   return <>
-    {choice === 'granted' && <iframe
+    <iframe
       ref={frame}
       title="Form visit analytics"
-      src="/form-traffic.html?v=20260917-2"
+      src="/form-traffic.html?v=20260919-1"
       sandbox="allow-scripts allow-same-origin"
       referrerPolicy="no-referrer"
       hidden
@@ -88,18 +86,21 @@ export default function FormTraffic() {
         frameReady.current = true
         if (counted.current) return
         counted.current = true
-        frame.current?.contentWindow?.postMessage(context, TRAFFIC_ORIGIN)
+        frame.current?.contentWindow?.postMessage({
+          ...context,
+          analytics_consent: choice === 'granted' ? 'granted' : 'denied',
+        }, TRAFFIC_ORIGIN)
         for (const event of queuedEvents.current) {
           frame.current?.contentWindow?.postMessage(event, TRAFFIC_ORIGIN)
         }
         queuedEvents.current = []
       }}
-    />}
+    />
     {choice === null || settingsOpen ? <aside
       aria-label="Analytics cookie choice"
       className="relative z-30 mx-auto mb-6 max-w-4xl rounded-2xl border border-[#d7e5dc] bg-white px-5 py-4 text-sm text-slate-700 shadow-sm"
     >
-      <p className="leading-6">May we use Google Analytics cookies to understand how visitors find this form? Your answers are not included. You can use the form either way.</p>
+      <p className="leading-6">We use cookieless Google Analytics measurement to count form visits and completed submissions. May we also use Analytics cookies to understand repeat visits and how people find this form? Your answers are never sent. You can use the form either way.</p>
       <div className="mt-3 flex flex-wrap gap-3">
         <button type="button" onClick={() => choose('granted')} className="rounded-full border border-[#1d5c47] px-5 py-2 font-medium text-[#1d5c47] hover:bg-[#edf5ef]">Allow analytics</button>
         <button type="button" onClick={() => choose('denied')} className="rounded-full border border-[#1d5c47] px-5 py-2 font-medium text-[#1d5c47] hover:bg-[#edf5ef]">Decline analytics</button>

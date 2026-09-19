@@ -1,5 +1,6 @@
-/* The Google tag runs only inside this empty document after explicit consent.
-   Enhanced measurement therefore has no local form inputs or submit events. */
+/* The Google tag runs only inside this empty document with Consent Mode v2.
+   Before consent it sends cookieless, sanitized measurement pings. Enhanced
+   measurement has no local form inputs or submit events. */
 (() => {
   'use strict';
   const origin = 'https://liffform-studio.pages.dev';
@@ -20,9 +21,23 @@
 
   function gtag() { window.dataLayer.push(arguments); }
 
+  function updateConsent(value) {
+    gtag('consent', 'update', {
+      analytics_storage: value === 'granted' ? 'granted' : 'denied',
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+    });
+  }
+
   window.addEventListener('message', (event) => {
     if (event.origin !== origin || event.source !== window.parent) return;
     const input = event.data;
+    if (input?.type === 'liffform:consent-update') {
+      if (!initialized || !['granted', 'denied'].includes(input.analytics_storage)) return;
+      updateConsent(input.analytics_storage);
+      return;
+    }
     if (input?.type === 'liffform:analytics-event') {
       if (!initialized || !['lead_form_start', 'form_progress', 'generate_lead'].includes(input.event_name)) return;
       const fieldIndex = allowedFields.get(input.field_key);
@@ -70,8 +85,10 @@
     initialized = true;
     window.dataLayer = [];
     gtag('consent', 'default', {
-      analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied',
+      analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied',
+      wait_for_update: 500,
     });
+    if (input.analytics_consent === 'granted') updateConsent('granted');
     gtag('set', 'url_passthrough', false);
     gtag('set', 'ads_data_redaction', true);
     gtag('js', new Date());
