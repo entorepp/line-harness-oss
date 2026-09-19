@@ -19,9 +19,21 @@ if [[ "${ALLOW_NON_MAIN_DEPLOY:-0}" != "1" && "$CURRENT_BRANCH" != "$PRODUCTION_
   exit 1
 fi
 
+# Keep the same literal bundle checks when ripgrep is unavailable.
+contains_literal() {
+  if command -v rg >/dev/null 2>&1; then
+    rg -q --fixed-strings "$1" "$2"
+  else
+    grep -R -F -q -- "$1" "$2"
+  fi
+}
+
 echo "=== Building web app ==="
 cd "$ROOT_DIR"
 export NEXT_PUBLIC_API_URL="$PRODUCTION_API_URL"
+pnpm --filter web test:whatsapp-templates
+pnpm --filter web test:whatsapp-reply-window
+pnpm --filter web test:whatsapp-send-contract
 pnpm --filter web build
 
 if [[ ! -d "$ROOT_DIR/apps/web/out" ]]; then
@@ -29,22 +41,22 @@ if [[ ! -d "$ROOT_DIR/apps/web/out" ]]; then
   exit 1
 fi
 
-if ! rg -q --fixed-strings "$PRODUCTION_API_URL" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
+if ! contains_literal "$PRODUCTION_API_URL" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
   echo "Production API URL is missing from the generated web bundle."
   exit 1
 fi
 
-if rg -q --fixed-strings "http://localhost:8787" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
+if contains_literal "http://localhost:8787" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
   echo "Refusing to deploy a production bundle that points to localhost."
   exit 1
 fi
 
-if ! rg -q --fixed-strings "$PRODUCTION_FLATWORKER_URL" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
+if ! contains_literal "$PRODUCTION_FLATWORKER_URL" "$ROOT_DIR/apps/web/out/_next/static/chunks"; then
   echo "Canonical FlatWorker URL is missing from the generated web bundle."
   exit 1
 fi
 
-if rg -q --fixed-strings "https://flatworker.flatcare.jp" "$ROOT_DIR/apps/web/out"; then
+if contains_literal "https://flatworker.flatcare.jp" "$ROOT_DIR/apps/web/out"; then
   echo "Refusing to deploy a bundle that still points to the retired FlatWorker URL."
   exit 1
 fi

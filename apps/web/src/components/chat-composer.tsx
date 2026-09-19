@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ClipboardEvent, KeyboardEvent } from 'react'
 import { replaceEmojiShortcodes } from '@line-crm/shared'
 import { api, fetchApi, type ApiScheduledMessage } from '@/lib/api'
+import WhatsAppTemplateComposer from '@/components/whatsapp-template-composer'
 import { whatsappReplyBlock, type WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
 
 type AttachmentDraft = {
@@ -968,6 +969,7 @@ export default function ChatComposer({
           {whatsappBlock || `WhatsApp送信期限: ${formatDatetime(whatsappReplyWindow!.expiresAt!)}（お客様の返信から24時間）`}
         </p>
       )}
+      {isWhatsApp && <WhatsAppTemplateComposer key={friendId} friendId={friendId} onSent={onSent} />}
       {(emojiPanelOpen || emojiEditorOpen) && (
         <div className="rounded-3xl border border-gray-200 bg-white p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
