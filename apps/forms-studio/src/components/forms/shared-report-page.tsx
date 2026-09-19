@@ -300,7 +300,7 @@ export default function SharedReportPage() {
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ff3945]">Traffic</p>
                     <h2 className="mt-1 text-2xl font-semibold">クリック・フォーム到達</h2>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                      Cloudflareで匿名30分セッションとして記録した正式な流入・離脱指標です。UTMを一次判定にし、回答値・氏名・メール・旅行日は保存しません。
+                      <code>utm_source=accessible_japan</code> が付いた到達だけを、匿名30分セッションとして集計します。<code>utm_content</code>別に流入・完了・CVRを確認でき、回答値・氏名・メール・旅行日は保存しません。
                     </p>
                   </div>
                   <p className="text-xs text-slate-400">最終取得 {dateTimeLabel(trafficReport.generatedAt)}</p>
@@ -308,20 +308,20 @@ export default function SharedReportPage() {
 
                 <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-2xl bg-[#fff2f3] p-5">
-                    <p className="text-sm font-semibold text-[#b71924]">AJ流入セッション</p>
+                    <p className="text-sm font-semibold text-[#b71924]">AJ UTM流入</p>
                     <p className="mt-2 text-3xl font-semibold text-[#b71924]">{trafficReport.sessions.accessibleJapan}<span className="ml-1 text-sm">件</span></p>
                     <p className="mt-1 text-xs text-[#b71924]/70">操作開始 {trafficReport.sessions.accessibleJapanStarted}件・未開始 {trafficReport.sessions.accessibleJapanNotStarted}件・進行中 {trafficReport.sessions.accessibleJapanActive}件</p>
                   </div>
                   <div className="rounded-2xl bg-emerald-50 p-5">
-                    <p className="text-sm font-semibold text-emerald-800">AJ送信成功</p>
+                    <p className="text-sm font-semibold text-emerald-800">AJ UTM送信成功</p>
                     <p className="mt-2 text-3xl font-semibold text-emerald-800">{trafficReport.sessions.accessibleJapanSubmitted}<span className="ml-1 text-sm">件</span></p>
                   </div>
                   <div className="rounded-2xl bg-amber-50 p-5">
-                    <p className="text-sm font-semibold text-amber-800">AJ離脱</p>
+                    <p className="text-sm font-semibold text-amber-800">AJ UTM離脱</p>
                     <p className="mt-2 text-3xl font-semibold text-amber-800">{trafficReport.sessions.accessibleJapanAbandoned}<span className="ml-1 text-sm">件</span></p>
                   </div>
                   <div className="rounded-2xl bg-[#151515] p-5 text-white">
-                    <p className="text-sm font-semibold text-white/70">AJ離脱率</p>
+                    <p className="text-sm font-semibold text-white/70">AJ UTM離脱率</p>
                     <p className="mt-2 text-3xl font-semibold">{percentLabel(trafficReport.sessions.accessibleJapanDropoffRate)}</p>
                     <p className="mt-1 text-xs text-white/60">CVR {percentLabel(trafficReport.sessions.accessibleJapanConversionRate)}</p>
                   </div>
@@ -332,7 +332,7 @@ export default function SharedReportPage() {
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
                       <tr>
                         <th className="px-3 py-3 font-semibold">日付（JST）</th>
-                        <th className="px-3 py-3 text-right font-semibold">AJ流入</th>
+                        <th className="px-3 py-3 text-right font-semibold">AJ UTM流入</th>
                         <th className="px-3 py-3 text-right font-semibold">送信成功</th>
                         <th className="px-3 py-3 text-right font-semibold">進行中</th>
                         <th className="px-3 py-3 text-right font-semibold">離脱</th>
@@ -388,9 +388,10 @@ export default function SharedReportPage() {
                     <table className="min-w-full text-left text-sm">
                       <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
                         <tr>
-                          <th className="px-3 py-3 font-semibold">流入元ページキー</th>
+                          <th className="px-3 py-3 font-semibold">utm_content（流入元ページ）</th>
                           <th className="px-3 py-3 text-right font-semibold">流入</th>
                           <th className="px-3 py-3 text-right font-semibold">送信</th>
+                          <th className="px-3 py-3 text-right font-semibold">CVR</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -399,6 +400,7 @@ export default function SharedReportPage() {
                             <td className="px-3 py-3 font-semibold">{page.sourcePageKey}</td>
                             <td className="px-3 py-3 text-right">{page.sessions}</td>
                             <td className="px-3 py-3 text-right">{page.submitted}</td>
+                            <td className="px-3 py-3 text-right">{percentLabel(page.sessions > 0 ? page.submitted / page.sessions : 0)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -436,9 +438,9 @@ export default function SharedReportPage() {
                     <p className="mt-2 text-3xl font-semibold">{trafficReport.totalArrivals}<span className="ml-1 text-sm text-slate-500">件</span></p>
                   </div>
                   <div className="rounded-2xl bg-[#fff2f3] p-5">
-                    <p className="text-sm font-semibold text-[#b71924]">AJ確定の到達</p>
+                    <p className="text-sm font-semibold text-[#b71924]">AJ UTM到達</p>
                     <p className="mt-2 text-3xl font-semibold text-[#b71924]">{trafficReport.confirmedAccessibleJapanArrivals}<span className="ml-1 text-sm">件</span></p>
-                    <p className="mt-1 text-xs text-[#b71924]/70">UTM・ホテル名・参照元</p>
+                    <p className="mt-1 text-xs text-[#b71924]/70"><code>utm_source=accessible_japan</code></p>
                   </div>
                   <div className="rounded-2xl bg-amber-50 p-5">
                     <p className="text-sm font-semibold text-amber-800">AJ推定（国外・流入元不明）</p>
@@ -465,7 +467,7 @@ export default function SharedReportPage() {
                       <tr>
                         <th className="px-3 py-3 font-semibold">日付（JST）</th>
                         <th className="px-3 py-3 text-right font-semibold">専用リンククリック</th>
-                        <th className="px-3 py-3 text-right font-semibold">AJ確定</th>
+                        <th className="px-3 py-3 text-right font-semibold">AJ UTM</th>
                         <th className="px-3 py-3 text-right font-semibold">AJ推定</th>
                         <th className="px-3 py-3 text-right font-semibold">全フォーム到達</th>
                       </tr>
@@ -492,7 +494,7 @@ export default function SharedReportPage() {
                       <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
                         <tr>
                           <th className="px-3 py-3 font-semibold">国コード</th>
-                          <th className="px-3 py-3 text-right font-semibold">AJ判定</th>
+                          <th className="px-3 py-3 text-right font-semibold">AJ UTM</th>
                           <th className="px-3 py-3 text-right font-semibold">うち国外推定</th>
                           <th className="px-3 py-3 text-right font-semibold">全到達</th>
                         </tr>

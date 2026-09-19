@@ -120,18 +120,16 @@ function normalizeCampaign(value) {
   return campaign ? 'other' : 'unknown';
 }
 
-function normalizeSourcePageKey(url) {
-  const keys = [
+function normalizeSourcePageKey(url, keys = [
     'source_hotel_slug',
     'hotel_slug',
     'hotel',
-    'utm_content',
     'source_hotel_name',
     'hotel_name',
     'prefill_Hotel Name',
     'prefill_hotel_name',
     'prefill_Hotel_Name',
-  ];
+  ]) {
   for (const key of keys) {
     const normalized = String(url.searchParams.get(key) || '')
       .normalize('NFKD')
@@ -153,7 +151,7 @@ function classifyArrival(request, url) {
       source: 'accessible_japan',
       medium: ['cpc', 'cta'].includes(utmMedium) ? utmMedium : 'referral',
       campaign: normalizeCampaign(url.searchParams.get('utm_campaign')),
-      sourcePageKey: normalizeSourcePageKey(url),
+      sourcePageKey: normalizeSourcePageKey(url, ['utm_content']),
       attributionMethod: 'utm',
       countryCode,
     };
@@ -460,8 +458,8 @@ async function getTrafficReport(request, env) {
         SELECT
           MIN(occurred_at) AS first_recorded_at,
           SUM(CASE WHEN event_type = 'form_arrival' THEN 1 ELSE 0 END) AS total_arrivals,
-          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
-          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method != 'non_jp_inferred' THEN 1 ELSE 0 END) AS confirmed_accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method = 'utm' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method = 'utm' THEN 1 ELSE 0 END) AS confirmed_accessible_japan_arrivals,
           SUM(CASE WHEN event_type = 'form_arrival' AND attribution_method = 'non_jp_inferred' THEN 1 ELSE 0 END) AS inferred_accessible_japan_arrivals,
           SUM(CASE WHEN event_type = 'tracked_click' THEN 1 ELSE 0 END) AS tracked_clicks
         FROM accessible_japan_form_traffic
@@ -471,8 +469,8 @@ async function getTrafficReport(request, env) {
         SELECT
           date(occurred_at, '+9 hours') AS date,
           SUM(CASE WHEN event_type = 'form_arrival' THEN 1 ELSE 0 END) AS total_arrivals,
-          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
-          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method != 'non_jp_inferred' THEN 1 ELSE 0 END) AS confirmed_accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method = 'utm' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method = 'utm' THEN 1 ELSE 0 END) AS confirmed_accessible_japan_arrivals,
           SUM(CASE WHEN event_type = 'form_arrival' AND attribution_method = 'non_jp_inferred' THEN 1 ELSE 0 END) AS inferred_accessible_japan_arrivals,
           SUM(CASE WHEN event_type = 'tracked_click' THEN 1 ELSE 0 END) AS tracked_clicks
         FROM accessible_japan_form_traffic
@@ -485,7 +483,7 @@ async function getTrafficReport(request, env) {
         SELECT
           country_code,
           SUM(CASE WHEN event_type = 'form_arrival' THEN 1 ELSE 0 END) AS total_arrivals,
-          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
+          SUM(CASE WHEN event_type = 'form_arrival' AND source = 'accessible_japan' AND attribution_method = 'utm' THEN 1 ELSE 0 END) AS accessible_japan_arrivals,
           SUM(CASE WHEN event_type = 'form_arrival' AND attribution_method = 'non_jp_inferred' THEN 1 ELSE 0 END) AS inferred_accessible_japan_arrivals
         FROM accessible_japan_form_traffic
         WHERE form_id = ? AND is_test = 0 AND country_code IS NOT NULL
@@ -496,8 +494,8 @@ async function getTrafficReport(request, env) {
         SELECT
           MIN(started_at) AS first_session_recorded_at,
           COUNT(*) AS total_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' THEN 1 ELSE 0 END) AS accessible_japan_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' AND EXISTS (
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' THEN 1 ELSE 0 END) AS accessible_japan_sessions,
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' AND EXISTS (
             SELECT 1 FROM accessible_japan_form_session_events e
             WHERE e.session_id = accessible_japan_form_sessions.session_id
               AND e.event_type = 'form_start'
@@ -505,9 +503,9 @@ async function getTrafficReport(request, env) {
           SUM(CASE WHEN submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS submitted_sessions,
           SUM(CASE WHEN submitted_at IS NULL AND last_seen_at > datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS active_sessions,
           SUM(CASE WHEN submitted_at IS NULL AND last_seen_at <= datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS abandoned_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' AND submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS accessible_japan_submitted_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' AND submitted_at IS NULL AND last_seen_at > datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS accessible_japan_active_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' AND submitted_at IS NULL AND last_seen_at <= datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS accessible_japan_abandoned_sessions
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' AND submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS accessible_japan_submitted_sessions,
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' AND submitted_at IS NULL AND last_seen_at > datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS accessible_japan_active_sessions,
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' AND submitted_at IS NULL AND last_seen_at <= datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS accessible_japan_abandoned_sessions
         FROM accessible_japan_form_sessions
         WHERE form_id = ? AND is_test = 0
       `).bind(ACCESSIBLE_JAPAN_FORM_ID).first(),
@@ -515,13 +513,14 @@ async function getTrafficReport(request, env) {
         SELECT
           date(started_at, '+9 hours') AS date,
           COUNT(*) AS total_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' THEN 1 ELSE 0 END) AS accessible_japan_sessions,
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' THEN 1 ELSE 0 END) AS accessible_japan_sessions,
           SUM(CASE WHEN submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS submitted_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' AND submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS accessible_japan_submitted_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' AND submitted_at IS NULL AND last_seen_at > datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS accessible_japan_active_sessions,
-          SUM(CASE WHEN source = 'accessible_japan' AND submitted_at IS NULL AND last_seen_at <= datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS accessible_japan_abandoned_sessions
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' AND submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS accessible_japan_submitted_sessions,
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' AND submitted_at IS NULL AND last_seen_at > datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS accessible_japan_active_sessions,
+          SUM(CASE WHEN source = 'accessible_japan' AND attribution_method = 'utm' AND submitted_at IS NULL AND last_seen_at <= datetime('now', '-30 minutes') THEN 1 ELSE 0 END) AS accessible_japan_abandoned_sessions
         FROM accessible_japan_form_sessions
         WHERE form_id = ? AND is_test = 0
+          AND source = 'accessible_japan' AND attribution_method = 'utm'
         GROUP BY date(started_at, '+9 hours')
         ORDER BY date DESC
         LIMIT 366
@@ -532,6 +531,7 @@ async function getTrafficReport(request, env) {
           SUM(CASE WHEN submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS submitted_sessions
         FROM accessible_japan_form_sessions
         WHERE form_id = ? AND is_test = 0
+          AND source = 'accessible_japan' AND attribution_method = 'utm'
         GROUP BY source, medium, campaign
         ORDER BY sessions DESC, source, medium, campaign
       `).bind(ACCESSIBLE_JAPAN_FORM_ID).all(),
@@ -541,7 +541,8 @@ async function getTrafficReport(request, env) {
           SUM(CASE WHEN submitted_at IS NOT NULL THEN 1 ELSE 0 END) AS submitted_sessions
         FROM accessible_japan_form_sessions
         WHERE form_id = ? AND is_test = 0
-          AND source = 'accessible_japan' AND source_page_key IS NOT NULL
+          AND source = 'accessible_japan' AND attribution_method = 'utm'
+          AND source_page_key IS NOT NULL
         GROUP BY source_page_key
         ORDER BY sessions DESC, source_page_key
         LIMIT 100
@@ -551,7 +552,7 @@ async function getTrafficReport(request, env) {
         FROM accessible_japan_form_session_events e
         INNER JOIN accessible_japan_form_sessions s ON s.session_id = e.session_id
         WHERE e.form_id = ? AND e.is_test = 0 AND e.event_type = 'form_progress'
-          AND s.source = 'accessible_japan'
+          AND s.source = 'accessible_japan' AND s.attribution_method = 'utm'
         GROUP BY e.field_index, e.field_key
         ORDER BY field_index ASC
       `).bind(ACCESSIBLE_JAPAN_FORM_ID).all(),
@@ -565,7 +566,8 @@ async function getTrafficReport(request, env) {
           FROM accessible_japan_form_session_events e
           INNER JOIN accessible_japan_form_sessions s ON s.session_id = e.session_id
           WHERE e.form_id = ? AND e.is_test = 0 AND e.event_type = 'form_progress'
-            AND s.source = 'accessible_japan' AND s.submitted_at IS NULL
+            AND s.source = 'accessible_japan' AND s.attribution_method = 'utm'
+            AND s.submitted_at IS NULL
             AND s.last_seen_at <= datetime('now', '-30 minutes')
         )
         SELECT field_index, field_key, COUNT(*) AS dropoff_sessions
