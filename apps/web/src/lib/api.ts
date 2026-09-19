@@ -158,6 +158,18 @@ function getApiKey(): string {
   return process.env.NEXT_PUBLIC_API_KEY || ''
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public outcome?: string) { super(message); this.name = 'ApiError' }
+}
+
+export async function openWhatsAppDocument(friendId: string, key: string, name: string) {
+  const response = await fetch(`${API_URL}/api/whatsapp/friends/${encodeURIComponent(friendId)}/documents/${encodeURIComponent(key)}`, { headers: { Authorization: `Bearer ${getApiKey()}` } })
+  if (!response.ok) throw new Error('PDFを取得できませんでした')
+  const url = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a'); link.href = url; link.download = name; link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
 export async function fetchApi<T>(path: string, options?: RequestInit & { rawBody?: boolean }): Promise<T> {
   const { rawBody, ...fetchOptions } = options || {}
   const headers: Record<string, string> = {
@@ -175,8 +187,8 @@ export async function fetchApi<T>(path: string, options?: RequestInit & { rawBod
     },
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string; message?: string } | null
-    throw new Error(body?.error || body?.message || `API error: ${res.status}`)
+    const body = await res.json().catch(() => null) as { error?: string; message?: string; outcome?: string } | null
+    throw new ApiError(body?.error || body?.message || `API error: ${res.status}`, body?.outcome)
   }
   return res.json() as Promise<T>
 }

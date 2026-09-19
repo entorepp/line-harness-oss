@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "test:whatsapp-send-contract": "node scripts/test-whatsapp-send-contract.mjs",
-    "test:whatsapp-reply-window": "esbuild scripts/test-whatsapp-reply-window.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-reply-window.cjs && node .next/tests/whatsapp-reply-window.cjs"
+    "test:whatsapp-reply-window": "esbuild scripts/test-whatsapp-reply-window.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-reply-window.cjs && node .next/tests/whatsapp-reply-window.cjs",
+    "test:whatsapp-templates": "esbuild scripts/test-whatsapp-templates.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-templates.cjs && node .next/tests/whatsapp-templates.cjs"
   },
   "dependencies": {
     "@line-crm/shared": "workspace:*",
@@ -20,7 +21,9 @@
     "@types/node": "25.5.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/react-test-renderer": "19.1.0",
     "postcss": "^8.5.0",
+    "react-test-renderer": "19.2.4",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0"
   }

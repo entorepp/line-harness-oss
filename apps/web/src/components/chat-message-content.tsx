@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { openWhatsAppDocument } from '@/lib/api'
 
 function safeJsonParse(content: string): Record<string, unknown> | null {
   try {
@@ -127,6 +128,7 @@ function summarizeFile(content: string): string {
 }
 
 export function getMessagePreviewText(messageType: string, content: string): string {
+  if (messageType === 'whatsapp_template') return String(safeJsonParse(content)?.text || 'WhatsAppの案内')
   if (messageType === 'text') return content
   if (messageType === 'image') return '画像'
   if (messageType === 'file') return summarizeFile(content)
@@ -311,6 +313,14 @@ export default function ChatMessageContent({
   messageType: string
   content: string
 }) {
+  if (messageType === 'whatsapp_template') {
+    const data = safeJsonParse(content)
+    const attachment = data?.document as { key?: string; name?: string } | null
+    return <div className="space-y-2">
+      <p className="whitespace-pre-wrap break-words">{String(data?.text || 'WhatsAppの案内')}</p>
+      {attachment?.key && typeof data?.friendId === 'string' && <button type="button" className="break-all text-left underline" onClick={() => void openWhatsAppDocument(String(data.friendId), attachment.key!, attachment.name || 'document.pdf').catch(() => alert('PDFが見つからないか保存期間が終了しました'))}>PDF: {attachment.name}</button>}
+    </div>
+  }
   if (messageType === 'text') {
     return <span className="whitespace-pre-wrap break-words">{content}</span>
   }

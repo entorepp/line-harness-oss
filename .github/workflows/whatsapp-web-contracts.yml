@@ -1,0 +1,23 @@
+name: WhatsApp Web contracts
+on:
+  pull_request:
+    branches: [codex/whatsapp-identity-web-live-20260909]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @line-crm/shared build
+      - run: pnpm --filter web test:whatsapp-templates
+      - run: pnpm --filter web test:whatsapp-reply-window
+      - run: pnpm --filter web test:whatsapp-send-contract
+      - run: pnpm --filter web exec tsc --noEmit
+      - run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_API_URL: https://line-flattravel.flat-travel.workers.dev
