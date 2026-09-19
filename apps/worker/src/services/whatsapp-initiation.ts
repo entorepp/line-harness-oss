@@ -20,7 +20,7 @@ type RawTemplateComponent = {
   buttons?: RawTemplateButton[];
 };
 
-type RawWhatsAppTemplate = {
+export type RawWhatsAppTemplate = {
   id?: string;
   name?: string;
   status?: string;
@@ -193,7 +193,7 @@ export function normalizeWhatsAppTemplate(raw: RawWhatsAppTemplate): WhatsAppIni
   };
 }
 
-export async function fetchApprovedWhatsAppTemplates(account: LineAccount): Promise<WhatsAppInitiationTemplate[]> {
+export async function fetchWhatsAppTemplateDefinitions(account: LineAccount): Promise<RawWhatsAppTemplate[]> {
   const wabaId = account.whatsapp_business_account_id?.trim();
   if (!wabaId || !/^\d{5,30}$/.test(wabaId)) {
     throw new Error('WhatsApp Business Account ID is not configured');
@@ -204,7 +204,6 @@ export async function fetchApprovedWhatsAppTemplates(account: LineAccount): Prom
     'fields',
     'id,name,status,category,language,parameter_format,components',
   );
-  firstUrl.searchParams.set('status', 'APPROVED');
   firstUrl.searchParams.set('limit', '100');
 
   const rawTemplates: RawWhatsAppTemplate[] = [];
@@ -214,6 +213,7 @@ export async function fetchApprovedWhatsAppTemplates(account: LineAccount): Prom
     try {
       response = await fetch(nextUrl, {
         headers: { Authorization: `Bearer ${account.channel_access_token}` },
+        signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
       throw new Error(
@@ -230,7 +230,11 @@ export async function fetchApprovedWhatsAppTemplates(account: LineAccount): Prom
     nextUrl = data?.paging?.next ? validateNextPageUrl(data.paging.next) : null;
   }
 
-  return rawTemplates
+  return rawTemplates;
+}
+
+export async function fetchApprovedWhatsAppTemplates(account: LineAccount): Promise<WhatsAppInitiationTemplate[]> {
+  return (await fetchWhatsAppTemplateDefinitions(account))
     .filter((template) => template.status?.toUpperCase() === 'APPROVED')
     .map(normalizeWhatsAppTemplate)
     .filter((template): template is WhatsAppInitiationTemplate => template !== null)
