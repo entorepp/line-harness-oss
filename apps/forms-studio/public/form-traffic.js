@@ -1,5 +1,5 @@
-/* The Google tag runs only inside this empty document with Consent Mode v2.
-   Before consent it sends cookieless, sanitized measurement pings. Enhanced
+/* The Google tag runs only inside this empty document in permanent cookieless
+   mode. All storage and advertising consent signals stay denied. Enhanced
    measurement has no local form inputs or submit events. */
 (() => {
   'use strict';
@@ -21,23 +21,9 @@
 
   function gtag() { window.dataLayer.push(arguments); }
 
-  function updateConsent(value) {
-    gtag('consent', 'update', {
-      analytics_storage: value === 'granted' ? 'granted' : 'denied',
-      ad_storage: 'denied',
-      ad_user_data: 'denied',
-      ad_personalization: 'denied',
-    });
-  }
-
   window.addEventListener('message', (event) => {
     if (event.origin !== origin || event.source !== window.parent) return;
     const input = event.data;
-    if (input?.type === 'liffform:consent-update') {
-      if (!initialized || !['granted', 'denied'].includes(input.analytics_storage)) return;
-      updateConsent(input.analytics_storage);
-      return;
-    }
     if (input?.type === 'liffform:analytics-event') {
       if (!initialized || !['lead_form_start', 'form_progress', 'generate_lead'].includes(input.event_name)) return;
       const fieldIndex = allowedFields.get(input.field_key);
@@ -67,10 +53,6 @@
       send_page_view: false,
       allow_google_signals: false,
       allow_ad_personalization_signals: false,
-      cookie_prefix: 'liffform',
-      cookie_domain: 'liffform-studio.pages.dev',
-      cookie_expires: 15552000,
-      cookie_flags: 'SameSite=Lax;Secure',
       ...(trafficType ? { traffic_type: trafficType } : {}),
       ...(aj ? {
         campaign_source: 'accessible_japan',
@@ -80,15 +62,16 @@
         campaign_name: input.campaign_name === 'hotel_detail'
           ? 'hotel_detail'
           : 'accessible_japan_forms',
+        ...(/^[a-z0-9][a-z0-9-]{0,95}$/.test(input.campaign_content)
+          ? { campaign_content: input.campaign_content }
+          : {}),
       } : {}),
     };
     initialized = true;
     window.dataLayer = [];
     gtag('consent', 'default', {
       analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied',
-      wait_for_update: 500,
     });
-    if (input.analytics_consent === 'granted') updateConsent('granted');
     gtag('set', 'url_passthrough', false);
     gtag('set', 'ads_data_redaction', true);
     gtag('js', new Date());

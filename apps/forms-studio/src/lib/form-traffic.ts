@@ -9,6 +9,7 @@ export type TrafficContext = {
   campaign_source: string
   campaign_medium: string
   campaign_name: string
+  campaign_content: string
   traffic_type: '' | 'internal'
 }
 
@@ -19,8 +20,9 @@ export type TrafficAnalyticsEvent = {
   field_index?: number
 }
 
-// Only campaign constants and a referrer origin cross into the analytics frame.
-// Form answers, issue IDs, hotel names, URL paths, queries and fragments do not.
+// Only campaign constants, a bounded page key and a referrer origin cross into
+// the analytics frame. Form answers, issue IDs, raw hotel names, URLs, queries
+// and fragments do not.
 export function buildTrafficContext(href: string, referrer: string): TrafficContext | null {
   let url: URL
   try { url = new URL(href) } catch { return null }
@@ -58,12 +60,21 @@ export function buildTrafficContext(href: string, referrer: string): TrafficCont
     : hasHotelContext ? 'cta' : 'referral'
   const requestedCampaign = url.searchParams.get('utm_campaign')?.trim().toLowerCase() || ''
   const campaignName = requestedCampaign === 'hotel_detail' ? 'hotel_detail' : 'accessible_japan_forms'
+  const campaignContent = [
+    'utm_content',
+    'source_hotel_slug',
+    'hotel_slug',
+  ].map((key) => url.searchParams.get(key) || '')
+    .map((value) => value.normalize('NFKD').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 96))
+    .find(Boolean) || ''
   return {
     type: 'liffform:page-view',
     page_referrer: referrerOrigin,
     campaign_source: isAccessibleJapan ? 'accessible_japan' : '',
     campaign_medium: isAccessibleJapan ? campaignMedium : '',
     campaign_name: isAccessibleJapan ? campaignName : '',
+    campaign_content: isAccessibleJapan ? campaignContent : '',
     traffic_type: url.searchParams.get('aj_test') === '1' ? 'internal' : '',
   }
 }

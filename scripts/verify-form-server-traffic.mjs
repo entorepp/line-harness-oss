@@ -161,14 +161,14 @@ assert.deepEqual(Array.from(sessionWrite(arrival.db).values.slice(1)), [
 assert.doesNotMatch(JSON.stringify(arrival.db.writes), /private@example|accessible-japan\.com\/private/i)
 
 const joshArrival = await execute(new Request(
-  `${form}&utm_source=accessiblejapan&utm_medium=cta&utm_campaign=hotel_detail&prefill_Hotel+Name=Hilton+Tokyo&email=private@example.com`,
+  `${form}&utm_source=accessiblejapan&utm_medium=cta&utm_campaign=hotel_detail&utm_content=aj-hilton-tokyo&prefill_Hotel+Name=Hilton+Tokyo&email=private@example.com`,
 ))
 assert.equal(joshArrival.response.status, 200)
 assert.deepEqual(Array.from(legacyWrite(joshArrival.db).values.slice(1)), [
   formId, 'form_arrival', 'accessible_japan', 'referral', null, 'utm', 0,
 ])
 assert.deepEqual(Array.from(sessionWrite(joshArrival.db).values.slice(1)), [
-  formId, 'accessible_japan', 'cta', 'hotel_detail', 'hilton-tokyo', null, 'utm', 0,
+  formId, 'accessible_japan', 'cta', 'hotel_detail', 'aj-hilton-tokyo', null, 'utm', 0,
 ])
 assert.doesNotMatch(JSON.stringify(joshArrival.db.writes), /private@example|Hilton Tokyo/i)
 
