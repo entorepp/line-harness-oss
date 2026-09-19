@@ -9,12 +9,14 @@ const aj = buildTrafficContext(`${base}&utm_source=accessible_japan&utm_medium=c
 assert.deepEqual(aj, {
   type: 'liffform:page-view', page_referrer: 'https://www.accessible-japan.com/',
   campaign_source: 'accessible_japan', campaign_medium: 'cpc', campaign_name: 'accessible_japan_forms',
+  campaign_content: '',
   traffic_type: '',
 })
-const joshUtm = buildTrafficContext(`${base}&utm_source=accessiblejapan&utm_medium=cta&utm_campaign=hotel_detail`, '')
+const joshUtm = buildTrafficContext(`${base}&utm_source=accessiblejapan&utm_medium=cta&utm_campaign=hotel_detail&utm_content=hotel%2Fhilton-tokyo`, '')
 assert.deepEqual(joshUtm, {
   type: 'liffform:page-view', page_referrer: '',
   campaign_source: 'accessible_japan', campaign_medium: 'cta', campaign_name: 'hotel_detail',
+  campaign_content: 'hotel-hilton-tokyo',
   traffic_type: '',
 })
 assert.equal(buildTrafficContext(base, 'https://accessible-japan.com/hotel/').campaign_medium, 'referral')
@@ -22,6 +24,7 @@ assert.equal(buildTrafficContext(base, '').campaign_source, '')
 assert.deepEqual(buildTrafficContext(base + '&prefill_Hotel+Name=Hilton+Tokyo', ''), {
   type: 'liffform:page-view', page_referrer: '',
   campaign_source: 'accessible_japan', campaign_medium: 'cta', campaign_name: 'accessible_japan_forms',
+  campaign_content: '',
   traffic_type: '',
 })
 assert.equal(buildTrafficContext(base + '&aj_test=1', '').traffic_type, 'internal')
@@ -72,17 +75,18 @@ assert.equal(config.page_referrer, 'https://www.accessible-japan.com/')
 assert.equal(config.page_location, base)
 assert.equal(commands[0][2].analytics_storage, 'denied')
 assert.equal(commands[0][2].ad_user_data, 'denied')
-assert.equal(commands[0][2].wait_for_update, 500)
+assert.equal(commands[0][2].ad_storage, 'denied')
+assert.equal(commands[0][2].ad_personalization, 'denied')
+assert.equal(commands[0][2].wait_for_update, undefined)
+assert.equal(config.cookie_prefix, undefined)
+assert.equal(config.cookie_domain, undefined)
 assert.doesNotMatch(JSON.stringify(commands), /person@example|private|secret|prefill|email|issue=/i)
 rt.message({ type: 'liffform:consent-update', analytics_storage: 'granted' })
 rt.message({ type: 'liffform:consent-update', analytics_storage: 'invalid' })
 const consentUpdates = rt.window.dataLayer
   .map((args) => Array.from(args))
   .filter(([name, action]) => name === 'consent' && action === 'update')
-assert.equal(consentUpdates.length, 1)
-assert.deepEqual(JSON.parse(JSON.stringify(consentUpdates[0][2])), {
-  analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied',
-})
+assert.equal(consentUpdates.length, 0, 'Cookieless-only collection must never grant storage')
 rt.message({ type: 'liffform:analytics-event', event_name: 'lead_form_start' })
 rt.message({ type: 'liffform:analytics-event', event_name: 'form_progress', field_key: 'hotel_grade', field_value: 'private' })
 rt.message({ type: 'liffform:analytics-event', event_name: 'generate_lead' })
@@ -111,12 +115,11 @@ const joshConfig = Array.from(joshRuntime.window.dataLayer[4])[2]
 assert.equal(joshConfig.campaign_source, 'accessible_japan')
 assert.equal(joshConfig.campaign_medium, 'cta')
 assert.equal(joshConfig.campaign_name, 'hotel_detail')
-const granted = runtime()
-granted.message({ ...aj, analytics_consent: 'granted' })
-const grantedCommands = granted.window.dataLayer.map((args) => Array.from(args))
-assert.equal(grantedCommands[0][2].analytics_storage, 'denied')
-assert.equal(grantedCommands[1][0], 'consent')
-assert.equal(grantedCommands[1][1], 'update')
-assert.equal(grantedCommands[1][2].analytics_storage, 'granted')
-assert.equal(grantedCommands.filter(([name, event]) => name === 'event' && event === 'page_view').length, 1)
-console.log('PASS: form scope, advanced consent handshake, campaign attribution, origin checks, preview exclusion, PII sanitization and page-view deduplication')
+assert.equal(joshConfig.campaign_content, 'hotel-hilton-tokyo')
+const forgedGrant = runtime()
+forgedGrant.message({ ...aj, analytics_consent: 'granted' })
+const forgedGrantCommands = forgedGrant.window.dataLayer.map((args) => Array.from(args))
+assert.equal(forgedGrantCommands[0][2].analytics_storage, 'denied')
+assert.equal(forgedGrantCommands.filter(([name, action]) => name === 'consent' && action === 'update').length, 0)
+assert.equal(forgedGrantCommands.filter(([name, event]) => name === 'event' && event === 'page_view').length, 1)
+console.log('PASS: form scope, permanent cookieless collection, campaign attribution, origin checks, preview exclusion, PII sanitization and page-view deduplication')

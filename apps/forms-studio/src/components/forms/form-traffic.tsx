@@ -10,25 +10,27 @@ import {
   type TrafficContext,
 } from '@/lib/form-traffic'
 
-type Choice = 'granted' | 'denied' | null
-
 export default function FormTraffic() {
   const [context, setContext] = useState<TrafficContext | null>(null)
-  const [choice, setChoice] = useState<Choice>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
   const counted = useRef(false)
   const frameReady = useRef(false)
   const queuedEvents = useRef<TrafficAnalyticsEvent[]>([])
 
   useEffect(() => {
-    setContext(buildTrafficContext(window.location.href, document.referrer))
     try {
-      const saved = JSON.parse(localStorage.getItem(TRAFFIC_CONSENT_KEY) || 'null')
-      if (saved?.expires > Date.now() && ['granted', 'denied'].includes(saved.choice)) {
-        setChoice(saved.choice)
-      }
+      localStorage.removeItem(TRAFFIC_CONSENT_KEY)
     } catch { /* Storage is optional; the form remains usable. */ }
+    // This collector is permanently cookieless. Remove cookies left by the
+    // earlier optional-consent implementation before mounting its iframe.
+    for (const cookie of document.cookie.split(';')) {
+      const name = cookie.trim().split('=')[0]
+      if (!/^liffform_ga(?:_|$)/.test(name)) continue
+      document.cookie = `${name}=; Max-Age=0; Path=/`
+      document.cookie = `${name}=; Max-Age=0; Path=/; Domain=${window.location.hostname}`
+      document.cookie = `${name}=; Max-Age=0; Path=/; Domain=.${window.location.hostname}`
+    }
+    setContext(buildTrafficContext(window.location.href, document.referrer))
   }, [])
 
   useEffect(() => {
@@ -45,39 +47,13 @@ export default function FormTraffic() {
     return () => window.removeEventListener(TRAFFIC_EVENT_NAME, forward)
   }, [])
 
-  useEffect(() => {
-    if (!frameReady.current || choice === null) return
-    frame.current?.contentWindow?.postMessage({
-      type: 'liffform:consent-update',
-      analytics_storage: choice,
-    }, TRAFFIC_ORIGIN)
-  }, [choice])
-
-  const choose = (next: Exclude<Choice, null>) => {
-    setChoice(next)
-    setSettingsOpen(false)
-    try {
-      localStorage.setItem(TRAFFIC_CONSENT_KEY, JSON.stringify({ choice: next, expires: Date.now() + 180 * 86400000 }))
-    } catch { /* In-memory consent still applies to this page. */ }
-    if (next === 'denied') {
-      // Also remove cookies from an earlier consented visit.
-      for (const cookie of document.cookie.split(';')) {
-        const name = cookie.trim().split('=')[0]
-        if (!/^liffform_ga(?:_|$)/.test(name)) continue
-        document.cookie = `${name}=; Max-Age=0; Path=/`
-        document.cookie = `${name}=; Max-Age=0; Path=/; Domain=${window.location.hostname}`
-        document.cookie = `${name}=; Max-Age=0; Path=/; Domain=.${window.location.hostname}`
-      }
-    }
-  }
-
   if (!context) return null
 
-  return <>
+  return (
     <iframe
       ref={frame}
       title="Form visit analytics"
-      src="/form-traffic.html?v=20260919-1"
+      src="/form-traffic.html?v=20260919-2"
       sandbox="allow-scripts allow-same-origin"
       referrerPolicy="no-referrer"
       hidden
@@ -86,27 +62,12 @@ export default function FormTraffic() {
         frameReady.current = true
         if (counted.current) return
         counted.current = true
-        frame.current?.contentWindow?.postMessage({
-          ...context,
-          analytics_consent: choice === 'granted' ? 'granted' : 'denied',
-        }, TRAFFIC_ORIGIN)
+        frame.current?.contentWindow?.postMessage(context, TRAFFIC_ORIGIN)
         for (const event of queuedEvents.current) {
           frame.current?.contentWindow?.postMessage(event, TRAFFIC_ORIGIN)
         }
         queuedEvents.current = []
       }}
     />
-    {choice === null || settingsOpen ? <aside
-      aria-label="Analytics cookie choice"
-      className="relative z-30 mx-auto mb-6 max-w-4xl rounded-2xl border border-[#d7e5dc] bg-white px-5 py-4 text-sm text-slate-700 shadow-sm"
-    >
-      <p className="leading-6">We use cookieless Google Analytics measurement to count form visits and completed submissions. May we also use Analytics cookies to understand repeat visits and how people find this form? Your answers are never sent. You can use the form either way.</p>
-      <div className="mt-3 flex flex-wrap gap-3">
-        <button type="button" onClick={() => choose('granted')} className="rounded-full border border-[#1d5c47] px-5 py-2 font-medium text-[#1d5c47] hover:bg-[#edf5ef]">Allow analytics</button>
-        <button type="button" onClick={() => choose('denied')} className="rounded-full border border-[#1d5c47] px-5 py-2 font-medium text-[#1d5c47] hover:bg-[#edf5ef]">Decline analytics</button>
-      </div>
-    </aside> : <div className="relative mx-auto mb-4 max-w-4xl text-right">
-      <button type="button" className="text-xs text-slate-600 underline underline-offset-4" onClick={() => setSettingsOpen(true)}>Analytics cookie settings</button>
-    </div>}
-  </>
+  )
 }

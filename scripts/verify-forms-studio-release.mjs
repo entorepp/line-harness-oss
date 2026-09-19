@@ -41,10 +41,12 @@ if (process.argv.includes('--built')) {
   const chunks = [...html.matchAll(/src="([^\"]*\/app\/public-form\/[^\"]+\.js)"/g)].map(match => match[1])
   assert.ok(chunks.length > 0, 'Public form bundle is missing')
   const code = chunks.map(chunk => readFileSync(path.join(root, 'apps/forms-studio/out', chunk), 'utf8')).join('\n')
-  assert.ok(code.includes('/form-traffic.html') && code.includes('Allow analytics')
-    && code.includes('cookieless Google Analytics measurement')
-    && code.includes('liffform:consent-update') && code.includes('analytics_consent'),
-    'The published form must include the Advanced Consent Mode analytics component')
+  assert.ok(code.includes('/form-traffic.html?v=20260919-2')
+    && code.includes('liffform.analytics-consent.v1')
+    && !code.includes('Allow analytics')
+    && !code.includes('Decline analytics')
+    && !code.includes('Analytics cookie settings'),
+    'The published form must include the cookieless collector without a consent banner')
 }
 
 console.log(JSON.stringify({ releaseGuard: 'passed', branch: productionBranch,
