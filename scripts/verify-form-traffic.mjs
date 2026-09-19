@@ -19,14 +19,15 @@ assert.deepEqual(joshUtm, {
   campaign_content: 'hotel-hilton-tokyo',
   traffic_type: '',
 })
-assert.equal(buildTrafficContext(base, 'https://accessible-japan.com/hotel/').campaign_medium, 'referral')
+assert.equal(buildTrafficContext(base, 'https://accessible-japan.com/hotel/').campaign_source, '')
 assert.equal(buildTrafficContext(base, '').campaign_source, '')
 assert.deepEqual(buildTrafficContext(base + '&prefill_Hotel+Name=Hilton+Tokyo', ''), {
   type: 'liffform:page-view', page_referrer: '',
-  campaign_source: 'accessible_japan', campaign_medium: 'cta', campaign_name: 'accessible_japan_forms',
+  campaign_source: '', campaign_medium: '', campaign_name: '',
   campaign_content: '',
   traffic_type: '',
 })
+assert.equal(buildTrafficContext(base + '&utm_source=accessible_japan&source_hotel_slug=hilton-tokyo', '').campaign_content, '')
 assert.equal(buildTrafficContext(base + '&aj_test=1', '').traffic_type, 'internal')
 assert.equal(buildTrafficContext(base + '&utm_source=google&prefill_Hotel+Name=Hilton+Tokyo', '').campaign_source, '')
 assert.equal(buildTrafficContext(base, 'https://accessible-japan.com.evil.example/hotel').campaign_source, '')

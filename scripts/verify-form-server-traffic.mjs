@@ -28,9 +28,12 @@ const worker = sandbox.__worker
 
 function createDb() {
   const writes = []
+  const preparedSql = []
   return {
     writes,
+    preparedSql,
     prepare(sql) {
+      preparedSql.push(sql)
       let values = []
       return {
         bind(...next) { values = next; return this },
@@ -329,6 +332,9 @@ assert.deepEqual(JSON.parse(JSON.stringify(report.data.fieldFunnel)), [{
   reachedSessions: 3,
   dropoffSessions: 1,
 }])
+const sessionReportSql = authorized.db.preparedSql.join('\n')
+assert.match(sessionReportSql, /source = 'accessible_japan' AND attribution_method = 'utm'/)
+assert.match(sessionReportSql, /s\.source = 'accessible_japan' AND s\.attribution_method = 'utm'/)
 assert.equal(report.data.trackedUrl, 'https://liffform-studio.pages.dev/go/accessible-japan')
 assert.equal(report.data.formUrl, form)
 
