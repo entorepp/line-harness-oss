@@ -27,6 +27,7 @@ jobs:
       - run: pnpm --filter @line-crm/line-sdk build
       - run: pnpm --filter @line-crm/db typecheck
       - run: pnpm --filter worker typecheck
+      - run: pnpm --filter worker test:whatsapp-operational-templates
       - run: pnpm --filter worker test:whatsapp-send
       - run: pnpm --filter worker test:whatsapp-delivery-status
       - run: pnpm --filter worker test:whatsapp-reply-window

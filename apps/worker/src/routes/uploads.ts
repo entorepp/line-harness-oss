@@ -336,7 +336,7 @@ uploads.get('/api/files/:key', async (c) => {
     'arrayBuffer',
   );
 
-  if (!value || metadata?.access === FORM_PRIVATE_UPLOAD_ACCESS) {
+  if (!value || (metadata?.access && metadata.access !== 'public')) {
     return c.json({ error: 'Not found' }, 404);
   }
 
@@ -378,7 +378,7 @@ uploads.get('/api/images/:key', async (c) => {
     'arrayBuffer',
   );
 
-  if (!value || metadata?.access === FORM_PRIVATE_UPLOAD_ACCESS) {
+  if (!value || (metadata?.access && metadata.access !== 'public')) {
     return c.json({ error: 'Not found' }, 404);
   }
 
