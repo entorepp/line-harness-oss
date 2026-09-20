@@ -1,3 +1,4 @@
+import { normalizeLeadAttribution } from './lead-attribution.js';
 export const TRAVEL_QUOTE_INTENT_PATH = '/api/travel/quote-intents';
 export const TRAVEL_QUOTE_INTENT_MAX_BYTES = 48_000;
 export const TRAVEL_PROFILE_CONSENT_VERSION = 'flat-travel-profile-v1';
@@ -155,6 +156,7 @@ export type AgreementSnapshot = {
 };
 
 export type TravelQuoteIntent = {
+  attribution?: Record<string, any>;
   quoteReference: string;
   mode: 'journey' | 'private' | 'agent';
   channel: 'whatsapp' | 'instagram' | 'messenger' | 'email';
@@ -554,6 +556,7 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   return {
     ok: true,
     value: {
+      attribution: normalizeLeadAttribution(body.attribution),
       quoteReference,
       mode: mode as TravelQuoteIntent['mode'],
       channel: channel as TravelQuoteIntent['channel'],
@@ -643,6 +646,7 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
 
 export function travelQuoteReceiptMetadata(intent: TravelQuoteIntent, draft: FlatworkerDraftSummary): Record<string, unknown> {
   return {
+    attribution: normalizeLeadAttribution(intent.attribution),
     quoteReference: intent.quoteReference,
     mode: intent.mode,
     channel: intent.channel,

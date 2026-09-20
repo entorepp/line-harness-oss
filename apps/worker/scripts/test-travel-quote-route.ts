@@ -1,3 +1,6 @@
+import { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
+import { normalizeLeadAttribution } from '../src/services/lead-attribution.js';
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import { travelQuoteIntents } from '../src/routes/travel-quote-intents.js';
@@ -39,9 +42,9 @@ function statement(sql: string) {
         return { success: true, meta: { changes: row ? 1 : 0 } };
       }
       if (sql.startsWith('UPDATE notifications SET title')) {
-        const [title, body, metadata, id] = bindings;
+        const [title, body, metadata, fallbackMetadata, id] = bindings;
         const row = rows.find((item) => item.id === id);
-        if (row) Object.assign(row, { title, body, metadata });
+        if (row) Object.assign(row, { title, body, metadata: JSON.stringify({...JSON.parse(metadata), attribution: JSON.parse(row.metadata).attribution || JSON.parse(fallbackMetadata).attribution}) });
         return { success: true, meta: { changes: row ? 1 : 0 } };
       }
       throw new Error(`Unexpected run() SQL: ${sql}`);
@@ -77,6 +80,7 @@ async function request(payload: Record<string, unknown>, origin = 'https://flat-
 }
 
 const payload = {
+  attribution: {schemaVersion:'flat-travel-attribution-v1',status:'captured',firstTouch:{utm:{source:'meta',medium:'paid_social',campaign:'test'},landingPath:'/en'},lastTouch:{utm:{source:'meta',medium:'paid_social',campaign:'test'},landingPath:'/en'},route:['/en','/en/tailor-made']},
   quoteReference: 'FTQ-20260801-AB12CD34',
   mode: 'journey',
   channel: 'whatsapp',
@@ -143,6 +147,8 @@ const created = await request(payload);
 assert.equal(created.status, 202);
 assert.deepEqual(await created.json(), { success: true, duplicate: false, slackNotified: true, reference: payload.quoteReference, flatworkerDraft: { status: 'created', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true, automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } } });
 assert.equal(rows.length, 1);
+assert.equal(JSON.parse(String(rows[0].metadata)).attribution.lastTouch.utm.source, 'meta');
+assert.equal((flatworkerPosts[0].body.attribution as any).lastTouch.utm.source, 'meta');
 assert.equal(rows[0].event_type, 'travel_quote_intent');
 assert.equal(rows[0].channel, 'slack');
 assert.equal(rows[0].status, 'sent');
@@ -196,7 +202,8 @@ assert.equal(flatworkerPosts[0].body.boardingPreference, 'Remain seated in wheel
 assert.deepEqual(flatworkerPosts[0].body.supportNeeds, ['Transfers', 'Bathroom support']);
 assert.doesNotMatch(rows[0].metadata, /system-test@example\.com/);
 
-const duplicate = await request(payload);
+const duplicate = await request({...payload, attribution: undefined});
+assert.equal(JSON.parse(String(rows[0].metadata)).attribution.lastTouch.utm.source, "meta");
 assert.equal(duplicate.status, 200);
 assert.deepEqual(await duplicate.json(), { success: true, duplicate: true, slackNotified: null, reference: payload.quoteReference, flatworkerDraft: { status: 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true, automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } } });
 assert.equal(rows.length, 1);
@@ -317,3 +324,19 @@ if (nameOnlyCopy.ok) {
 }
 
 console.log('travel quote intent route: create, deduplicate, validate, staff name and redaction passed');
+
+const untrusted = normalizeLeadAttribution({schemaVersion:'flat-travel-attribution-v1',status:'captured',lastTouch:{utm:{source:'meta',campaign:'person@example.com',content:'09012345678'},referrerOrigin:'https://example.com/path?email=private'},route:['/en?email=private',...Array(40).fill('/en')]});
+assert.deepEqual(untrusted.lastTouch.utm,{source:'meta'});
+assert.equal(untrusted.lastTouch.referrerOrigin,'https://example.com');
+assert.equal(untrusted.route.length,30);
+assert.equal(normalizeLeadAttribution(null).status,'unavailable');
+const sqlSource=readFileSync('src/routes/travel-quote-intents.ts','utf8');
+const sql=sqlSource.match(/`(UPDATE notifications SET title[^`]+)`/)![1];
+const db=new DatabaseSync(':memory:');
+db.exec('CREATE TABLE notifications(id TEXT,title TEXT,body TEXT,metadata TEXT)');
+db.prepare('INSERT INTO notifications VALUES(?,?,?,?)').run('test','','',JSON.stringify({attribution:untrusted}));
+const incoming=JSON.stringify({attribution:{status:'unavailable'},changed:true});
+db.prepare(sql).run('','',incoming,incoming,'test');
+const persisted=JSON.parse(String(db.prepare('SELECT metadata FROM notifications').get()!.metadata));
+assert.deepEqual(persisted.attribution,untrusted);assert.equal(persisted.changed,true);
+console.log('Attribution redaction, forwarding, D1 receipt and actual SQLite duplicate SQL passed');
