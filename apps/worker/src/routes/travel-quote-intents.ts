@@ -62,8 +62,8 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
   const duplicate = (inserted.meta.changes || 0) === 0;
   if (duplicate) {
     await c.env.DB.prepare(
-      `UPDATE notifications SET title = ?, body = ?, metadata = ? WHERE id = ?`,
-    ).bind(copy.title, copy.body, metadata, notificationId).run();
+      `UPDATE notifications SET title = ?, body = ?, metadata = json_set(?, '$.attribution', json(COALESCE(json_extract(metadata, '$.attribution'), json_extract(?, '$.attribution')))) WHERE id = ?`,
+    ).bind(copy.title, copy.body, metadata, metadata, notificationId).run();
   }
   let slackNotified: boolean | null = null;
   if (!duplicate) {
