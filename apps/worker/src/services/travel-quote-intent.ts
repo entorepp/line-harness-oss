@@ -599,7 +599,7 @@ function compactLines(values: string[], limit: number): string[] {
   return [...values.slice(0, limit), `…他${values.length - limit}件`];
 }
 
-export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: FlatworkerDraftSummary): { title: string; body: string } {
+export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: FlatworkerDraftSummary, includeCustomerName = false): { title: string; body: string } {
   const agreement = intent.agreementSnapshot;
   const journey = intent.title || intent.tourId || (intent.mode === 'private' ? 'Tailor-Made Travel' : 'Selected Journey');
   const hotels = compactLines(agreement.hotels.map((hotel) => {
@@ -618,6 +618,7 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
   const sections = [
     '【受付・顧客回答】',
     `参照番号: ${intent.quoteReference}`,
+    includeCustomerName ? `顧客名: ${intent.customerName ? intent.customerName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "未入力"}` : null,
     `商品: ${journey}`,
     intent.startDate ? `旅行: ${intent.startDate}${intent.days ? ` · ${intent.days}日間` : ''}` : '旅行: 日付要確認',
     intent.travellers ? `人数: ${intent.travellers}名` : '人数: 要確認',

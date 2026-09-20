@@ -67,10 +67,12 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
   }
   let slackNotified: boolean | null = null;
   if (!duplicate) {
+    // Include the submitted name only in staff Slack, not the persisted receipt.
+    const slackCopy = travelQuoteNotificationCopy(intent, flatworkerDraft, true);
     slackNotified = Boolean(c.env.SLACK_BOT_TOKEN) && await postToSlack({
       token: c.env.SLACK_BOT_TOKEN,
       channel: resolveSlackChannelId(c.env.TRAVEL_QUOTE_SLACK_CHANNEL_ID),
-      text: `${copy.title}\n\n${copy.body}`,
+      text: `${slackCopy.title}\n\n${slackCopy.body}`,
       username: 'Flat Travel website',
     });
     await c.env.DB.prepare(
