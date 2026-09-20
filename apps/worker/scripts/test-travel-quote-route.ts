@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import { travelQuoteIntents } from '../src/routes/travel-quote-intents.js';
 import { FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS } from '../src/services/flatworker-travel-quote.js';
-import { parseTravelQuoteIntent } from '../src/services/travel-quote-intent.js';
+import { parseTravelQuoteIntent, travelQuoteNotificationCopy } from '../src/services/travel-quote-intent.js';
 
 assert.equal(FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS, 45_000);
 
@@ -160,7 +160,8 @@ assert.equal(JSON.parse(rows[0].metadata).profileStored, true);
 assert.doesNotMatch(rows[0].metadata, /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 assert.equal(slackPosts.length, 1);
 assert.match(String(slackPosts[0].text), /FTQ-20260801-AB12CD34/);
-assert.doesNotMatch(String(slackPosts[0].text), /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
+assert.match(String(slackPosts[0].text), /顧客名: Alex Traveller/);
+assert.doesNotMatch(String(slackPosts[0].text), /Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 assert.equal(flatworkerPosts.length, 1);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers[0].preferredTimeSlot, '08-10');
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.railAndTransfers.length, 3);
@@ -301,4 +302,18 @@ assert.equal(rows.length, 3);
 assert.match(rows[2].id, /^travel-quote-intake-failed:/);
 assert.doesNotMatch(rows[2].metadata, /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
 
-console.log('travel quote intent route: create, deduplicate, validate, and origin guard passed');
+
+// Staff copy uses the validated submitted name; mentions cannot notify a channel.
+const nameOnlyCopy = parseTravelQuoteIntent(payload);
+assert.equal(nameOnlyCopy.ok, true);
+if (nameOnlyCopy.ok) {
+  const intent = nameOnlyCopy.value;
+  assert.match(travelQuoteNotificationCopy({ ...intent, customerName: '<!channel> A&B' }, undefined, true).body, /顧客名: &lt;!channel&gt; A&amp;B/);
+  assert.match(travelQuoteNotificationCopy({ ...intent, customerName: '' }, undefined, true).body, /顧客名: 未入力/);
+  assert.doesNotMatch(travelQuoteNotificationCopy(intent).body, /Alex Traveller/);
+  const legacy = parseTravelQuoteIntent({ ...payload, givenName: '', familyName: '' });
+  assert.equal(legacy.ok, true);
+  if (legacy.ok) assert.match(travelQuoteNotificationCopy(legacy.value, undefined, true).body, /顧客名: Alex Traveller/);
+}
+
+console.log('travel quote intent route: create, deduplicate, validate, staff name and redaction passed');
