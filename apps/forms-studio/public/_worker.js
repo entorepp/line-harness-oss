@@ -868,7 +868,7 @@ function createAcquisitionFunnel(options) {
   }
   function client(pageId) {
     // Values are never read: only fixed field/step keys and event types.
-    return `(${browserCollector.toString()})(${JSON.stringify({pageId,endpoint:prefix+'/events',submitPath:options.submitPath,surface:options.surface})});`;
+    return `(()=>{const __name=(value)=>value;(${browserCollector.toString()})(${JSON.stringify({pageId,endpoint:prefix+'/events',submitPath:options.submitPath,surface:options.surface})});})();`;
   }
   async function run(request,env,context,next) {
     if(!enabled(request,env)) return next(request);
