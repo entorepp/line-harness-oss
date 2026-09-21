@@ -57,3 +57,12 @@ await f.api(post({pageId:page.id,events:[click]}),env);
 await f.api(post({pageId:page.id,events:[click]}),env);
 await f.api(post({pageId:page.id,events:[{...click,id:crypto.randomUUID()}]}),env);
 assert.equal(sql.prepare('SELECT count(*) n FROM acquisition_clicks').get().n,2);
+
+// Rapid navigation flushes queued clicks even while the first event request is pending.
+const lifecycle={},out=[];
+const pendingWindow={fetch:async(u,o)=>{out.push(JSON.parse(o.body));return new Promise(()=>{})},addEventListener:(n,f)=>lifecycle[n]=f};
+const pendingDoc={...document,visibilityState:'hidden',addEventListener:(n,f)=>lifecycle[n]=f};
+vm.runInNewContext(f.client(page.id),{window:pendingWindow,document:pendingDoc,location:{origin,href:origin+'/en'},URL,Headers,Request,crypto,MutationObserver:class{observe(){}disconnect(){}},requestAnimationFrame:()=>{},setTimeout:()=>0,console});
+lifecycle.click({type:'click',isTrusted:true,target:{closest:selector=>selector==='a[href]'?{href:origin+'/en/tailor-made'}:null}});
+assert.equal(out.length,1);lifecycle.pagehide();
+assert.ok(out.slice(1).flatMap(b=>b.events).some(e=>e.event==='link_click'));

@@ -141,6 +141,7 @@ export function createAcquisitionFunnel(options) {
       if(e.type==='click'){emit('interaction',s);const a=e.target?.closest?.('a[href]');if(a){try{const u=new URL(a.href,location.href);if(/^https?:$/.test(u.protocol))emit('link_click',u.hostname==='liffform-studio.pages.dev'?'form_link':u.hostname==='flat-travel.com'&&u.origin!==location.origin?'site_link':u.origin===location.origin?'internal_link':'external_link')}catch{}}}
       if(e.type==='click'&&e.target?.closest?.('[data-private-step]')){emit('form_start');emit('field_interaction',s)}}
     ['click','input','change','focusin','keydown','touchstart'].forEach(t=>document.addEventListener(t,action,{capture:true,passive:true}));
+    window.addEventListener('pagehide',()=>{while(queue.length){const batch=queue.splice(0,12);nativeFetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageId:config.pageId,events:batch}),keepalive:true}).catch(()=>{})}});
     window.addEventListener('scroll',e=>{if(e.isTrusted)emit('interaction','scroll')},{passive:true});
     document.addEventListener('submit',e=>{if(e.isTrusted)emit('submit_attempt')},true);
     document.addEventListener('invalid',e=>{if(e.isTrusted){emit('submit_attempt');emit('validation_error',step(e.target))}},true);
