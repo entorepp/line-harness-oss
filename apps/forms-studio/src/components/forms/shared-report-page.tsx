@@ -304,6 +304,7 @@ export default function SharedReportPage() {
                     </p>
                   </div>
                   <p className="text-xs text-slate-400">最終取得 {dateTimeLabel(trafficReport.generatedAt)}</p>
+                  <a className="text-sm underline" href="/acquisition-report.html" onClick={(event) => { event.preventDefault(); window.location.assign(`/acquisition-report.html${window.location.hash}`) }}>公式サイトとフォームの共通流入・離脱レポート</a>
                 </div>
 
                 <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

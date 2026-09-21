@@ -28,6 +28,7 @@ cd "$ROOT_DIR"
 node scripts/verify-forms-studio-release.mjs
 node scripts/verify-form-traffic.mjs
 node scripts/verify-form-server-traffic.mjs
+node scripts/test-acquisition-funnel.mjs
 
 echo "=== Building shared package ==="
 cd "$ROOT_DIR"
