@@ -16,7 +16,7 @@ export function whatsappReplyBlock(
   }
   const expiresAt = window.expiresAt ? Date.parse(window.expiresAt) : NaN
   if (!window.canSend || !Number.isFinite(expiresAt) || now >= expiresAt) {
-    return '通常の文章・添付は、お客様の最後の返信から24時間以内に送れます。時間外は下の「予約・見積り・支払い案内」から承認済みの案内を利用してください。メールなどで連絡してWhatsAppに返信いただくと、通常の送信も再開できます。下書きは編集できます。'
+    return '通常の文章・添付は、お客様の最後の返信から24時間以内に送れます。時間外は下の「見積書・決済リンク・予約確定書」から承認済みの案内を利用してください。メールなどで連絡してWhatsAppに返信いただくと、通常の送信も再開できます。下書きは編集できます。'
   }
   if (scheduledAt && (!Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) >= expiresAt)) {
     return '予約時刻がWhatsAppの送信期限を超えています。期限より前の時刻を選んでください。'

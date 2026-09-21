@@ -19,6 +19,12 @@ export type TemplatePreview = {
 type Receipt = { status: 'accepted' | 'pending' | 'failed' | 'unknown'; errorCode?: string | null }
 type Response<T> = { success: boolean; data: T; error?: string }
 const errorText = (error: unknown) => error instanceof Error ? error.message : '処理に失敗しました'
+// Keep the operator menu aligned with the three supported daily workflows.
+const NOTICE_PURPOSES = [
+  { name: 'flat_travel_requested_quote_v1', label: '見積書を送る（PDF）' },
+  { name: 'flat_travel_payment_link_v1', label: '決済リンクを送る' },
+  { name: 'flat_travel_booking_confirmation_v1', label: '予約確定書を送る（PDF）' },
+] as const
 const fieldClass = 'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900'
 const buttonClass = 'rounded-full border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40'
 
@@ -53,7 +59,10 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
   const inFlight = useRef(false)
   const path = `/api/whatsapp/friends/${encodeURIComponent(friendId)}`
   const storageKey = `wa-template-send:${friendId}`
-  const template = catalogue?.templates.find((item) => `${item.name}:${item.language}` === selected)
+  const templates = NOTICE_PURPOSES.flatMap((purpose) =>
+    (catalogue?.templates || []).filter((item) => item.name === purpose.name)
+      .map((item) => ({ ...item, label: purpose.label })))
+  const template = templates.find((item) => `${item.name}:${item.language}` === selected)
   useEffect(() => {
     alive.current = true
     try { setPendingKey(localStorage.getItem(storageKey)); setStorageReady(true) }
@@ -77,7 +86,7 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
     })
   }
   function select(value: string) {
-    const item = catalogue?.templates.find((item) => `${item.name}:${item.language}` === value)
+    const item = templates.find((item) => `${item.name}:${item.language}` === value)
     setSelected(value); setDocument(null); setButtonValues({}); setConsent(false)
     setValues(item?.parameters.some((field) => field.key === 'body:1' && field.label === 'お客様名') ? { 'body:1': catalogue?.recipientName || '' } : {})
     changeDraft()
@@ -116,18 +125,18 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
   }
   const locked = busy || Boolean(pendingKey)
   return <div className="rounded-2xl border border-emerald-200 bg-white p-3">
-    <button type="button" className={buttonClass} aria-expanded={open} onClick={() => { setOpen(!open); if (!open && !catalogue) void load() }}>予約・見積り・支払い案内（PDF対応）</button>
+    <button type="button" className={buttonClass} aria-expanded={open} onClick={() => { setOpen(!open); if (!open && !catalogue) void load() }}>見積書・決済リンク・予約確定書</button>
     {pendingKey && !open && <span className="ml-2 text-xs text-amber-900">前回の送信結果を確認してください</span>}
     {open && <div className="mt-3 space-y-3">
       <p className="text-xs text-gray-600">承認済みの案内は24時間外も送信できます。変数とPDFはお客様ごとに設定します。</p>
-      {catalogue && !catalogue.canSend && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{catalogue.releaseMode === 'off' ? '送信機能は受信テストの確認待ちです。文面の準備・プレビューは利用できます。' : '現在は指定されたテスト番号だけに送信できます。'}</p>}
+      {catalogue && !catalogue.canSend && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{catalogue.releaseMode === 'off' ? 'ハーネス側の送信機能が停止中です。Metaのテンプレート承認とは別に、社内の受信テストを完了して送信を有効にする必要があります。現在は準備・プレビューのみ利用できます。' : '現在は指定されたテスト番号だけに送信できます。'}</p>}
       {catalogue && <p className="text-sm">宛先: {catalogue.recipientName} / {catalogue.recipientPhone}</p>}
       <button type="button" disabled={busy} className="text-xs underline" onClick={() => void load()}>Metaの承認状況を更新</button>
       <fieldset disabled={locked} className="space-y-3 disabled:opacity-60">
         <label className="block text-sm">用途
           <select className={fieldClass} value={selected} onChange={(event) => select(event.target.value)}>
             <option value="">用途を選択してください</option>
-            {catalogue?.templates.map((item) => <option key={`${item.name}:${item.language}`} value={`${item.name}:${item.language}`}>{item.label} · {item.language}{!item.available ? `（${item.status} / ${item.category}）` : ''}</option>)}
+            {templates.map((item) => <option key={`${item.name}:${item.language}`} value={`${item.name}:${item.language}`}>{item.label} · {item.language}{!item.available ? `（使用不可: ${item.status} / ${item.category}）` : ''}</option>)}
           </select>
         </label>
         {template && !template.available && <p className="text-sm text-amber-900">{template.unavailableReason}</p>}
