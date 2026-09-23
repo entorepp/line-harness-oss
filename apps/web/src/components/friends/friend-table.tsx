@@ -6,6 +6,7 @@ import type { FriendWithTags } from '@/lib/api'
 import { api } from '@/lib/api'
 import TagBadge from './tag-badge'
 import { useAccount } from '@/contexts/account-context'
+import WhatsAppPhone from '@/components/whatsapp-phone'
 
 interface FriendTableProps {
   friends: FriendWithTags[]
@@ -159,6 +160,7 @@ export default function FriendTable({ friends, allTags, onRefresh }: FriendTable
                       )}
                       <div>
                         <p className="text-sm font-medium text-gray-900">{friend.displayName}</p>
+                        <WhatsAppPhone channelType={selectedAccount?.channelType} phone={friend.lineUserId} />
                         {friend.statusMessage && (
                           <p className="text-xs text-gray-400 truncate max-w-[160px]">{friend.statusMessage}</p>
                         )}

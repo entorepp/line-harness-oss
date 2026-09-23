@@ -31,6 +31,7 @@ contains_literal() {
 echo "=== Building web app ==="
 cd "$ROOT_DIR"
 export NEXT_PUBLIC_API_URL="$PRODUCTION_API_URL"
+pnpm --filter web test:whatsapp-phone
 pnpm --filter web test:whatsapp-templates
 pnpm --filter web test:whatsapp-reply-window
 pnpm --filter web test:whatsapp-send-contract
