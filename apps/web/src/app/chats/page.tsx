@@ -7,6 +7,8 @@ import Header from '@/components/layout/header'
 import ChatComposer from '@/components/chat-composer'
 import ChatMessageContent from '@/components/chat-message-content'
 import type { WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
+import WhatsAppPhone from '@/components/whatsapp-phone'
+import { loadChatFriends } from '@/lib/chat-friends'
 
 interface Chat {
   id: string
@@ -100,6 +102,7 @@ function formatDatetime(iso: string | null): string {
 
 interface FriendItem {
   id: string
+  lineUserId: string
   displayName: string
   pictureUrl: string | null
   isFollowing: boolean
@@ -206,6 +209,7 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
         )}
         <div>
           <p className="text-sm font-bold text-gray-900">{friend?.displayName || '不明'}</p>
+          <WhatsAppPhone channelType={channelType} phone={friend?.lineUserId} />
           <p className="text-xs text-gray-400">メッセージ履歴</p>
         </div>
       </div>
@@ -264,7 +268,10 @@ export default function ChatsPage() {
     loading: accountsLoading,
   } = useAccount()
   const [chats, setChats] = useState<Chat[]>([])
-  const [allFriends, setAllFriends] = useState<FriendItem[]>([])
+  const [friendList, setFriendList] = useState<{ accountId: string; items: FriendItem[] } | null>(null)
+  const currentAccountIdRef = useRef(selectedAccountId)
+  currentAccountIdRef.current = selectedAccountId
+  const allFriends = friendList?.accountId === selectedAccountId ? friendList.items : []
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null)
   const [chatDetail, setChatDetail] = useState<ChatDetail | null>(null)
@@ -368,18 +375,16 @@ export default function ChatsPage() {
   }, [statusFilter, selectedAccountId])
 
   const loadFriends = useCallback(async () => {
+    if (!selectedAccountId) return
     try {
-      const friendRes = await api.friends.list({
-        accountId: selectedAccountId || undefined,
-        limit: '100',
-      })
-      if (friendRes.success) {
-        setAllFriends((friendRes.data as unknown as { items: FriendItem[] }).items)
+      const items = await loadChatFriends(selectedAccountId, selectedAccount?.channelType)
+      if (currentAccountIdRef.current === selectedAccountId) {
+        setFriendList({ accountId: selectedAccountId, items })
       }
     } catch {
       // The chat list remains usable even if the optional new-DM picker fails.
     }
-  }, [selectedAccountId])
+  }, [selectedAccountId, selectedAccount?.channelType])
 
   const loadChatDetail = useCallback(async (chatId: string, silent = false) => {
     if (!silent) setDetailLoading(true)
@@ -843,6 +848,7 @@ export default function ChatsPage() {
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-gray-900 truncate">{chat.friendName}</p>
+                          <WhatsAppPhone channelType={selectedAccount?.channelType} phone={allFriends.find((friend) => friend.id === chat.friendId)?.lineUserId} />
                           <p className="text-xs text-gray-400 mt-0.5">{formatDatetime(chat.lastMessageAt)}</p>
                         </div>
                         <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${statusInfo.className}`}>
@@ -874,6 +880,7 @@ export default function ChatsPage() {
                           )}
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-gray-900 truncate">{friend.displayName}</p>
+                            <WhatsAppPhone channelType={selectedAccount?.channelType} phone={friend.lineUserId} />
                             <p className="text-xs text-gray-400 mt-0.5">会話なし</p>
                           </div>
                           <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 bg-gray-100 text-gray-500">
@@ -977,6 +984,7 @@ export default function ChatsPage() {
                         設定
                       </button>
                     </div>
+                    <WhatsAppPhone channelType={chatDetail.channelType || selectedAccount?.channelType} phone={allFriends.find((friend) => friend.id === chatDetail.friendId)?.lineUserId} />
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${statusConfig[chatDetail.status].className}`}
                     >
