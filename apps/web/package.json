@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:chat-scheduling": "esbuild scripts/test-chat-scheduling.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/chat-scheduling.cjs && node .next/tests/chat-scheduling.cjs",
     "test:whatsapp-phone": "esbuild scripts/test-whatsapp-phone.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-phone.cjs && node .next/tests/whatsapp-phone.cjs",
     "dev": "next dev --port 3001",
     "build": "next build",
