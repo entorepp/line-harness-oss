@@ -5,6 +5,19 @@ export type WhatsappReplyWindow = {
   canSend: boolean
 }
 
+// The composer selects whole minutes, while the provider window expires at
+// an exact instant. Its last selectable minute must be strictly before expiry.
+export function whatsappLatestScheduleTime(
+  window: WhatsappReplyWindow | null | undefined,
+  friendId: string,
+  now = Date.now(),
+): number | undefined {
+  if (!window || window.friendId !== friendId || !window.canSend) return undefined
+  const expiry = window.expiresAt ? Date.parse(window.expiresAt) : NaN
+  if (!Number.isFinite(expiry) || expiry <= now) return undefined
+  return Math.floor((expiry - 1) / 60_000) * 60_000
+}
+
 export function whatsappReplyBlock(
   window: WhatsappReplyWindow | null | undefined,
   friendId: string,

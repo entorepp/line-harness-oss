@@ -5,7 +5,7 @@ import type { ClipboardEvent, KeyboardEvent } from 'react'
 import { replaceEmojiShortcodes } from '@line-crm/shared'
 import { api, fetchApi, type ApiScheduledMessage } from '@/lib/api'
 import WhatsAppTemplateComposer from '@/components/whatsapp-template-composer'
-import { whatsappReplyBlock, type WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
+import { whatsappLatestScheduleTime, whatsappReplyBlock, type WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
 
 type AttachmentDraft = {
   file: File
@@ -76,9 +76,11 @@ function formatDatetime(iso: string): string {
   return `${month}/${day} ${hour}:${minute} 日本時間`
 }
 
-function defaultScheduleValue(): string {
-  const date = new Date(Date.now() + 10 * 60 * 1000)
+function defaultScheduleValue(latestTime?: number): string {
+  const now = Date.now()
+  const date = new Date(Math.min(now + 10 * 60 * 1000, latestTime ?? Infinity))
   date.setSeconds(0, 0)
+  if (date.getTime() <= now) return ''
   return toJstDatetimeLocalValue(date)
 }
 
@@ -426,10 +428,19 @@ export default function ChatComposer({
   const attachmentsDisabled = isKakao || isWeChat || isMetaDm
   const attachmentAccept = isWhatsApp ? WHATSAPP_ATTACHMENT_ACCEPT : DEFAULT_ATTACHMENT_ACCEPT
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
-  const whatsappBlock = isWhatsApp
+  const latestScheduleTime = isWhatsApp
+    ? whatsappLatestScheduleTime(whatsappReplyWindow, friendId, replyNow)
+    : undefined
+  const maxScheduleValue = latestScheduleTime === undefined
+    ? undefined
+    : toJstDatetimeLocalValue(new Date(latestScheduleTime))
+  const noScheduleTimeLeft = latestScheduleTime !== undefined && latestScheduleTime <= replyNow
+  const whatsappBlock = (isWhatsApp
     ? whatsappReplyBlock(whatsappReplyWindow, friendId, replyNow,
       reserveMode && DATETIME_LOCAL_PATTERN.test(scheduledAt) ? `${scheduledAt}:00+09:00` : undefined)
-    : null
+    : null) || (reserveMode && noScheduleTimeLeft
+      ? '予約できる時刻が残っていません。予約設定を閉じると、送信期限までは今すぐ送信できます。'
+      : null)
 
   useEffect(() => {
     if (!isWhatsApp) return
@@ -1150,6 +1161,8 @@ export default function ChatComposer({
                   type="datetime-local"
                   value={scheduledAt}
                   min={minScheduleValue()}
+                  max={maxScheduleValue}
+                  aria-label="予約日時（日本時間）"
                   onChange={(event) => setScheduledAt(event.target.value)}
                   className="min-w-[180px] rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs text-gray-900 focus:border-[#06C755] focus:outline-none"
                 />
@@ -1165,6 +1178,11 @@ export default function ChatComposer({
                 >
                   ×
                 </button>
+                {latestScheduleTime !== undefined && !noScheduleTimeLeft && (
+                  <span className="w-full text-right text-[11px] font-medium text-gray-600">
+                    予約可能な時刻: {formatDatetime(new Date(latestScheduleTime).toISOString())}まで
+                  </span>
+                )}
               </div>
             )}
 
@@ -1193,7 +1211,9 @@ export default function ChatComposer({
               <button
                 type="button"
                 onClick={() => {
-                  if (!scheduledAt) setScheduledAt(defaultScheduleValue())
+                  if (!scheduledAt) setScheduledAt(defaultScheduleValue(isWhatsApp
+                    ? whatsappLatestScheduleTime(whatsappReplyWindow, friendId)
+                    : undefined))
                   setReserveMode((current) => !current)
                 }}
                 disabled={sending || isMetaDm}
@@ -1286,10 +1306,17 @@ export default function ChatComposer({
                       type="datetime-local"
                       value={editingScheduledAt}
                       min={minScheduleValue()}
+                      max={maxScheduleValue}
+                      aria-label="変更後の予約日時（日本時間）"
                       onChange={(event) => setEditingScheduledAt(event.target.value)}
                       className="min-w-[190px] rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs text-gray-900 focus:border-[#06C755] focus:outline-none"
                     />
                     <span className="text-[11px] font-medium text-gray-500">日本時間</span>
+                    {latestScheduleTime !== undefined && !noScheduleTimeLeft && (
+                      <span className="text-[11px] font-medium text-gray-600">
+                        予約可能な時刻: {formatDatetime(new Date(latestScheduleTime).toISOString())}まで
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => void handleUpdateScheduledMessage(item.id)}

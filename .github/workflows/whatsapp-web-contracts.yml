@@ -14,6 +14,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @line-crm/shared build
+      - run: pnpm --filter web test:chat-scheduling
       - run: pnpm --filter web test:whatsapp-phone
       - run: pnpm --filter web test:whatsapp-templates
       - run: pnpm --filter web test:whatsapp-reply-window
