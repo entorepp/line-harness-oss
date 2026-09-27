@@ -819,7 +819,7 @@ function createAcquisitionFunnel(options) {
     };
     for(const [key,values] of Object.entries(enums))if(values.includes(d[key]))data[key]=d[key];
     // Product IDs are public catalogue identities, not user/customer identifiers.
-    if(/^c\d{1,3}$/i.test(d.journey_id||''))data.journey_id=d.journey_id.toLowerCase();
+    if(/^c\d{1,3}(?:-osaka)?$/i.test(d.journey_id||''))data.journey_id=d.journey_id.toLowerCase();
     if(/^(20\d{2})-(0[1-9]|1[0-2])$/.test(d.travel_month||''))data.travel_month=d.travel_month;
     const areas=new Set(['tokyo','kyoto','osaka','hakone','fuji','fuji-hakone','hiroshima','nara','kanazawa','takayama','nikko','nagoya','kobe','fukuoka','sapporo','okinawa','kamakura','yokohama','himeji','okayama','naoshima','miyajima','beppu','yufuin','nagasaki','kumamoto','kagoshima','ise','toba','wakayama','koyasan','shirakawa-go','matsumoto','nagano','karuizawa','toyama','fukui','shizuoka','atami','izu','kawaguchiko','shiga','otsu','tsuruga','gifu','sendai','aomori','aichi','ehime','gunma','hokkaido','hyogo','ibaraki','ishikawa','iwate','kagawa','kochi','miyagi','miyazaki','niigata','oita','saga','saitama','shimane','tochigi','tokushima','tottori','yamagata','yamaguchi','yamanashi']);
     if(Array.isArray(d.area_ids))data.area_ids=[...new Set(d.area_ids.filter(v=>areas.has(v)))].sort().slice(0,16);
@@ -831,7 +831,7 @@ function createAcquisitionFunnel(options) {
     let seq=0,scheduled=false,lastResults='',lastPrice='',revision=0;
     const started=Date.now(), focusSeen=new Set();
     const screen=()=>{const p=location.pathname||'';return /\/extra-support\/?$/.test(p)?'extra_support':/\/enquiry\/?$/.test(p)?'traveller_details':/\/journeys\/[^/]+/.test(p)?'journey_detail':/\/journeys\/?$/.test(p)?'journey_list':/\/tailor-made\/?$/.test(p)?'tailor_made':/^\/(en|tc|sc|kr)\/?$/.test(p)?'home':'other'};
-    const journey=node=>node?.closest?.('[data-tour],[data-view-journey],[data-tour-id]')?.getAttribute('data-tour')||node?.closest?.('[data-view-journey]')?.getAttribute('data-view-journey')||String(node?.closest?.('a[href]')?.getAttribute('href')||location.pathname).match(/\/journeys\/(c\d{1,3})(?:[/?#]|$)/i)?.[1]||'';
+    const journey=node=>node?.closest?.('[data-tour],[data-view-journey],[data-tour-id]')?.getAttribute('data-tour')||node?.closest?.('[data-view-journey]')?.getAttribute('data-view-journey')||String(node?.closest?.('a[href]')?.getAttribute('href')||location.pathname).match(/\/journeys\/(c\d{1,3}(?:-osaka)?)(?:[/?#]|$)/i)?.[1]||'';
     function record(event,data={}) {
       if(seq>=500)return;
       const action=cleanAction({event,data:{screen:screen(),...data}});if(!action)return;
