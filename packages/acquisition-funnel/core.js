@@ -173,11 +173,17 @@ export function createAcquisitionFunnel(options) {
   async function receive(request,env,kind='document') {
     const db=dbOf(env),url=new URL(request.url),explicitTest=url.searchParams.get('af_test')==='1'||url.searchParams.get('aj_test')==='1';
     const incomingSource=sourceOf(url.searchParams.get('utm_source')||'');
+    const incomingMedium=token(url.searchParams.get('utm_medium'));
+    const incomingCampaign=token(url.searchParams.get('utm_campaign'));
+    const incomingContent=token(url.searchParams.get('utm_content'));
     let id=cookie(request), visit=uuid(id) ? await db.prepare("SELECT * FROM acquisition_visits WHERE id=? AND surface=? AND last_seen_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 minutes')").bind(id,options.surface).first() : null;
     const test=explicitTest||Boolean(visit?.is_test);
-    if(!visit || (explicitTest&&!visit.is_test) || (incomingSource && (incomingSource!==visit.source||token(url.searchParams.get('utm_campaign'))!==visit.campaign))) {
+    // A second tagged creative is a new acquisition; never relabel earlier actions.
+    // Untagged internal navigation keeps the original attribution and visit cookie.
+    const changedAttribution=incomingSource && visit && (incomingSource!==visit.source||incomingMedium!==visit.medium||incomingCampaign!==visit.campaign||incomingContent!==visit.content);
+    if(!visit || (explicitTest&&!visit.is_test) || changedAttribution) {
       id=crypto.randomUUID();
-      await db.prepare('INSERT INTO acquisition_visits(id,surface,source,medium,campaign,content,is_test) VALUES (?,?,?,?,?,?,?)').bind(id,options.surface,incomingSource||'unattributed',token(url.searchParams.get('utm_medium')),token(url.searchParams.get('utm_campaign')),token(url.searchParams.get('utm_content')),Number(test)).run();
+      await db.prepare('INSERT INTO acquisition_visits(id,surface,source,medium,campaign,content,is_test) VALUES (?,?,?,?,?,?,?)').bind(id,options.surface,incomingSource||'unattributed',incomingMedium,incomingCampaign,incomingContent,Number(test)).run();
     } else await db.prepare("UPDATE acquisition_visits SET last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?").bind(id).run();
     const page=crypto.randomUUID();
     await db.prepare('INSERT INTO acquisition_pages(id,visit_id,path,kind,tagged) VALUES (?,?,?,?,?)').bind(page,id,safePath(url.pathname),kind,Number(Boolean(incomingSource))).run();

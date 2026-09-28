@@ -66,3 +66,44 @@ vm.runInNewContext(f.client(page.id),{window:pendingWindow,document:pendingDoc,l
 lifecycle.click({type:'click',isTrusted:true,target:{closest:selector=>selector==='a[href]'?{href:origin+'/en/tailor-made'}:null}});
 assert.equal(out.length,1);lifecycle.pagehide();
 assert.ok(out.slice(1).flatMap(b=>b.events).some(e=>e.event==='link_click'));
+
+// Creative attribution must survive internal navigation without merging different ads.
+const tagged=(label,medium='paid_social')=>'/en?utm_source=meta&utm_medium='+medium+'&utm_campaign=flat_travel_en&utm_content='+encodeURIComponent(label);
+const receipt=async(path,cookie='')=>{
+ const response=await f.run(get(path,cookie?{Cookie:cookie}:{}),env,null,next);
+ const cookieValue=response.headers.get('Set-Cookie').split(';')[0];
+ return {cookie:cookieValue,visit:sql.prepare('SELECT * FROM acquisition_visits WHERE id=?').get(cookieValue.slice('af_visit='.length))};
+};
+const creativeA=await receipt(tagged('Creative_A'));
+assert.equal(creativeA.visit.content,'creative_a');
+const sameCreative=await receipt(tagged('creative_a'),creativeA.cookie);
+assert.equal(sameCreative.visit.id,creativeA.visit.id);
+const internalA=await receipt('/en/tailor-made',creativeA.cookie);
+assert.equal(internalA.visit.id,creativeA.visit.id);
+assert.equal(internalA.visit.content,'creative_a');
+const creativeB=await receipt(tagged('creative_b'),creativeA.cookie);
+assert.notEqual(creativeB.visit.id,creativeA.visit.id,'A new tagged creative must not inherit the previous creative');
+assert.equal(creativeB.visit.content,'creative_b');
+assert.equal(sql.prepare('SELECT content FROM acquisition_visits WHERE id=?').get(creativeA.visit.id).content,'creative_a','Historical attribution must remain immutable');
+const internalB=await receipt('/en/tailor-made',creativeB.cookie);
+assert.equal(internalB.visit.id,creativeB.visit.id);
+const bPage=sql.prepare('SELECT id FROM acquisition_pages WHERE visit_id=? ORDER BY rowid DESC LIMIT 1').get(creativeB.visit.id);
+await f.api(post({pageId:bPage.id,events:[{event:'interaction',step:'click'}]}),env);
+assert.equal(sql.prepare('SELECT v.content FROM acquisition_events e JOIN acquisition_pages p ON p.id=e.page_id JOIN acquisition_visits v ON v.id=p.visit_id WHERE e.page_id=?').get(bPage.id).content,'creative_b');
+const changedMedium=await receipt(tagged('creative_b','social'),creativeB.cookie);
+assert.notEqual(changedMedium.visit.id,creativeB.visit.id);
+const unlabelled=await receipt(tagged(''));
+assert.equal(unlabelled.visit.content,'');
+const newlyLabelled=await receipt(tagged('creative_a'),unlabelled.cookie);
+assert.notEqual(newlyLabelled.visit.id,unlabelled.visit.id);
+assert.equal(newlyLabelled.visit.content,'creative_a');
+const qaA=await receipt(tagged('creative_a')+'&af_test=1');
+const qaB=await receipt(tagged('creative_b'),qaA.cookie);
+assert.equal(qaB.visit.is_test,1,'QA exclusion must survive an attribution change');
+for(const unsafe of ['person@example.com','09012345678','ad_120256218148970309','{{ad.id}}','name with spaces','x'.repeat(97)]){
+ const checked=await receipt(tagged(unsafe));
+ assert.equal(checked.visit.content,'','Unsafe or unresolved labels must not enter the anonymous ledger');
+}
+const redirect=await f.run(get('/go/aj?af_test=1&utm_source=meta&utm_medium=paid_social&utm_campaign=flat_travel_en&utm_content=creative_b'),env,null,next);
+assert.equal(new URL(redirect.headers.get('Location')).searchParams.get('utm_content'),'creative_b');
+console.log('PASS creative attribution: capture, normalization, internal-page/action linkage, distinct creative and medium receipts, immutable history, blank-to-tagged transition, QA inheritance, privacy validation, redirect propagation');
