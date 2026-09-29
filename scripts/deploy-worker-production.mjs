@@ -51,7 +51,7 @@ run('pnpm', ['--filter', 'worker', 'typecheck']);
 for (const test of [
   'test:whatsapp-operational-templates', 'test:whatsapp-send', 'test:whatsapp-delivery-status', 'test:whatsapp-reply-window', 'test:whatsapp-identity', 'test:accessible-japan-quote-trigger',
   'test:form-response-email', 'test:form-response-email-route', 'test:travel-quote-route',
-  'test:form-file-access', 'test:form-file-upload', 'test:whatsapp-initiation',
+  'test:form-file-access', 'test:form-file-upload', 'test:slack-form-files', 'test:whatsapp-initiation',
   'test:lead-route-topology', 'test:quote-reference',
 ]) run('pnpm', ['--filter', 'worker', test]);
 run('node', ['scripts/test-worker-release-contract.mjs']);

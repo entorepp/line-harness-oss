@@ -175,6 +175,27 @@ function trimSlackText(text: string, maxLength = 1200): string {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
+function hasFormFileUrl(text: string): boolean {
+  return /https?:\/\/[^\s<>]+\/api\/form-files\//.test(text);
+}
+
+function escapeSlackText(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function formatFormFileAnswer(answer: SlackFormAnswer): string[] {
+  // Keep every capability URL intact. Translate neither URLs nor filenames,
+  // and split at line boundaries instead of truncating a multi-file answer.
+  const lines = answer.value.split('\n').map((line) => {
+    if (!hasFormFileUrl(line)) return escapeSlackText(trimSlackText(line));
+    return escapeSlackText(line).replace(
+      /https?:\/\/[^\s<>]+\/api\/form-files\/[^\s<>]+/g,
+      (url) => `<${url}|添付ファイルを開く>`,
+    );
+  });
+  return [`*${escapeSlackText(trimSlackText(answer.label))}*`, ...lines.map(quoteForSlack)];
+}
+
 function chunkMrkdwnLines(lines: string[], maxLength = 2800): string[] {
   const chunks: string[] = [];
   let current = '';
@@ -453,9 +474,11 @@ export async function notifySlackFormSubmission(opts: {
     .map((answer, index) => ({
       index,
       value: trimSlackText(answer.value),
+      hasFiles: hasFormFileUrl(answer.value),
     }))
     .filter(
       (item) => opts.googleTranslateApiKey
+        && !item.hasFiles
         && shouldTranslate(item.value, INTERNAL_SLACK_TRANSLATION_TARGET),
     );
 
@@ -476,16 +499,17 @@ export async function notifySlackFormSubmission(opts: {
   });
 
   const answerLines = opts.answers.length > 0
-    ? opts.answers.map((answer, index) => {
+    ? opts.answers.flatMap((answer, index) => {
+      if (hasFormFileUrl(answer.value)) return formatFormFileAnswer(answer);
       const base = `*${answer.label}*\n${quoteForSlack(trimSlackText(answer.value))}`;
       const translated = translatedByIndex.get(index);
-      return translated
+      return [translated
         ? `${base}\n_${translationCopy.translationLabel}: ${translated}_`
-        : base;
+        : base];
     })
     : [`_${copy.noAnswersLabel}_`];
 
-  const blocks: unknown[] = [
+  const headerBlocks: unknown[] = [
     {
       type: 'section',
       text: {
@@ -514,23 +538,28 @@ export async function notifySlackFormSubmission(opts: {
       },
     },
     { type: 'divider' },
-    ...chunkMrkdwnLines(answerLines).map((text) => ({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text,
-      },
-    })),
   ];
+  const answerBlocks = chunkMrkdwnLines(answerLines).map((text) => ({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text,
+    },
+  }));
 
-  await postToSlack({
-    token: opts.slackToken,
-    channel: opts.slackChannelId,
-    text: `📝 ${copy.formSubmittedLabel}: ${opts.formName}`,
-    username: opts.formName,
-    iconUrl: opts.friendPictureUrl || undefined,
-    blocks,
-  });
+  // Slack permits 50 blocks per message. File count is not capped by the form;
+  // retain all links in additional messages when necessary.
+  const blocksPerMessage = 50 - headerBlocks.length;
+  for (let index = 0; index < answerBlocks.length; index += blocksPerMessage) {
+    await postToSlack({
+      token: opts.slackToken,
+      channel: opts.slackChannelId,
+      text: `📝 ${copy.formSubmittedLabel}: ${opts.formName}`,
+      username: opts.formName,
+      iconUrl: opts.friendPictureUrl || undefined,
+      blocks: [...headerBlocks, ...answerBlocks.slice(index, index + blocksPerMessage)],
+    });
+  }
 }
 
 export const __slackTranslationInternals = {
