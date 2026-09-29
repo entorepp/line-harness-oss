@@ -49,8 +49,7 @@ function buildFields(source) {
         ...(field.t === 'file'
           ? {
             accept: field.accept || 'image/*,application/pdf',
-            multiple: Boolean(field.multiple),
-            maxFiles: field.multiple ? 3 : 1,
+            multiple: true,
           }
           : {}),
       })
