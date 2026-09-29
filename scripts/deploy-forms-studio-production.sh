@@ -29,6 +29,8 @@ node scripts/verify-forms-studio-release.mjs
 node scripts/verify-form-traffic.mjs
 node scripts/verify-form-server-traffic.mjs
 node scripts/test-acquisition-funnel.mjs
+node scripts/verify-post-order-survey.mjs
+node scripts/test-post-order-survey-names.mjs
 
 echo "=== Building shared package ==="
 cd "$ROOT_DIR"

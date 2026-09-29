@@ -252,7 +252,8 @@
     const checkboxes = controls.filter((control) => control.type === 'checkbox')
     if (checkboxes.length) return checkboxes.some((checkbox) => checkbox.checked)
 
-    return controls.length > 0 && controls.every((control) => clean(control.value))
+    const requiredControls = controls.filter((control) => control.dataset.optional !== 'true')
+    return requiredControls.length > 0 && requiredControls.every((control) => clean(control.value))
   }
 
   function setCardInvalid(card, invalid) {

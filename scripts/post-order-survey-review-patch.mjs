@@ -10,6 +10,31 @@ function removeOnce(source, value, label) {
   return replaceOnce(source, value, '', label)
 }
 
+export function applyPostOrderSurveyNameFix(input) {
+  let source = replaceOnce(input,
+    'cells:[["First name","名"],["Last name(s)","姓"],["Middle name","ミドルネーム"]]',
+    'optionalCells:[2],cells:[["First name","名"],["Last name(s)","姓"],["Middle name","ミドルネーム"]]',
+    'optional middle name definition')
+  source = replaceOnce(source,
+    '      inp.dataset.k=QKEY+"_"+i;\n      if(f.unit',
+    `      inp.dataset.k=QKEY+"_"+i;
+      if(f.optionalCells){
+        const optional=f.optionalCells.includes(i);
+        inp.dataset.optional=String(optional);
+        inp.setAttribute("aria-required",String(!!f.r&&!optional));
+        if(optional) inp.placeholder=T("Optional","任意");
+      }
+      if(f.unit`,
+    'optional row control metadata')
+  source = replaceOnce(source,
+    '      const filled=ins.some(x=>(x.type==="checkbox"||x.type==="radio")?x.checked:!!x.value)',
+    `      const filled=ins.some(x=>x.dataset.optional!==undefined)
+        ? ins.filter(x=>x.dataset.optional!=="true").every(x=>!!x.value.trim())
+        : ins.some(x=>(x.type==="checkbox"||x.type==="radio")?x.checked:!!x.value)`,
+    'name progress matches required fields')
+  return source
+}
+
 export function applyPostOrderSurveyReview(input) {
   let source = input
 
@@ -189,5 +214,5 @@ export function applyPostOrderSurveyReview(input) {
 `
   source = source.slice(0, fileStartIndex) + fileBranch + source.slice(fileEndIndex)
 
-  return source
+  return applyPostOrderSurveyNameFix(source)
 }
