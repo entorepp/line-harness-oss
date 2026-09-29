@@ -14,6 +14,8 @@ import {
   verifyFormFileAccess,
 } from '../services/form-file-access.js';
 
+import { detectFormFileType, FORM_FILE_EXTENSIONS } from '../services/form-file-type.js';
+
 const IMAGE_TYPES = [
   'image/jpeg',
   'image/png',
@@ -22,7 +24,7 @@ const IMAGE_TYPES = [
   'image/heic',
   'image/heif',
 ];
-const FORM_PRIVATE_FILE_MAX_BYTES = 10 * 1024 * 1024;
+const FORM_PRIVATE_FILE_MAX_BYTES = 25 * 1024 * 1024;
 
 type StoredUploadMetadata = {
   contentType: string;
@@ -126,6 +128,13 @@ uploads.post('/api/upload', async (c) => {
     const privateFormUpload = requestedAccess === FORM_PRIVATE_UPLOAD_ACCESS;
     const formId = String(formData.get('formId') || '').trim();
     const fieldName = String(formData.get('fieldName') || '').trim();
+    let contentType = file.type;
+    const maxBytes = privateFormUpload ? FORM_PRIVATE_FILE_MAX_BYTES : 25 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      return c.json({ success: false, error: privateFormUpload
+        ? 'File too large. Maximum 25 MiB (26.2 MB) per file.'
+        : 'File too large (max 25MB)' }, privateFormUpload ? 413 : 400);
+    }
     if (privateFormUpload) {
       if (!formId) {
         return c.json({ success: false, error: 'formId is required' }, 400);
@@ -156,28 +165,26 @@ uploads.post('/api/upload', async (c) => {
         .split(',')
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean);
-      if (acceptedTypes.length && !acceptedTypes.includes(file.type.toLowerCase())) {
+      contentType = detectFormFileType(new Uint8Array(await file.slice(0, 1024).arrayBuffer()));
+      const extension = FORM_FILE_EXTENSIONS[contentType];
+      const allowed = acceptedTypes.some(type => type === contentType
+        || type === `.${extension}` || (type === '.jpeg' && contentType === 'image/jpeg')
+        || (type === 'image/*' && contentType.startsWith('image/')));
+      if (!contentType || (acceptedTypes.length && !allowed)) {
         return c.json({ success: false, error: 'File type is not allowed for this field' }, 400);
       }
     }
 
-    // KV value limit is 25MB
-    const maxBytes = privateFormUpload ? FORM_PRIVATE_FILE_MAX_BYTES : 25 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      const maxMegabytes = maxBytes / (1024 * 1024);
-      return c.json({ success: false, error: `File too large (max ${maxMegabytes}MB)` }, 400);
-    }
-
     const id = crypto.randomUUID();
-    const ext = getExtension(file.name, file.type);
+    const ext = privateFormUpload ? FORM_FILE_EXTENSIONS[contentType] : getExtension(file.name, file.type);
     const key = `${id}.${ext}`;
-    const isImage = IMAGE_TYPES.includes(file.type);
+    const isImage = privateFormUpload ? contentType.startsWith('image/') : IMAGE_TYPES.includes(file.type);
 
     const arrayBuffer = await file.arrayBuffer();
     await c.env.UPLOADS.put(key, arrayBuffer, {
       ...(privateFormUpload ? { expirationTtl: FORM_PRIVATE_FILE_RETENTION_SECONDS } : {}),
       metadata: {
-        contentType: file.type,
+        contentType,
         originalName: file.name,
         size: file.size,
         ...(privateFormUpload
