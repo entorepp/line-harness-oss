@@ -11,6 +11,11 @@
   const PRIVATE_UPLOAD_ACCESS = 'form-private'
   const selectedFiles = new Map()
   const uploadedFileCache = new Map()
+  const FILE_TYPES = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    heic: 'image/heic', heif: 'image/heif', pdf: 'application/pdf',
+  }
+  const GENERIC_FILE_TYPES = new Set(['', 'application/octet-stream', 'binary/octet-stream'])
 
   const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim()
   const isJapanese = () => document.documentElement.lang === 'ja'
@@ -76,6 +81,11 @@
 
   function decorateFileInputs() {
     for (const input of document.querySelectorAll('.q input[type="file"]')) {
+      const accept = new Set(String(input.accept || '').split(',').filter(Boolean))
+      for (const [extension, type] of Object.entries(FILE_TYPES)) {
+        if (accept.has(type)) accept.add(`.${extension}`)
+      }
+      input.accept = [...accept].join(',')
       const key = fileInputKey(input)
       if (!key) continue
       input.dataset.privateUploadKey = key
@@ -231,11 +241,46 @@
   function acceptedFile(input, file) {
     const accept = String(input.accept || '').split(',').map((item) => item.trim()).filter(Boolean)
     if (!accept.length) return true
+    const declaredType = String(file.type || '').toLowerCase()
+    const type = declaredType === 'image/jpg' ? 'image/jpeg'
+      : GENERIC_FILE_TYPES.has(declaredType)
+        ? FILE_TYPES[file.name.split('.').pop()?.toLowerCase()] : declaredType
     return accept.some((rule) => {
       if (rule.startsWith('.')) return file.name.toLowerCase().endsWith(rule.toLowerCase())
-      if (rule.endsWith('/*')) return file.type.startsWith(rule.slice(0, -1))
-      return file.type === rule
+        && type === FILE_TYPES[rule.slice(1).toLowerCase()]
+      if (rule.endsWith('/*')) return type?.startsWith(rule.slice(0, -1))
+      return type === rule
     })
+  }
+
+  async function fileForUpload(file) {
+    const declaredType = String(file.type || '').toLowerCase()
+    if (!GENERIC_FILE_TYPES.has(declaredType) && declaredType !== 'image/jpg') return file
+    const header = file.slice(0, 64)
+    const buffer = typeof header.arrayBuffer === 'function' ? await header.arrayBuffer()
+      : await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = () => reject(new Error(text('This file could not be read. Please select it again.', 'ファイルを読み込めませんでした。もう一度選択してください。')))
+        reader.readAsArrayBuffer(header)
+      })
+    const bytes = new Uint8Array(buffer)
+    const ascii = (start, end) => String.fromCharCode(...bytes.slice(start, end))
+    let type = ''
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) type = 'image/jpeg'
+    else if ([137,80,78,71,13,10,26,10].every((value, index) => bytes[index] === value)) type = 'image/png'
+    else if (ascii(0, 5) === '%PDF-') type = 'application/pdf'
+    else if (ascii(4, 8) === 'ftyp') {
+      const brand = ascii(8, 12)
+      if (['heic', 'heix', 'hevc', 'hevx'].includes(brand)) type = 'image/heic'
+      else if (['mif1', 'msf1'].includes(brand)) type = 'image/heif'
+    }
+    if (!type) throw new Error(text(
+      'The file format could not be recognised. Please select a JPEG, PNG, HEIC or PDF file.',
+      'ファイル形式を確認できませんでした。JPEG・PNG・HEIC・PDFを選択してください。',
+    ))
+    // Preserve the original bytes; only restore the missing browser MIME type.
+    return new Blob([file], { type })
   }
 
   function requiredCardComplete(card) {
@@ -258,7 +303,10 @@
 
   function setCardInvalid(card, invalid) {
     for (const control of card.querySelectorAll('input,select,textarea')) {
-      if (invalid) control.setAttribute('aria-invalid', 'true')
+      const plain = !['file', 'radio', 'checkbox'].includes(control.type)
+      const invalidControl = invalid && (plain
+        ? control.dataset.optional !== 'true' && !clean(control.value) : true)
+      if (invalidControl) control.setAttribute('aria-invalid', 'true')
       else control.removeAttribute('aria-invalid')
     }
     card.style.outline = invalid ? '2px solid #b42318' : ''
@@ -286,7 +334,20 @@
     const block = card.closest('.person')
     if (block?.classList.contains('shut')) block.querySelector('.phead')?.click()
     card.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    card.querySelector('input,select,textarea')?.focus({ preventScroll: true })
+    const target = card.querySelector('[aria-invalid="true"]') || card.querySelector('input,select,textarea')
+    target?.focus({ preventScroll: true })
+  }
+
+  function fileError(input, message) {
+    const card = input.closest('.q')
+    const label = clean(card.querySelector('.qt')?.textContent)
+    const detail = `${label}: ${message}`
+    const inline = card.querySelector('.filerr')
+    if (inline) { inline.textContent = message; inline.style.display = 'block' }
+    setCardInvalid(card, true)
+    showSubmitMessage(detail)
+    revealCard(card)
+    return detail
   }
 
   function validateBeforeSubmit() {
@@ -307,21 +368,23 @@
       if (files.length > (input.multiple ? 3 : 1)) {
         firstInvalid ||= input.closest('.q')
         setCardInvalid(input.closest('.q'), true)
-        showSubmitMessage(text(
-          'Please select no more than three files for each upload question.',
-          '各アップロード項目は3ファイル以内でお選びください。',
+        fileError(input, text(
+          `Please select no more than ${input.multiple ? 3 : 1} file(s).`,
+          `ファイルは${input.multiple ? 3 : 1}件以内でお選びください。`,
         ))
-        revealCard(input.closest('.q'))
         return false
       }
-      if (files.some((file) => file.size > 10 * 1024 * 1024 || !acceptedFile(input, file))) {
+      const invalidFile = files.find((file) => file.size > 10 * 1024 * 1024 || !acceptedFile(input, file))
+      if (invalidFile) {
         firstInvalid ||= input.closest('.q')
         setCardInvalid(input.closest('.q'), true)
-        showSubmitMessage(text(
-          'Please check the file type and make sure every file is 10MB or smaller.',
-          'ファイル形式と、1ファイル10MB以内であることをご確認ください。',
+        fileError(input, invalidFile.size > 10 * 1024 * 1024 ? text(
+          `${invalidFile.name} is over 10MB. Please select a smaller file.`,
+          `${invalidFile.name} は10MBを超えています。小さいファイルを選択してください。`,
+        ) : text(
+          `${invalidFile.name} is not a supported file format for this question.`,
+          `${invalidFile.name} はこの項目で対応していないファイル形式です。`,
         ))
-        revealCard(input.closest('.q'))
         return false
       }
     }
@@ -350,11 +413,24 @@
 
   async function uploadPrivateFile(file, fieldName) {
     const payload = new FormData()
-    payload.append('file', file)
+    payload.append('file', await fileForUpload(file), file.name)
     payload.append('access', PRIVATE_UPLOAD_ACCESS)
     payload.append('formId', formId)
     payload.append('fieldName', fieldName)
-    const response = await fetch('/api/upload', { method: 'POST', body: payload })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 90_000)
+    let response
+    try {
+      response = await fetch('/api/upload', { method: 'POST', body: payload, signal: controller.signal })
+    } catch (error) {
+      throw new Error(error?.name === 'AbortError' ? text(
+        'The upload timed out. Your answers are still here. Check your connection and try again.',
+        'アップロードがタイムアウトしました。回答は保持されています。通信状況を確認して再試行してください。',
+      ) : text(
+        'The upload could not connect. Your answers are still here. Check your connection and try again.',
+        'アップロードの通信に失敗しました。回答は保持されています。通信状況を確認して再試行してください。',
+      ))
+    } finally { clearTimeout(timer) }
     const result = await response.json().catch(() => ({}))
     if (!response.ok || !result.success || result.data?.access !== PRIVATE_UPLOAD_ACCESS) {
       throw new Error(result.error || text(
@@ -386,7 +462,12 @@
       if (!uploaded || uploaded.fingerprint !== fingerprint) {
         uploaded = {
           fingerprint,
-          files: await Promise.all(files.map((file) => uploadPrivateFile(file, `q${number}`))),
+          files: await Promise.all(files.map(async (file) => {
+            try { return await uploadPrivateFile(file, `q${number}`) }
+            catch (error) {
+              throw new Error(fileError(input, `${file.name}: ${error.message}`))
+            }
+          })),
         }
         uploadedFileCache.set(key, uploaded)
       }
