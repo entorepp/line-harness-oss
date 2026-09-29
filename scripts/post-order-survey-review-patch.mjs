@@ -38,6 +38,11 @@ export function applyPostOrderSurveyNameFix(input) {
 export function applyPostOrderSurveyReview(input) {
   let source = input
 
+  // Keep the approved 53-question production model when the external reference changes.
+  source = replaceOnce(source, "  <div class=\"seg\" role=\"group\" aria-label=\"Language\">\n    <button type=\"button\" data-lang-btn=\"en\" aria-pressed=\"true\">English</button>\n    <button type=\"button\" data-lang-btn=\"ja\" aria-pressed=\"false\">日本語（確認用）</button>\n  </div>\n", "", "preserve English-only published header");
+  source = replaceOnce(source, "  {t:\"text\",copyable:1,showIf:[\"wcType\",[\"Powered wheelchair\",\"Mobility scooter\"]],e:\"Make and model\",j:\"メーカー・型番\",r:1,ph:\"Permobil M3 Corpus\",\n   nj:\"電動車椅子・電動スクーターのみ聞く。手動・歩行器・杖はメーカーが分かっても手配判断が変わらないため表示しない。\"},\n  {t:\"row\",copyable:1,showIf:[\"wcType\",[\"Powered wheelchair\",\"Mobility scooter\"]],e:\"Dimensions\",j:\"サイズ\",\n   he:\"The manufacturer's figures are fine.\",hj:\"カタログ値で構いません。\",r:1,k:1,unit:[\"cm\",\"cm\",\"cm\"],\n   cells:[[\"Length\",\"縦（全長）\",\"number\",null,\"full\"],[\"Width\",\"横（全幅）\",\"number\",null,\"full\"],[\"Height\",\"高さ\",\"number\",null,\"full\"]],\n   nj:\"電動は大型で車両の開口部・客室扉の判定に寸法が要る。手動・歩行器・杖は規格内に収まるため聞かない。\"},\n", "  {t:\"text\",copyable:1,showIf:[\"wcType\",[\"Manual wheelchair\",\"Powered wheelchair\",\"Mobility scooter\",\"Rollator / walker\"]],e:\"Make and model\",j:\"メーカー・型番\",r:1,ph:\"Permobil M3 Corpus\",\n   nj:\"手動・電動・スクーター・歩行器はいずれも、車両積載と取り違え防止のためメーカー・型番を取得する。杖だけは対象外。\"},\n  {t:\"row\",copyable:1,showIf:[\"wcType\",[\"Manual wheelchair\",\"Powered wheelchair\",\"Mobility scooter\",\"Rollator / walker\"]],e:\"Dimensions\",j:\"サイズ\",\n   he:\"The manufacturer's figures are fine.\",hj:\"カタログ値で構いません。\",r:1,k:1,unit:[\"cm\",\"cm\",\"cm\"],\n   cells:[[\"Length\",\"縦（全長）\",\"number\",null,\"full\"],[\"Width\",\"横（全幅）\",\"number\",null,\"full\"],[\"Height\",\"高さ\",\"number\",null,\"full\"]],\n   nj:\"手動を含む車椅子と歩行器は、車両の開口部・リフト・荷室への適合確認に寸法が要る。杖だけは対象外。\"},\n", "preserve published mobility requirements");
+  source = replaceOnce(source, "  {t:\"radio\",id:\"hoistdemo\",showIf:[\"hoist\",[\"Already arranged\",\"Please arrange\"]],e:\"Would you like the delivery staff to show you how to use the hoist?\",j:\"リフト搬入時の説明について\",r:1,k:1,\n   he:\"The staff who deliver the hoist can run through how to set it up and operate it. They speak Japanese, so the explanation would be given through a translation app.\",\n   hj:\"リフトを搬入するスタッフが、設置方法と操作方法をご説明できます。スタッフの対応言語は日本語のため、ご説明は翻訳アプリを介してのご案内となります。\",\n   o:[[\"Yes, please\",\"説明を希望する\"],[\"No, we are used to it\",\"説明不要\"]],\n   nj:\"搬入スタッフの滞在時間が変わるため、事業者への手配時点で要否が要る。日本語対応であることを先に伝えておかないと、当日『英語で説明されると思っていた』というクレームになる。\"},\n", "", "preserve published question numbering");
+
   source = replaceOnce(
     source,
     `:root{\n  --ink:#1c2b33;`,
@@ -184,35 +189,34 @@ export function applyPostOrderSurveyReview(input) {
     if(f.spec) card.appendChild(html("p","spec",T(f.spec[0],f.spec[1])));
     const i=document.createElement("input"); i.type="file"; i.className="nativefile";
     i.accept=f.accept||"image/*,.pdf";
-    if(f.multiple) i.multiple=true;
-    i.setAttribute("aria-label",T(f.multiple?"Choose files":"Choose file","ファイルを選択"));
+    i.multiple=true;
+    i.setAttribute("aria-label",T("Add files","ファイルを追加"));
     const pick=el("label","filepick");
-    const choose=el("span","filebutton",T(f.multiple?"Choose files":"Choose file","ファイルを選択"));
+    const choose=el("span","filebutton",T("Add files","ファイルを追加"));
     const status=el("span","filestatus",T("No file selected","ファイルが選択されていません"));
-    const announce=()=>{
-      const fs=[...i.files];
-      status.textContent=fs.length===0?T("No file selected","ファイルが選択されていません"):
-        fs.length===1?fs[0].name:T(fs.length+" files selected",fs.length+"件のファイルを選択済み");
-      status.title=fs.map(x=>x.name).join(", ");
-    };
     pick.appendChild(i); pick.appendChild(choose); pick.appendChild(status);
     const err=el("p","filerr");
-    const MAX=10*1024*1024, MAXN=f.multiple?3:1;
-    i.addEventListener("change",()=>{
-      announce();
-      const fs=[...i.files]; let msg="";
-      if(fs.length>MAXN) msg=T("Please select up to "+MAXN+" file(s).","ファイルは"+MAXN+"つまでお選びください。");
-      else{
-        const big=fs.filter(x=>x.size>MAX);
-        if(big.length) msg=T("This file is over 10MB: ","10MBを超えています：")+big.map(x=>x.name).join(", ");
-      }
-      err.textContent=msg; err.style.display=msg?"block":"none";
-      if(msg){ i.value=""; announce(); }
-    });
     err.style.display="none";
     card.appendChild(pick); card.appendChild(err);
 `
   source = source.slice(0, fileStartIndex) + fileBranch + source.slice(fileEndIndex)
+
+  // These limits apply to every attachment question, including every traveller.
+  source = source.replaceAll('up to 10MB each', 'up to 25 MiB (26.2 MB) per file')
+    .replaceAll('up to 10MB', 'up to 25 MiB (26.2 MB) per file')
+    .replaceAll('up to 3 photos', 'no file-count limit')
+    .replaceAll('up to 3 files', 'no file-count limit')
+    .replaceAll('1枚10MBまで ／ 3枚まで', '1ファイル25 MiB（約26.2 MB）まで ／ 件数制限なし')
+    .replaceAll('1ファイル10MBまで ／ 3ファイルまで', '1ファイル25 MiB（約26.2 MB）まで ／ 件数制限なし')
+    .replaceAll('10MBまで ／', '1ファイル25 MiB（約26.2 MB）まで ／ 件数制限なし ／')
+    .replaceAll('JPEG, PNG or HEIC', 'JPEG, PNG, HEIC/HEIF, WebP, GIF, TIFF, BMP or AVIF')
+    .replaceAll('JPEG, PNG, HEIC or PDF', 'JPEG, PNG, HEIC/HEIF, WebP, GIF, TIFF, BMP, AVIF or PDF')
+    .replaceAll('JPEG・PNG・HEIC', 'JPEG・PNG・HEIC/HEIF・WebP・GIF・TIFF・BMP・AVIF')
+    .replaceAll('image/jpeg,image/png,image/heic,image/heif', 'image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif');
+  source = source.replace('up to 25 MiB (26.2 MB) per file &nbsp;·&nbsp; make sure',
+    'up to 25 MiB (26.2 MB) per file &nbsp;·&nbsp; no file-count limit &nbsp;·&nbsp; make sure');
+  source = source.replace('accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf",\n',
+    'accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf",multiple:1,\n');
 
   return applyPostOrderSurveyNameFix(source)
 }

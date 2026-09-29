@@ -10,7 +10,7 @@ const artifact = fs.readFileSync(path.join(publicRoot, 'post-order-survey/index.
 const integration = fs.readFileSync(path.join(publicRoot, 'post-order-survey.js'), 'utf8')
 const worker = fs.readFileSync(path.join(publicRoot, '_worker.js'), 'utf8')
 
-const hook = `<script src="/post-order-survey.js?v=20260929-2" data-form-id="${FORM_ID}"></script>`
+const hook = `<script src="/post-order-survey.js?v=20260929-3" data-form-id="${FORM_ID}"></script>`
 if ((artifact.split(hook).length - 1) !== 1) throw new Error('Integration hook mismatch')
 if (!worker.includes(`['${FORM_ID}', '/post-order-survey/']`)) {
   throw new Error('Canonical public-form route is missing')
@@ -26,8 +26,8 @@ const requiredReferenceMarkers = [
   'repeat:{e:"Room",j:"部屋"',
   'repeat:{e:"Leg",j:"区間"',
   'send.disabled=!agree.checked',
-  'accept:"image/jpeg,image/png,image/heic,image/heif"',
-  'accept:"image/jpeg,image/png,image/heic,image/heif,application/pdf"',
+  'accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif"',
+  'accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf"',
   'Upload a photo or PDF of your travel insurance certificate',
   'Names update automatically from Section 3.',
   'className="nativefile"',

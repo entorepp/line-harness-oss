@@ -8,15 +8,21 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQ
 const fixtures = [
   ['scan.PNG', png, 'image/png'],
   ['scan.jpg', Buffer.from([255, 216, 255, 224, 0, 16, 74, 70, 73, 70]), 'image/jpeg'],
-  ['scan.pdf', Buffer.from('%PDF-1.7\n% synthetic QA'), 'application/pdf'],
+  ['scan.pdf', Buffer.from('\ufeff\n%PDF-1.7\n% synthetic QA'), 'application/pdf'],
+  ['scan.webp', Buffer.from('RIFF0000WEBP'), 'image/webp'],
+  ['scan.gif', Buffer.from('GIF89a'), 'image/gif'],
+  ['scan.tiff', Buffer.from([0x49,0x49,0x2a,0]), 'image/tiff'],
+  ['scan.bmp', Buffer.from('BMfixture'), 'image/bmp'],
+  ['scan.avif', Buffer.from([0,0,0,16,...Buffer.from('ftypavif'),0,0,0,0]), 'image/avif'],
   ['scan.heic', Buffer.from([0, 0, 0, 24, ...Buffer.from('ftypheic'), 0, 0, 0, 0]), 'image/heic'],
   ['scan.heif', Buffer.from([0, 0, 0, 24, ...Buffer.from('ftypmif1'), 0, 0, 0, 0]), 'image/heif'],
 ]
-const accept = { accept: 'image/jpeg,image/png,image/heic,image/heif,application/pdf,.jpg,.jpeg,.png,.heic,.heif,.pdf' }
+const accept = { accept: 'image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf' }
 const button = { dataset: {}, disabled: false, textContent: 'Send' }
-const fileInput = { dataset: { privateUploadKey: 'q13:0' }, closest: () => ({}) }
+const fileInput = { ...accept, dataset: { privateUploadKey: 'q13:0' }, closest: () => ({ querySelector: () => null }) }
 let files = []
 let mode = 'success'
+let failName = ''
 let draftCleared = false
 let message = ''
 const calls = []
@@ -51,6 +57,7 @@ const context = vm.createContext({
       if (mode === 'timeout') { const error = new Error('Aborted'); error.name = 'AbortError'; throw error }
       if (mode === 'upload400') return { ok: false, json: async () => ({ success: false, error: 'File type is not allowed for this field' }) }
       const file = init.body.get('file')
+      if (file.name === failName) throw new TypeError('Failed to fetch')
       assert.ok(accept.accept.includes(file.type), `Unsupported transmitted MIME: ${file.type}`)
       assert.equal(init.body.get('access'), 'form-private')
       assert.equal(init.body.get('fieldName'), 'q13')
@@ -62,13 +69,12 @@ const context = vm.createContext({
     const body = JSON.parse(init.body)
     assert.equal(body.issueId, 'local-issue')
     assert.match(body.data.q10, /Atle/)
-    assert.equal(body.data.q13.length, 1)
+    assert.equal(body.data.q13.length, files.length)
     return { ok: mode !== 'submit500', json: async () => mode === 'submit500'
       ? { success: false, error: 'Internal server error' } : { success: true, data: { id: 'local-only' } } }
   },
 })
 vm.runInContext([
-  between('  const FILE_TYPES =', '\n  const clean ='),
   between('  function acceptedFile(', '  function requiredCardComplete('),
   between('  async function uploadPrivateFile(', "  document.addEventListener('input'"),
   between('  function setCardInvalid(', '  function showSubmitMessage('),
@@ -76,11 +82,11 @@ vm.runInContext([
 
 let checked = 0
 for (const [name, bytes, expectedType] of fixtures) {
-  for (const suppliedType of ['', 'application/octet-stream', expectedType]) {
+  for (const suppliedType of ['', 'application/octet-stream', 'text/plain', expectedType]) {
     const file = new File([bytes], name, { type: suppliedType })
-    assert.equal(context.acceptedFile(accept, file), true)
     const normalized = await context.fileForUpload(file)
     assert.equal(normalized.type, expectedType)
+    assert.equal(context.acceptedFile(accept, normalized), true)
     assert.deepEqual(Buffer.from(await normalized.arrayBuffer()), bytes)
     await context.uploadPrivateFile(file, 'q13')
     checked++
@@ -88,7 +94,8 @@ for (const [name, bytes, expectedType] of fixtures) {
 }
 assert.equal(context.acceptedFile(accept, new File(['text'], 'fake.jpg', { type: 'text/html' })), false)
 await assert.rejects(context.fileForUpload(new File(['not a PNG'], 'fake.png')), /could not be recognised/)
-await assert.rejects(context.fileForUpload(new File([Buffer.from([0,0,0,24,...Buffer.from('ftypavif')])], 'fake.heic')), /could not be recognised/)
+await assert.rejects(context.fileForUpload(new File(['not really JPEG'], 'fake.jpg', { type: 'image/jpeg' })), /could not be recognised/)
+assert.equal((await context.fileForUpload(new File([fixtures[2][1]], 'no-extension', { type: 'text/plain' }))).type, 'application/pdf')
 assert.equal((await context.fileForUpload(new File([fixtures[1][1]], 'scan.jpg', {type:'image/jpg'}))).type, 'image/jpeg')
 
 for (const failure of ['network', 'timeout', 'upload400', 'submit500']) {
@@ -110,6 +117,20 @@ for (const failure of ['network', 'timeout', 'upload400', 'submit500']) {
   assert.equal(draftCleared, true)
   if (failure === 'submit500') assert.equal(calls.filter(call => call.url === '/api/upload').length, uploadCount)
 }
+// A failed later passport must retain every completed attachment. There is no
+// count cap, and selecting more after failure must not invalidate earlier work.
+context.uploadedFileCache.clear(); button.dataset = {}; draftCleared = false; calls.length = 0
+files = Array.from({ length: 5 }, (_, i) => new File([png], `passport-${i}.png`))
+failName = 'passport-2.png'; mode = 'success'
+await context.submitSurvey()
+assert.equal(draftCleared, false)
+assert.equal(calls.filter(call => call.url === '/api/upload').length, 3)
+assert.equal(calls.filter(call => /\/submit$/.test(call.url)).length, 0)
+files.push(new File([png], 'additional.png')); failName = ''
+await context.submitSurvey()
+assert.equal(button.dataset.submitted, 'true')
+assert.equal(calls.filter(call => call.url === '/api/upload').length, 7)
+assert.equal(calls.filter(call => /\/submit$/.test(call.url)).length, 1)
 const controls = ['Atle', '', ''].map((value, i) => ({ type: 'text', value, dataset: { optional: String(i === 2) },
   setAttribute(key, value) { this[key] = value }, removeAttribute(key) { delete this[key] } }))
 context.setCardInvalid({ querySelectorAll: () => controls, style: {} }, true)

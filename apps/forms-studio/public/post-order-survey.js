@@ -11,11 +11,7 @@
   const PRIVATE_UPLOAD_ACCESS = 'form-private'
   const selectedFiles = new Map()
   const uploadedFileCache = new Map()
-  const FILE_TYPES = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-    heic: 'image/heic', heif: 'image/heif', pdf: 'application/pdf',
-  }
-  const GENERIC_FILE_TYPES = new Set(['', 'application/octet-stream', 'binary/octet-stream'])
+  const MAX_FILE_BYTES = 25 * 1024 * 1024
 
   const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim()
   const isJapanese = () => document.documentElement.lang === 'ja'
@@ -69,23 +65,51 @@
   }
 
   function updateFileStatus(input, files) {
-    const status = input.closest('.filepick')?.querySelector('.filestatus')
+    const pick = input.closest('.filepick')
+    const status = pick?.querySelector('.filestatus')
     if (!status) return
-    status.textContent = files.length === 0
-      ? text('No file selected', 'ファイルが選択されていません')
-      : files.length === 1
-        ? files[0].name
-        : text(`${files.length} files selected`, `${files.length}件のファイルを選択済み`)
-    status.title = files.map((file) => file.name).join(', ')
+    const summary = files.length ? text(`${files.length} files selected`, `${files.length}件のファイルを選択済み`)
+      : text('No file selected', 'ファイルが選択されていません')
+    if (status.textContent !== summary) status.textContent = summary
+    if (input._displayedFiles?.length === files.length && files.every((file, i) => input._displayedFiles[i] === file)) return
+    input._displayedFiles = [...files]
+    let list = pick.parentElement.querySelector('.selected-file-list')
+    if (!list) {
+      list = document.createElement('ul')
+      list.className = 'selected-file-list'
+      list.style.cssText = 'padding-left:20px;font-size:14px;overflow-wrap:anywhere'
+      pick.after(list)
+    }
+    list.replaceChildren()
+    for (const file of files) {
+      const row = document.createElement('li')
+      const name = document.createElement('span')
+      name.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MiB) `
+      const remove = document.createElement('button')
+      remove.type = 'button'
+      remove.textContent = text('Remove', '削除')
+      remove.setAttribute('aria-label', text(`Remove ${file.name}`, `${file.name}を削除`))
+      remove.addEventListener('click', () => {
+        if (document.querySelector('button.submit')?.dataset.submitting === 'true') return
+        const remaining = filesForInput(input).filter(item => item !== file)
+        selectedFiles.set(input.dataset.privateUploadKey || fileInputKey(input), remaining)
+        input.value = ''
+        restoreFileSelection(input, remaining)
+        updateFileStatus(input, remaining)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      row.append(name, remove)
+      list.append(row)
+    }
   }
 
   function decorateFileInputs() {
     for (const input of document.querySelectorAll('.q input[type="file"]')) {
-      const accept = new Set(String(input.accept || '').split(',').filter(Boolean))
-      for (const [extension, type] of Object.entries(FILE_TYPES)) {
-        if (accept.has(type)) accept.add(`.${extension}`)
-      }
-      input.accept = [...accept].join(',')
+      input.multiple = true
+      // Do not let an OS MIME filter hide a valid cloud/phone document. Validate
+      // the supported formats by content after selection instead.
+      if (!input.dataset.acceptedTypes) input.dataset.acceptedTypes = input.accept
+      input.removeAttribute('accept')
       const key = fileInputKey(input)
       if (!key) continue
       input.dataset.privateUploadKey = key
@@ -100,11 +124,24 @@
     if (!(input instanceof HTMLInputElement) || input.type !== 'file') return
     const key = input.dataset.privateUploadKey || fileInputKey(input)
     if (!key) return
-    const files = Array.from(input.files || [])
-    if (files.length) selectedFiles.set(key, files)
-    else selectedFiles.delete(key)
+    const incoming = Array.from(input.files || [])
+    const previous = selectedFiles.get(key) || []
+    const files = [...previous]
+    const rejected = []
+    for (const file of incoming) {
+      if (!file.size || file.size > MAX_FILE_BYTES) { rejected.push(file); continue }
+      if (!files.some(item => fileFingerprint([item]) === fileFingerprint([file]))) files.push(file)
+    }
+    selectedFiles.set(key, files)
+    input.value = ''
+    restoreFileSelection(input, files)
     updateFileStatus(input, files)
-    uploadedFileCache.delete(key)
+    const inline = input.closest('.q')?.querySelector('.filerr')
+    if (inline) { inline.textContent = ''; inline.style.display = 'none' }
+    if (rejected.length) fileError(input, text(
+      `${rejected.map(file => file.name).join(', ')} could not be added. Each file must be non-empty and at most 25 MiB (26.2 MB). Your other files are still selected.`,
+      `${rejected.map(file => file.name).join(', ')} は追加できません。空でない25 MiB（約26.2 MB）以下のファイルを選択してください。他の添付は保持されています。`,
+    ))
   })
 
   document.addEventListener('click', (event) => {
@@ -118,10 +155,8 @@
       const next = selectedFiles.get(`q13:${index + 1}`)
       if (next) selectedFiles.set(`q13:${index}`, next)
       else selectedFiles.delete(`q13:${index}`)
-      uploadedFileCache.delete(`q13:${index}`)
     }
     selectedFiles.delete(`q13:${blocks.length - 1}`)
-    uploadedFileCache.delete(`q13:${blocks.length - 1}`)
   }, true)
 
   const observer = new MutationObserver(() => requestAnimationFrame(decorateFileInputs))
@@ -239,24 +274,13 @@
   }
 
   function acceptedFile(input, file) {
-    const accept = String(input.accept || '').split(',').map((item) => item.trim()).filter(Boolean)
-    if (!accept.length) return true
-    const declaredType = String(file.type || '').toLowerCase()
-    const type = declaredType === 'image/jpg' ? 'image/jpeg'
-      : GENERIC_FILE_TYPES.has(declaredType)
-        ? FILE_TYPES[file.name.split('.').pop()?.toLowerCase()] : declaredType
-    return accept.some((rule) => {
-      if (rule.startsWith('.')) return file.name.toLowerCase().endsWith(rule.toLowerCase())
-        && type === FILE_TYPES[rule.slice(1).toLowerCase()]
-      if (rule.endsWith('/*')) return type?.startsWith(rule.slice(0, -1))
-      return type === rule
-    })
+    const accept = String(input.dataset?.acceptedTypes || input.accept || '').split(',').map(item => item.trim()).filter(Boolean)
+    return !accept.length || accept.some(rule => rule === file.type
+      || (rule.endsWith('/*') && file.type.startsWith(rule.slice(0, -1))))
   }
 
   async function fileForUpload(file) {
-    const declaredType = String(file.type || '').toLowerCase()
-    if (!GENERIC_FILE_TYPES.has(declaredType) && declaredType !== 'image/jpg') return file
-    const header = file.slice(0, 64)
+    const header = file.slice(0, 1024)
     const buffer = typeof header.arrayBuffer === 'function' ? await header.arrayBuffer()
       : await new Promise((resolve, reject) => {
         const reader = new FileReader()
@@ -269,17 +293,25 @@
     let type = ''
     if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) type = 'image/jpeg'
     else if ([137,80,78,71,13,10,26,10].every((value, index) => bytes[index] === value)) type = 'image/png'
-    else if (ascii(0, 5) === '%PDF-') type = 'application/pdf'
+    else if (['GIF87a', 'GIF89a'].includes(ascii(0, 6))) type = 'image/gif'
+    else if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') type = 'image/webp'
+    else if (ascii(0, 2) === 'BM') type = 'image/bmp'
+    else if ([0x49,0x49,0x2a,0].every((v,i) => bytes[i] === v)
+      || [0x4d,0x4d,0,0x2a].every((v,i) => bytes[i] === v)) type = 'image/tiff'
     else if (ascii(4, 8) === 'ftyp') {
-      const brand = ascii(8, 12)
-      if (['heic', 'heix', 'hevc', 'hevx'].includes(brand)) type = 'image/heic'
-      else if (['mif1', 'msf1'].includes(brand)) type = 'image/heif'
+      const brands = [ascii(8, 12)]
+      const boxSize = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0)
+      for (let i = 16; i + 4 <= Math.min(boxSize, bytes.length); i += 4) brands.push(ascii(i, i + 4))
+      if (brands.some(b => ['avif', 'avis'].includes(b))) type = 'image/avif'
+      else if (brands.some(b => ['heic', 'heix', 'hevc', 'hevx'].includes(b))) type = 'image/heic'
+      else if (brands.some(b => ['mif1', 'msf1'].includes(b))) type = 'image/heif'
     }
+    if (!type && /%PDF-\d\.\d/.test(ascii(0, 1024))) type = 'application/pdf'
     if (!type) throw new Error(text(
-      'The file format could not be recognised. Please select a JPEG, PNG, HEIC or PDF file.',
-      'ファイル形式を確認できませんでした。JPEG・PNG・HEIC・PDFを選択してください。',
+      'The file format could not be recognised. Please select a photo or PDF in one of the formats listed above.',
+      'ファイル形式を確認できませんでした。上記に記載された写真またはPDF形式を選択してください。',
     ))
-    // Preserve the original bytes; only restore the missing browser MIME type.
+    // Preserve the original bytes; mobile pickers can report missing or incorrect MIME types.
     return new Blob([file], { type })
   }
 
@@ -365,25 +397,11 @@
     for (const input of document.querySelectorAll('.q input[type="file"]')) {
       if (!isConditionallyVisible(input)) continue
       const files = filesForInput(input)
-      if (files.length > (input.multiple ? 3 : 1)) {
-        firstInvalid ||= input.closest('.q')
-        setCardInvalid(input.closest('.q'), true)
-        fileError(input, text(
-          `Please select no more than ${input.multiple ? 3 : 1} file(s).`,
-          `ファイルは${input.multiple ? 3 : 1}件以内でお選びください。`,
-        ))
-        return false
-      }
-      const invalidFile = files.find((file) => file.size > 10 * 1024 * 1024 || !acceptedFile(input, file))
+      const invalidFile = files.find(file => !file.size || file.size > MAX_FILE_BYTES)
       if (invalidFile) {
-        firstInvalid ||= input.closest('.q')
-        setCardInvalid(input.closest('.q'), true)
-        fileError(input, invalidFile.size > 10 * 1024 * 1024 ? text(
-          `${invalidFile.name} is over 10MB. Please select a smaller file.`,
-          `${invalidFile.name} は10MBを超えています。小さいファイルを選択してください。`,
-        ) : text(
-          `${invalidFile.name} is not a supported file format for this question.`,
-          `${invalidFile.name} はこの項目で対応していないファイル形式です。`,
+        fileError(input, text(
+          `${invalidFile.name}: each file must be non-empty and at most 25 MiB (26.2 MB).`,
+          `${invalidFile.name}: 空でない25 MiB（約26.2 MB）以下のファイルを選択してください。`,
         ))
         return false
       }
@@ -411,14 +429,19 @@
     return files.map((file) => [file.name, file.size, file.type, file.lastModified].join(':')).join('|')
   }
 
-  async function uploadPrivateFile(file, fieldName) {
+  async function uploadPrivateFile(file, fieldName, input) {
     const payload = new FormData()
-    payload.append('file', await fileForUpload(file), file.name)
+    const normalized = await fileForUpload(file)
+    if (input && !acceptedFile(input, normalized)) throw new Error(text(
+      'Please use one of the file formats listed for this question.',
+      'この項目に記載されたファイル形式を選択してください。',
+    ))
+    payload.append('file', normalized, file.name)
     payload.append('access', PRIVATE_UPLOAD_ACCESS)
     payload.append('formId', formId)
     payload.append('fieldName', fieldName)
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 90_000)
+    const timer = setTimeout(() => controller.abort(), 300_000)
     let response
     try {
       response = await fetch('/api/upload', { method: 'POST', body: payload, signal: controller.signal })
@@ -455,27 +478,28 @@
       const card = input.closest('.q')
       const number = questionNumber(card)
       if (!FILE_QUESTIONS.has(number)) continue
-      const key = input.dataset.privateUploadKey || fileInputKey(input)
       const files = filesForInput(input)
-      const fingerprint = fileFingerprint(files)
-      let uploaded = uploadedFileCache.get(key)
-      if (!uploaded || uploaded.fingerprint !== fingerprint) {
-        uploaded = {
-          fingerprint,
-          files: await Promise.all(files.map(async (file) => {
-            try { return await uploadPrivateFile(file, `q${number}`) }
-            catch (error) {
-              throw new Error(fileError(input, `${file.name}: ${error.message}`))
-            }
-          })),
-        }
-        uploadedFileCache.set(key, uploaded)
-      }
       const context = blockLabel(card)
-      data[`q${number}`].push(...uploaded.files.map((file) => ({
-        ...file,
-        fileName: context ? `${context} — ${file.fileName}` : file.fileName,
-      })))
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index]
+        let cached = uploadedFileCache.get(file)
+        let uploaded = cached?.get(number)
+        if (!uploaded || Date.parse(uploaded.expiresAt) <= Date.now()) {
+          const progress = text(`Uploading ${file.name} (${index + 1}/${files.length})… Please keep this page open.`,
+            `${file.name} をアップロード中（${index + 1}/${files.length}）… この画面を開いたままお待ちください。`)
+          showSubmitMessage(progress, true)
+          const inline = card.querySelector('.filerr')
+          if (inline) { inline.textContent = ''; inline.style.display = 'none' }
+          try { uploaded = await uploadPrivateFile(file, `q${number}`, input) }
+          catch (error) { throw new Error(fileError(input, `${file.name}: ${error.message}`)) }
+          if (!cached) { cached = new Map(); uploadedFileCache.set(file, cached) }
+          // Commit each success immediately so Retry never repeats completed files.
+          cached.set(number, uploaded)
+        }
+        data[`q${number}`].push({ ...uploaded,
+          fileName: context ? `${context} — ${uploaded.fileName}` : uploaded.fileName,
+        })
+      }
     }
   }
 
@@ -497,13 +521,16 @@
 
     button.dataset.submitting = 'true'
     button.disabled = true
-    const originalLabel = button.textContent
     button.textContent = text('Uploading and sending…', 'アップロード・送信中…')
     try {
       const data = serializeAnswers()
       await appendFileAnswers(data)
+      showSubmitMessage(text('Attachments uploaded. Sending your answers…', '添付完了。回答を送信中…'), true)
       const params = new URLSearchParams(window.location.search)
+      const submissionController = new AbortController()
+      const submissionTimer = setTimeout(() => submissionController.abort(), 90_000)
       const response = await fetch(`/api/forms/${formId}/submit`, {
+        signal: submissionController.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -513,7 +540,10 @@
           responderDisplayName: leadTravellerName(),
           data,
         }),
-      })
+      }).catch(() => { throw new Error(text(
+        'We could not confirm that your answers were received. Your answers and uploaded files are still here. Check your connection before trying Send again. Please keep this page open.',
+        '回答の受信を確認できませんでした。回答とアップロード済みの添付は保持されています。画面を開いたまま通信状況を確認し、再度送信してください。',
+      )) }).finally(() => clearTimeout(submissionTimer))
       const result = await response.json().catch(() => ({}))
       if (!response.ok || !result.success) {
         throw new Error(result.error || text('Submission failed.', '送信に失敗しました。'))
@@ -529,7 +559,7 @@
       ), true)
     } catch (error) {
       button.dataset.submitting = 'false'
-      button.textContent = originalLabel
+      button.textContent = text('Retry Send', '再度送信')
       button.disabled = !document.getElementById('agree')?.checked
       showSubmitMessage(error instanceof Error ? error.message : text(
         'Submission failed.',

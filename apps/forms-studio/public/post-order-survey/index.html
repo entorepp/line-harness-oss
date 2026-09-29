@@ -318,9 +318,9 @@ const S=[
   {t:"file",e:"A photo of your group, so we can recognise you",j:"ご一行の雰囲気がわかるお写真",
    he:"A family snapshot is perfect. It helps your driver find you at a crowded arrivals gate, and it tells us more about seating and space than measurements alone.",
    hj:"ご家族のスナップ写真で構いません。混雑した到着ロビーでドライバーがご本人を見つけられますし、寸法だけでは分からない座り方・空間の感じもこちらで把握できます。",r:1,k:1,
-   spec:["JPEG, PNG or HEIC &nbsp;·&nbsp; up to 10MB each &nbsp;·&nbsp; up to 3 photos &nbsp;·&nbsp; a photo straight from your phone is fine",
-         "JPEG・PNG・HEIC ／ 1枚10MBまで ／ 3枚まで ／ スマートフォンで撮ったものをそのままで結構です"],
-   accept:"image/jpeg,image/png,image/heic,image/heif",multiple:1,
+   spec:["JPEG, PNG, HEIC/HEIF, WebP, GIF, TIFF, BMP or AVIF &nbsp;·&nbsp; up to 25 MiB (26.2 MB) per file &nbsp;·&nbsp; no file-count limit &nbsp;·&nbsp; a photo straight from your phone is fine",
+         "JPEG・PNG・HEIC/HEIF・WebP・GIF・TIFF・BMP・AVIF ／ 1ファイル25 MiB（約26.2 MB）まで ／ 件数制限なし ／ スマートフォンで撮ったものをそのままで結構です"],
+   accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif",multiple:1,
    nj:"実務価値が2つある。①当日の出迎えで確実に本人を特定できる ②姿勢・体格・車椅子の実際の使い方が写真で分かり、部屋・車両判断の精度が上がる。任意にせず必須で聞く。"}
  ]},
 {n:2,e:"Insurance and emergency contact",j:"旅行保険・緊急連絡先",
@@ -330,9 +330,9 @@ const S=[
   {t:"file",showIf:["ins",["Yes"]],e:"Upload a photo or PDF of your travel insurance certificate",j:"旅行証券の写真またはPDFをアップロード",
    he:"Required because you answered Yes. Please make sure the insurer, plan name, coverage, and 24-hour assistance number are all readable.",
    hj:"加入先の保険会社名・プラン名・補償範囲・24時間アシスタンスデスクの電話番号が読み取れる状態でアップロードしてください。複数枚に分かれている場合はすべてお送りください。",r:1,k:1,cal:1,
-   spec:["Required if you answered Yes &nbsp;·&nbsp; JPEG, PNG, HEIC or PDF &nbsp;·&nbsp; up to 10MB each &nbsp;·&nbsp; up to 3 files",
-         "JPEG・PNG・HEIC・PDF ／ 1ファイル10MBまで ／ 3ファイルまで"],
-   accept:"image/jpeg,image/png,image/heic,image/heif,application/pdf",multiple:1,
+   spec:["Required if you answered Yes &nbsp;·&nbsp; JPEG, PNG, HEIC/HEIF, WebP, GIF, TIFF, BMP, AVIF or PDF &nbsp;·&nbsp; up to 25 MiB (26.2 MB) per file &nbsp;·&nbsp; no file-count limit",
+         "JPEG・PNG・HEIC/HEIF・WebP・GIF・TIFF・BMP・AVIF・PDF ／ 1ファイル25 MiB（約26.2 MB）まで ／ 件数制限なし"],
+   accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf",multiple:1,
    nj:"保険会社名・プラン名・補償範囲・24時間デスク番号を個別に手入力させると転記ミスと未記入が増える。証券画像1点に集約し、必要な情報は画像から読み取る。"},
   {t:"radio",id:"preex",showIf:["ins",["Yes"]],e:"Does the policy cover your pre-existing conditions?",j:"その保険は既往症（持病）を補償対象に含んでいますか",
    he:"Most standard travel policies exclude pre-existing conditions unless you declared them. It is worth checking the wording before you travel.",
@@ -358,9 +358,9 @@ const S=[
   {t:"file",e:"Passport — upload the photo page",j:"パスポート（顔写真ページ）",
    he:"A photo taken on your phone is fine. This is the safest way to avoid a misspelling on a booking.",
    hj:"スマートフォンでの撮影で構いません。予約名義のスペル・番号の転記ミスを防ぐ最も確実な方法です。",r:1,k:1,
-   spec:["JPEG, PNG, HEIC or PDF &nbsp;·&nbsp; up to 10MB &nbsp;·&nbsp; make sure the name, number and expiry date are readable",
-         "JPEG・PNG・HEIC・PDF ／ 10MBまで ／ 氏名・番号・有効期限が読み取れる状態でお願いします"],
-   accept:"image/jpeg,image/png,image/heic,image/heif,application/pdf",
+   spec:["JPEG, PNG, HEIC/HEIF, WebP, GIF, TIFF, BMP, AVIF or PDF &nbsp;·&nbsp; up to 25 MiB (26.2 MB) per file &nbsp;·&nbsp; no file-count limit &nbsp;·&nbsp; make sure the name, number and expiry date are readable",
+         "JPEG・PNG・HEIC/HEIF・WebP・GIF・TIFF・BMP・AVIF・PDF ／ 1ファイル25 MiB（約26.2 MB）まで ／ 件数制限なし ／ 氏名・番号・有効期限が読み取れる状態でお願いします"],
+   accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf",multiple:1,
    nj:"手入力は廃止し画像アップロードのみに統一。氏名・生年月日は上の設問で取得済みのため、番号・有効期限は画像から読み取る。機微情報のため回答先のアクセス制限を必ず設ける。"},
  ]},
 {n:4,e:"Wheelchair and mobility equipment",j:"車椅子・モビリティ機器",
@@ -780,31 +780,13 @@ function question(f,qn,inst,scoped){
     if(f.spec) card.appendChild(html("p","spec",T(f.spec[0],f.spec[1])));
     const i=document.createElement("input"); i.type="file"; i.className="nativefile";
     i.accept=f.accept||"image/*,.pdf";
-    if(f.multiple) i.multiple=true;
-    i.setAttribute("aria-label",T(f.multiple?"Choose files":"Choose file","ファイルを選択"));
+    i.multiple=true;
+    i.setAttribute("aria-label",T("Add files","ファイルを追加"));
     const pick=el("label","filepick");
-    const choose=el("span","filebutton",T(f.multiple?"Choose files":"Choose file","ファイルを選択"));
+    const choose=el("span","filebutton",T("Add files","ファイルを追加"));
     const status=el("span","filestatus",T("No file selected","ファイルが選択されていません"));
-    const announce=()=>{
-      const fs=[...i.files];
-      status.textContent=fs.length===0?T("No file selected","ファイルが選択されていません"):
-        fs.length===1?fs[0].name:T(fs.length+" files selected",fs.length+"件のファイルを選択済み");
-      status.title=fs.map(x=>x.name).join(", ");
-    };
     pick.appendChild(i); pick.appendChild(choose); pick.appendChild(status);
     const err=el("p","filerr");
-    const MAX=10*1024*1024, MAXN=f.multiple?3:1;
-    i.addEventListener("change",()=>{
-      announce();
-      const fs=[...i.files]; let msg="";
-      if(fs.length>MAXN) msg=T("Please select up to "+MAXN+" file(s).","ファイルは"+MAXN+"つまでお選びください。");
-      else{
-        const big=fs.filter(x=>x.size>MAX);
-        if(big.length) msg=T("This file is over 10MB: ","10MBを超えています：")+big.map(x=>x.name).join(", ");
-      }
-      err.textContent=msg; err.style.display=msg?"block":"none";
-      if(msg){ i.value=""; announce(); }
-    });
     err.style.display="none";
     card.appendChild(pick); card.appendChild(err);
   } else if(f.t==="select"){
@@ -1301,6 +1283,6 @@ document.querySelectorAll("[data-lang-btn]").forEach(b=>{
 render();
 </script>
 
-<script src="/post-order-survey.js?v=20260929-2" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
+<script src="/post-order-survey.js?v=20260929-3" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
 </body>
 </html>
