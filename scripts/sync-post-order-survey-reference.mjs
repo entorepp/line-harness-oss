@@ -12,7 +12,7 @@ const artifactPath = path.join(
   repoRoot,
   'apps/forms-studio/public/post-order-survey/index.html',
 )
-const hook = `<script src="/post-order-survey.js?v=20260929-1" data-form-id="${FORM_ID}"></script>`
+const hook = `<script src="/post-order-survey.js?v=20260929-2" data-form-id="${FORM_ID}"></script>`
 
 function addIntegrationHook(source) {
   const closingBody = '\n</body>'
