@@ -350,7 +350,7 @@ const S=[
  repeat:{e:"Traveller",j:"旅行者",addE:"Add a traveller",addJ:"旅行者を追加",nameFrom:0},
  f:[
   {t:"row",e:"Full name",j:"お名前",he:"As in the passport, including any middle name",hj:"パスポート表記どおり。ミドルネームがあれば含めてください",r:1,
-   cells:[["First name","名"],["Last name(s)","姓"],["Middle name","ミドルネーム"]]},
+   optionalCells:[2],cells:[["First name","名"],["Last name(s)","姓"],["Middle name","ミドルネーム"]]},
   {t:"select",e:"Relationship to the lead traveller",j:"代表者との続柄",r:1,
    o:[["Self","本人"],["Spouse / partner","配偶者・パートナー"],["Parent","親"],["Child","子"],["Sibling","兄弟姉妹"],["Carer","介助者"],["Friend","友人"],["Other","その他"]]},
   {t:"radio",e:"Does this traveller use a wheelchair or mobility device?",j:"この方は車椅子・モビリティ機器を利用されますか",r:1,inline:1,o:[["Yes","はい"],["No","いいえ"]],
@@ -636,6 +636,12 @@ function question(f,qn,inst,scoped){
       cell.appendChild(el("span","flb",T(c[0],c[1])));
       const inp=mkInput(c[2]||"text",null,c[3]);
       inp.dataset.k=QKEY+"_"+i;
+      if(f.optionalCells){
+        const optional=f.optionalCells.includes(i);
+        inp.dataset.optional=String(optional);
+        inp.setAttribute("aria-required",String(!!f.r&&!optional));
+        if(optional) inp.placeholder=T("Optional","任意");
+      }
       if(f.unit&&f.unit[i]){
         const u=String(f.unit[i]); const uu=u.includes("|")?T(u.split("|")[0],u.split("|")[1]):u;
         const w=el("div","withunit"); w.appendChild(inp); w.appendChild(el("span","unit",uu));
@@ -1088,7 +1094,9 @@ function refresh(){
       if(card.hidden) return;
       t++;
       const ins=inputsIn(card);
-      const filled=ins.some(x=>(x.type==="checkbox"||x.type==="radio")?x.checked:!!x.value)
+      const filled=ins.some(x=>x.dataset.optional!==undefined)
+        ? ins.filter(x=>x.dataset.optional!=="true").every(x=>!!x.value.trim())
+        : ins.some(x=>(x.type==="checkbox"||x.type==="radio")?x.checked:!!x.value)
         || [...card.querySelectorAll("input[type=file]")].some(x=>x.files&&x.files.length);
       if(filled) d++;
     });
@@ -1293,6 +1301,6 @@ document.querySelectorAll("[data-lang-btn]").forEach(b=>{
 render();
 </script>
 
-<script src="/post-order-survey.js" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
+<script src="/post-order-survey.js?v=20260929-1" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
 </body>
 </html>
