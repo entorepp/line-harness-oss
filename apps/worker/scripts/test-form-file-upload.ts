@@ -40,7 +40,7 @@ const db = {
                   {
                     name: 'q13',
                     type: 'file',
-                    accept: 'image/jpeg,image/png,image/heic,image/heif,application/pdf',
+                    accept: 'image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf',
                   },
                   { name: 'q1', type: 'textarea' },
                 ]),
@@ -76,7 +76,7 @@ const fullWorkerPrivateRead = await worker.fetch(
 assert.equal(fullWorkerPrivateRead.status, 403);
 
 const privatePayload = new FormData();
-privatePayload.append('file', new File([new Uint8Array([1, 2, 3])], 'passport.jpg', {
+privatePayload.append('file', new File([new Uint8Array([255, 216, 255, 224])], 'passport.jpg', {
   type: 'image/jpeg',
 }));
 privatePayload.append('access', 'form-private');
@@ -142,7 +142,7 @@ assert.equal(signedPrivateRead.status, 200);
 assert.equal(signedPrivateRead.headers.get('cache-control'), 'private, no-store, max-age=0');
 assert.deepEqual(
   Array.from(new Uint8Array(await signedPrivateRead.arrayBuffer())),
-  [1, 2, 3],
+  [255, 216, 255, 224],
 );
 
 privateUrl.searchParams.set('sig', `${privateUrl.searchParams.get('sig')}tampered`);
@@ -172,4 +172,41 @@ assert.equal(
 const publicRead = await uploads.request(publicJson.data.url, undefined, env);
 assert.equal(publicRead.status, 200);
 
-console.log('FORM_FILE_UPLOAD_TEST_OK');
+
+// MIME and filenames are untrusted hints. The bytes determine the stored type.
+const fixtures = [
+  [new Uint8Array([255, 216, 255, 224]), 'image/jpeg'],
+  [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), 'image/png'],
+  [new TextEncoder().encode('\ufeff\n%PDF-1.7\n synthetic test'), 'application/pdf'],
+  [new TextEncoder().encode('GIF89a'), 'image/gif'],
+  [new TextEncoder().encode('RIFF0000WEBP'), 'image/webp'],
+  [new Uint8Array([0,0,0,24,...new TextEncoder().encode('ftypmif1'),0,0,0,0,...new TextEncoder().encode('heic')]), 'image/heic'],
+  [new Uint8Array([0,0,0,16,...new TextEncoder().encode('ftypavif'),0,0,0,0]), 'image/avif'],
+  [new Uint8Array([0x49,0x49,0x2a,0]), 'image/tiff'],
+  [new TextEncoder().encode('BMfixture'), 'image/bmp'],
+] as const;
+async function uploadFixture(bytes: Uint8Array, type: string) {
+  const payload = new FormData();
+  payload.append('file', new File([bytes], 'document', { type }));
+  payload.append('access', 'form-private');
+  payload.append('formId', 'post-order-form');
+  payload.append('fieldName', 'q13');
+  return uploads.request('https://line-flattravel.example.test/api/upload', { method: 'POST', body: payload }, env);
+}
+for (const [bytes, expected] of fixtures) {
+  for (const type of ['', 'application/octet-stream', 'text/plain', expected]) {
+    const response = await uploadFixture(bytes, type);
+    assert.equal(response.status, 200, `${expected} reported as ${type}`);
+    const json = await response.json() as { data: { key: string } };
+    assert.equal(stored.get(json.data.key)?.metadata.contentType, expected);
+    assert.deepEqual(new Uint8Array(stored.get(json.data.key)!.value), bytes);
+  }
+}
+assert.equal((await uploadFixture(new TextEncoder().encode('<html>fake image</html>'), 'image/jpeg')).status, 400);
+const atLimit = new Uint8Array(25 * 1024 * 1024);
+atLimit.set([255,216,255,224]);
+assert.equal((await uploadFixture(atLimit, 'application/octet-stream')).status, 200);
+const overLimit = new Uint8Array(25 * 1024 * 1024 + 1);
+overLimit.set([255,216,255,224]);
+assert.equal((await uploadFixture(overLimit, 'image/jpeg')).status, 413);
+console.log('FORM_FILE_UPLOAD_TEST_OK mime_variants=36 limit_25MiB=passed public_bypass=blocked');
