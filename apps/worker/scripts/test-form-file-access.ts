@@ -42,4 +42,17 @@ assert.equal(await verifyFormFileAccess({
   nowMs: (expiresAt + 1) * 1000,
 }), false);
 
+for (const suffix of ['', '_']) {
+  assert.equal(await verifyFormFileAccess({ key, expiresAt, signature: signature + suffix, secret, nowMs }), true);
+  assert.equal(await verifyFormFileAccess({ key: 'different.pdf', expiresAt, signature: signature + suffix, secret, nowMs }), false);
+  assert.equal(await verifyFormFileAccess({ key, expiresAt, signature: signature + suffix, secret: 'wrong-secret', nowMs }), false);
+  assert.equal(await verifyFormFileAccess({ key, expiresAt, signature: signature + suffix, secret, nowMs: (expiresAt + 1) * 1000 }), false);
+}
+for (const invalid of [
+  `${signature}__`, `${signature}a`, signature.slice(1), `${signature.slice(1)}_`,
+  `${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}_`, '', '_',
+]) {
+  assert.equal(await verifyFormFileAccess({ key, expiresAt, signature: invalid, secret, nowMs }), false);
+}
+
 console.log('FORM_FILE_ACCESS_TEST_OK');

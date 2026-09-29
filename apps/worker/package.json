@@ -6,6 +6,7 @@
     "dev": "wrangler dev",
     "deploy": "node ../../scripts/deploy-worker-production.mjs --deploy",
     "typecheck": "tsc --noEmit",
+    "test:slack-form-files": "esbuild scripts/test-slack-form-files.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/slack-form-files.mjs && node .wrangler/tests/slack-form-files.mjs",
     "test:form-file-access": "esbuild scripts/test-form-file-access.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-file-access-test.mjs && node .wrangler/tests/flat-harness-form-file-access-test.mjs",
     "test:form-file-upload": "esbuild scripts/test-form-file-upload.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-file-upload-test.mjs && node .wrangler/tests/flat-harness-form-file-upload-test.mjs",
     "test:form-response-email": "esbuild scripts/test-form-response-email.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/flat-harness-form-response-email-test.mjs && node .wrangler/tests/flat-harness-form-response-email-test.mjs",

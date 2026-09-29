@@ -72,5 +72,9 @@ export async function verifyFormFileAccess(params: {
     params.secret,
     signingPayload(params.key, params.expiresAt),
   );
-  return timingSafeEqual(expected, params.signature);
+  // Older Slack translations wrapped a bare URL in _italics_. Slack included
+  // the closing underscore in the link. Accept that one known suffix only;
+  // the complete HMAC, exact object key and original expiry still must match.
+  return timingSafeEqual(expected, params.signature)
+    || timingSafeEqual(`${expected}_`, params.signature);
 }

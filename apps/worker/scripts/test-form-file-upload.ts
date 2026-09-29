@@ -145,7 +145,17 @@ assert.deepEqual(
   [255, 216, 255, 224],
 );
 
-privateUrl.searchParams.set('sig', `${privateUrl.searchParams.get('sig')}tampered`);
+const originalSignature = privateUrl.searchParams.get('sig')!;
+privateUrl.searchParams.set('sig', `${originalSignature}_`);
+const slackDecoratedRead = await uploads.request(privateUrl.toString(), undefined, env);
+assert.equal(slackDecoratedRead.status, 200);
+assert.deepEqual(
+  Array.from(new Uint8Array(await slackDecoratedRead.arrayBuffer())),
+  [255, 216, 255, 224],
+);
+privateUrl.searchParams.set('sig', `${originalSignature}__`);
+assert.equal((await uploads.request(privateUrl.toString(), undefined, env)).status, 403);
+privateUrl.searchParams.set('sig', `${originalSignature}tampered`);
 const tamperedPrivateRead = await uploads.request(privateUrl.toString(), undefined, env);
 assert.equal(tamperedPrivateRead.status, 403);
 
