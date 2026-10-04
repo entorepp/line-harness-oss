@@ -389,9 +389,45 @@
         setCardInvalid(card, false)
         continue
       }
-      const invalid = !requiredCardComplete(card)
+      const flightCard = [42, 43].includes(questionNumber(card))
+      const firstValue = card.querySelector('input')?.value?.trim() || ''
+      const flightUnknown = flightCard && /^(not booked|not flying|unknown|未定|利用なし)$/i.test(firstValue)
+      const invalid = !flightUnknown && !requiredCardComplete(card)
       setCardInvalid(card, invalid)
       if (invalid && !firstInvalid) firstInvalid = card
+    }
+
+    for (const card of document.querySelectorAll('.q')) {
+      if (!isConditionallyVisible(card)) continue
+      const number = questionNumber(card)
+      if ([42, 43].includes(number)) {
+        const controls = [...card.querySelectorAll('input')]
+        const flight = (controls[0]?.value || '').normalize('NFKC').replace(/\s+/g, '').toUpperCase()
+        const unknown = /^(NOTBOOKED|NOTFLYING|UNKNOWN|未定|利用なし)$/.test(flight)
+        const day = controls[1]?.value || ''
+        const validDate = /^\d{4}-\d{2}-\d{2}$/.test(day) && !Number.isNaN(Date.parse(day)) && new Date(day).toISOString().slice(0, 10) === day
+        if (!unknown && (!/^(?:[A-Z]{2}|[A-Z][0-9]|[0-9][A-Z])[0-9]{1,4}[A-Z]?$/.test(flight) || !validDate)) {
+          setCardInvalid(card, true)
+          showSubmitMessage(text('Please enter a complete flight number (for example AF274) and the date in Japan. Airline name alone is not enough. If undecided, enter Not booked.', '便名はAF274のように番号まで入力し、日本での日付を選んでください。航空会社名だけでは送信できません。未定ならNot bookedと入力してください。'))
+          revealCard(card)
+          return false
+        }
+        if (!unknown) controls[0].value = flight
+      }
+      if ([17, 18, 22].includes(number)) {
+        const inputs = [...card.querySelectorAll('input')]
+        const invalid = inputs.some((input, index) => {
+          if (!input.value.trim()) return false
+          const maximum = number === 17 ? [300, 200, 250][index] : number === 22 ? [250, 500][index] : 500
+          return !/^\d+(?:\.\d+)?$/.test(input.value.trim()) || !(Number(input.value) > (number === 22 && index === 0 ? 30 : 0) && Number(input.value) <= maximum)
+        })
+        if (invalid) {
+          setCardInvalid(card, true)
+          showSubmitMessage(text('Please enter a valid measurement using centimetres (cm) or kilograms (kg). Leave unknown equipment measurements blank.', '寸法はcm、重量はkgの正しい数値をご入力ください。不明な機器の寸法・重量は空欄で構いません。'))
+          revealCard(card)
+          return false
+        }
+      }
     }
 
     for (const input of document.querySelectorAll('.q input[type="file"]')) {

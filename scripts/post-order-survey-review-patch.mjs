@@ -218,5 +218,21 @@ export function applyPostOrderSurveyReview(input) {
   source = source.replace('accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf",\n',
     'accept:"image/jpeg,image/png,image/heic,image/heif,image/webp,image/gif,image/tiff,image/bmp,image/avif,application/pdf",multiple:1,\n');
 
-  return applyPostOrderSurveyNameFix(source)
+  return applySurveyInputRules(applyPostOrderSurveyNameFix(source))
+}
+
+export function applySurveyInputRules(source) {
+  source = replaceOnce(source,
+    'he:"The manufacturer\'s figures are fine.",hj:"カタログ値で構いません。",r:1,k:1,unit:["cm","cm","cm"]',
+    'he:"Optional if unknown. We will check the exact model. Please enter your own measured dimensions if the chair has been customised.",hj:"不明なら空欄で構いません。型番から確認します。改造・付属品がある場合は実測値をご入力ください。",k:1,unit:["cm","cm","cm"]', 'optional model dimensions');
+  source = replaceOnce(source,
+    'he:"The manufacturer\'s figure is fine.",hj:"カタログ値で構いません。",r:1,k:1,unit:"kg",min:0',
+    'he:"Optional if unknown. Include the battery and fitted accessories.",hj:"不明なら空欄で構いません。バッテリー・装着品を含む重量をご入力ください。",k:1,unit:"kg",min:0', 'optional model weight');
+  source = replaceOnce(source, 'e:"Who is staying in this room?",j:"この部屋にご宿泊の方",r:1,',
+    'e:"Who is staying in this room?",j:"この部屋にご宿泊の方",', 'optional room occupants');
+  source = source.replace('e:"Arrival flight",j:"往路のフライト",r:1,',
+    'e:"Arrival flight",j:"往路のフライト",r:1,he:"Enter the full flight number, e.g. AF274, and the arrival date in Japan. If not booked, enter Not booked. If you are not flying, enter Not flying.",hj:"AF274のように便番号まで入力し、日本到着日をご指定ください。未購入はNot booked、飛行機利用なしはNot flyingと入力できます。",');
+  source = source.replace('e:"Departure flight",j:"復路のフライト",r:1,',
+    'e:"Departure flight",j:"復路のフライト",r:1,he:"Enter the full flight number and departure date in Japan. Not booked / Not flying are also accepted.",hj:"便番号と日本出発日をご指定ください。Not booked / Not flyingも入力できます。",');
+  return source;
 }
