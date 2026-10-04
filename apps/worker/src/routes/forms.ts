@@ -34,6 +34,7 @@ import type {
 } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
+import { POST_ORDER_FORM_ID, isCaseBoundPreOrder, validatePostOrderAnswers } from '../lib/survey-validation.js';
 import {
   enqueueAccessibleJapanQuoteJob,
   processAccessibleJapanQuoteJobs,
@@ -951,7 +952,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
     const sharedByFriendId = enableLineFollowup
       ? body.sharedByFriendId?.trim() || issue?.shared_by_friend_id || null
       : null;
-    const slackChannelId = body.slackChannelId?.trim() || issue?.slack_channel_id || null;
+    const slackChannelId = issue ? issue.slack_channel_id : body.slackChannelId?.trim() || null;
     const responderDisplayName = body.responderDisplayName?.trim() || null;
     const responderPictureUrl = body.responderPictureUrl?.trim() || null;
 
@@ -991,6 +992,10 @@ forms.post('/api/forms/:id/submit', async (c) => {
       }
     }
 
+    if (formId === POST_ORDER_FORM_ID) {
+      const validationError = validatePostOrderAnswers(submissionData);
+      if (validationError) return c.json({ success: false, error: validationError }, 400);
+    }
     const answerEntries = buildAnswerEntries(visibleFields, submissionData, fields);
 
     // URL-shared forms are the default. LINE/friend resolution is only used when explicitly enabled.
@@ -1013,7 +1018,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
       slackChannelId: resolvedSubmissionSlackChannelId,
       data: JSON.stringify(submissionData),
     });
-    if (form.id === ACCESSIBLE_JAPAN_FORM_ID) {
+    if (form.id === ACCESSIBLE_JAPAN_FORM_ID && !isCaseBoundPreOrder(issue)) {
       await enqueueAccessibleJapanQuoteJob(c.env.DB, submission.id);
     }
 
@@ -1101,7 +1106,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
       ),
     );
 
-    if (form.id === ACCESSIBLE_JAPAN_FORM_ID) {
+    if (form.id === ACCESSIBLE_JAPAN_FORM_ID && !isCaseBoundPreOrder(issue)) {
       sideEffects.push(
         processAccessibleJapanQuoteJobs(c.env, {
           submissionId: submission.id,

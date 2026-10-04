@@ -20,7 +20,8 @@
     "test:lead-route-topology": "esbuild scripts/test-lead-route-topology.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/test-lead-route-topology.mjs && node .wrangler/tests/test-lead-route-topology.mjs",
     "test:quote-reference": "esbuild scripts/test-quote-reference.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/test-quote-reference.mjs && node .wrangler/tests/test-quote-reference.mjs",
     "test:whatsapp-identity": "esbuild scripts/test-whatsapp-identity.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-identity.mjs && node .wrangler/tests/whatsapp-identity.mjs",
-    "test:whatsapp-operational-templates": "esbuild scripts/test-whatsapp-operational-templates.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-operational-templates.mjs && node .wrangler/tests/whatsapp-operational-templates.mjs"
+    "test:whatsapp-operational-templates": "esbuild scripts/test-whatsapp-operational-templates.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-operational-templates.mjs && node .wrangler/tests/whatsapp-operational-templates.mjs",
+    "test:survey-validation": "esbuild scripts/test-survey-validation.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/survey-validation.mjs && node .wrangler/tests/survey-validation.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",
