@@ -49,6 +49,7 @@ for (const language of ['en', 'ja']) {
       html: (tag, cls, text) => new Element(tag, cls, text),
       clean: value => String(value ?? '').replace(/\s+/g, ' ').trim(),
       isConditionallyVisible: () => true,
+      questionNumber: () => 10,
       setCardInvalid() {}, showSubmitMessage() {}, revealCard() {},
       text: (en, ja) => language === 'ja' ? ja : en,
       HTMLSelectElement: class {},
@@ -101,5 +102,5 @@ for (const language of ['en', 'ja']) {
   }
 }
 assert.match(html, /const STORE="flattravel_intake_v2"/)
-assert.match(html, /post-order-survey\.js\?v=20260929-3/)
+assert.match(html, /post-order-survey\.js\?v=20261005-1/)
 console.log(`POST_ORDER_NAME_REGRESSION_OK cases=${checks} languages=2 traveller_instances=3 submit_gate=passed progress=passed serialization=unchanged consent=required`)

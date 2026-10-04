@@ -31,6 +31,7 @@ node scripts/verify-form-server-traffic.mjs
 node scripts/test-acquisition-funnel.mjs
 node scripts/verify-post-order-survey.mjs
 node scripts/test-post-order-survey-names.mjs
+node scripts/test-post-order-survey-inputs.mjs
 node scripts/test-post-order-survey-upload.mjs
 
 echo "=== Building shared package ==="
