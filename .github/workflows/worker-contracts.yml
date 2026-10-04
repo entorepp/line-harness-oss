@@ -36,6 +36,7 @@ jobs:
       - run: pnpm --filter worker test:form-response-email
       - run: pnpm --filter worker test:form-response-email-route
       - run: pnpm --filter worker test:travel-quote-route
+      - run: pnpm --filter worker test:survey-validation
       - run: pnpm --filter worker test:form-file-access
       - run: pnpm --filter worker test:form-file-upload
       - run: pnpm --filter worker test:slack-form-files
