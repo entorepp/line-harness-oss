@@ -1173,6 +1173,11 @@ export default function PublicFormPage() {
     setHasTriedSubmit(true)
 
     if (missingFields.length > 0) {
+      if (isAccessibleJapanForm && !issueId) {
+        window.dispatchEvent(new CustomEvent('flat-travel:form-validation', {
+          detail: { fields: missingFields.map((field) => field.name) },
+        }))
+      }
       setError('')
       scrollToField(missingFields[0].name)
       return
@@ -1915,6 +1920,10 @@ export default function PublicFormPage() {
                     key={field.name}
                     id={`field-${field.name}`}
                     data-traffic-field={isAccessibleJapanForm ? field.name : undefined}
+                    data-traffic-complete={isAccessibleJapanForm && !issueId
+                      ? String(!getMissingReason({ ...field, required: true }, values[field.name], otherValues[field.name], form.locale || issue?.locale)
+                        && (field.name !== 'email' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(values[field.name] || ''))))
+                      : undefined}
                     ref={(node) => {
                       fieldRefs.current[field.name] = node
                     }}

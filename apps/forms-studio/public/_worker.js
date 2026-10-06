@@ -798,7 +798,27 @@ function createAcquisitionFunnel(options) {
   const cookie = request => (request.headers.get('Cookie') || '').split(';').map(s=>s.trim()).find(s=>s.startsWith('af_visit='))?.slice(9) || '';
   const enabled = (request, env) => env.FUNNEL_V1_ENABLED === 'true' && new URL(request.url).origin === options.origin;
   const safePath = pathname => options.surface === 'form' ? '/public-form' : /^\/(en|tc|kr|sc)(\/[a-z0-9_-]+){0,5}\/?$/i.test(pathname) && !/\d{7}|@|case|receipt|share|partner/i.test(pathname) ? pathname.slice(0,180) : '/other';
-  const allowedEvents = new Set(['page_visible','interaction','form_start','field_interaction','submit_attempt','validation_error','submit_error','link_click']);
+  const allowedEvents = new Set(['page_visible','interaction','form_start','field_visible','field_complete','field_interaction','submit_attempt','validation_error','submit_error','link_click']);
+  const formFields = new Set(['first_name','last_name','email','hotel_interest','hotel_match_preference','hotel_grade','travellers','room_count','bed_type','dates_decided','city_schedule','preferred_cities','approximate_timing','approximate_duration','notes']);
+  const placements = new Set(['top','mid','bottom','inline','sticky','sidebar']);
+  function entryContext(url) {
+    const content=token(url.searchParams.get('utm_content'));
+    return {
+      page:token(url.searchParams.get('aj_page')) || (!placements.has(content)?content:''),
+      placement:placements.has(url.searchParams.get('aj_placement'))?url.searchParams.get('aj_placement'):placements.has(content)?content:'',
+      variant:token(url.searchParams.get('aj_variant')),
+    };
+  }
+  function visitCookie(id) {return `af_visit=${id}; Max-Age=1800; Path=/; HttpOnly; Secure; SameSite=Lax`;}
+  async function recordReceipt(db,page,body) {
+    const receipt=options.receipt?.(body);
+    // Only bounded backend-issued IDs, hashed before persistence. Never accept
+    // a receipt from the browser events endpoint or store the response body.
+    if(typeof receipt!=='string'||!(/^[a-f0-9-]{36}$/i.test(receipt)||/^FTQ?-\d{8}-[A-Z0-9]{8}$/.test(receipt)))return;
+    const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(options.surface+':'+receipt));
+    const hash=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
+    await db.prepare('INSERT OR IGNORE INTO acquisition_conversion_receipts(receipt_hash,visit_id,page_id,surface) VALUES (?,?,?,?)').bind(hash,page.visit_id,page.id,options.surface).run();
+  }
   const allowedSteps = new Set(['first_name','last_name','email','hotel_interest','hotel_match_preference','hotel_grade','travellers','room_count','bed_type','dates_decided','city_schedule','preferred_cities','approximate_timing','approximate_duration','notes','places','experiences','trip_shape','support','final_note','contact','journey','search','navigation','other','scroll','click','keyboard','touch','form_link','site_link','external_link','internal_link']);
   // Both client and server apply this projection. No arbitrary text, URLs or answer values.
   function cleanAction(input) {
@@ -920,12 +940,15 @@ function createAcquisitionFunnel(options) {
       let b;try{b=JSON.parse(raw)}catch{return response({error:'json'},400)}
       if(!Array.isArray(b.events)||b.events.length>12)return response({error:'events'},400);
       const page=await getPage(db,b.pageId,request);if(!page)return response({error:'page'},404);
+      if(cookie(request)!==page.visit_id)return response({error:'visit'},403);
       const events=b.events.filter(e=>e&&allowedEvents.has(e.event)).map(e=>({event:e.event,step:allowedSteps.has(e.step)?e.step:'',id:e.id}));
       for(const e of events){
+        if(['field_visible','field_complete'].includes(e.event)&&!formFields.has(e.step))continue;
         if(e.event==='link_click') {if(uuid(e.id)&&['form_link','site_link','internal_link','external_link'].includes(e.step))await db.prepare('INSERT OR IGNORE INTO acquisition_clicks(id,page_id,destination) VALUES (?,?,?)').bind(e.id,page.id,e.step).run();}
         else await insertEvent(db,page.id,e.event,e.step);
       }
-      return response({ok:true,accepted:events.length});
+      await db.prepare("UPDATE acquisition_visits SET last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?").bind(page.visit_id).run();
+      const result=response({ok:true,accepted:events.length});result.headers.set('Set-Cookie',visitCookie(page.visit_id));return result;
     }
     if(url.pathname===prefix+'/report') {
       if(request.method!=='GET')return response({error:'method'},405);
@@ -952,7 +975,20 @@ function createAcquisitionFunnel(options) {
        FROM cohort v JOIN acquisition_pages p ON p.visit_id=v.id WHERE p.kind='document' GROUP BY v.surface,p.path ORDER BY document_requests DESC LIMIT 100`).bind(...bindings).all();
       const steps=await db.prepare(`${base} SELECT v.surface,e.event,e.step,count(DISTINCT v.id) visits FROM cohort v JOIN acquisition_pages p ON p.visit_id=v.id JOIN acquisition_events e ON e.page_id=p.id GROUP BY v.surface,e.event,e.step ORDER BY visits DESC LIMIT 100`).bind(...bindings).all();
       const links=await db.prepare(`${base} SELECT v.surface,p.path,c.destination,count(*) clicks,count(DISTINCT v.id) visits FROM cohort v JOIN acquisition_pages p ON p.visit_id=v.id JOIN acquisition_clicks c ON c.page_id=p.id GROUP BY v.surface,p.path,c.destination`).bind(...bindings).all();
-      return response({links:links.results,schemaVersion:'acquisition-v1',start:start.toISOString(),end:end.toISOString(),source,cohort:'visits first received within range; subsequent stages observed up to query time',summary:summary.results,paths:paths.results,steps:steps.results});
+      const entries=await db.prepare(`${base}, stages AS (
+       SELECT v.*,c.entry_page,c.placement,c.variant,c.form_version,c.measurement_version,
+       (SELECT count(*) FROM acquisition_pages p WHERE p.visit_id=v.id AND p.kind='tracked_link') tracked_requests,
+       EXISTS(SELECT 1 FROM acquisition_pages p JOIN acquisition_events e ON e.page_id=p.id WHERE p.visit_id=v.id AND e.event='page_visible') visible,
+       EXISTS(SELECT 1 FROM acquisition_pages p JOIN acquisition_events e ON e.page_id=p.id WHERE p.visit_id=v.id AND e.event='form_start') started,
+       EXISTS(SELECT 1 FROM acquisition_pages p JOIN acquisition_events e ON e.page_id=p.id WHERE p.visit_id=v.id AND e.event='submit_success') submitted,
+       (SELECT count(*) FROM acquisition_conversion_receipts r WHERE r.visit_id=v.id) receipts
+       FROM cohort v LEFT JOIN acquisition_visit_context c ON c.visit_id=v.id)
+       SELECT surface,campaign,COALESCE(entry_page,'') entry_page,COALESCE(placement,'') placement,COALESCE(variant,'') variant,COALESCE(form_version,'') form_version,COALESCE(measurement_version,'legacy') measurement_version,
+       count(*) visits,sum(tracked_requests>0) tracked_visits,sum(tracked_requests) tracked_link_requests,sum(visible) visible_visits,sum(started) started_visits,sum(submitted) submitted_visits,sum(receipts) saved_receipts,
+       sum(CASE WHEN tracked_requests>0 THEN receipts ELSE 0 END) tracked_saved_receipts,
+       sum(tracked_requests>0 AND submitted) tracked_submitted_visits,sum(visible AND submitted) visible_submitted_visits
+       FROM stages GROUP BY surface,campaign,entry_page,placement,variant,form_version,measurement_version ORDER BY visits DESC LIMIT 300`).bind(...bindings).all();
+      return response({entries:entries.results,links:links.results,schemaVersion:'acquisition-v2',start:start.toISOString(),end:end.toISOString(),source,cohort:'visits first received within range; subsequent stages observed up to query time; tracked redirects are not partner-billed clicks; receipt counts are submissions, not unique people',summary:summary.results,paths:paths.results,steps:steps.results});
     }
     return response({error:'not_found'},404);
   }
@@ -962,14 +998,17 @@ function createAcquisitionFunnel(options) {
     const incomingMedium=token(url.searchParams.get('utm_medium'));
     const incomingCampaign=token(url.searchParams.get('utm_campaign'));
     const incomingContent=token(url.searchParams.get('utm_content'));
+    const entry=entryContext(url);
     let id=cookie(request), visit=uuid(id) ? await db.prepare("SELECT * FROM acquisition_visits WHERE id=? AND surface=? AND last_seen_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 minutes')").bind(id,options.surface).first() : null;
+    const prior=visit&&incomingSource?await db.prepare('SELECT * FROM acquisition_visit_context WHERE visit_id=?').bind(visit.id).first():null;
     const test=explicitTest||Boolean(visit?.is_test);
     // A second tagged creative is a new acquisition; never relabel earlier actions.
     // Untagged internal navigation keeps the original attribution and visit cookie.
-    const changedAttribution=incomingSource && visit && (incomingSource!==visit.source||incomingMedium!==visit.medium||incomingCampaign!==visit.campaign||incomingContent!==visit.content);
+    const changedAttribution=incomingSource && visit && (incomingSource!==visit.source||incomingMedium!==visit.medium||incomingCampaign!==visit.campaign||incomingContent!==visit.content||(prior&&(entry.page!==prior.entry_page||entry.placement!==prior.placement||entry.variant!==prior.variant)));
     if(!visit || (explicitTest&&!visit.is_test) || changedAttribution) {
       id=crypto.randomUUID();
       await db.prepare('INSERT INTO acquisition_visits(id,surface,source,medium,campaign,content,is_test) VALUES (?,?,?,?,?,?,?)').bind(id,options.surface,incomingSource||'unattributed',incomingMedium,incomingCampaign,incomingContent,Number(test)).run();
+      await db.prepare('INSERT INTO acquisition_visit_context(visit_id,entry_page,placement,variant,form_version) VALUES (?,?,?,?,?)').bind(id,entry.page,entry.placement,entry.variant,options.formVersion||'').run();
     } else await db.prepare("UPDATE acquisition_visits SET last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?").bind(id).run();
     const page=crypto.randomUUID();
     await db.prepare('INSERT INTO acquisition_pages(id,visit_id,path,kind,tagged) VALUES (?,?,?,?,?)').bind(page,id,safePath(url.pathname),kind,Number(Boolean(incomingSource))).run();
@@ -984,19 +1023,26 @@ function createAcquisitionFunnel(options) {
     const url=new URL(request.url),db=dbOf(env);
     if(url.pathname.startsWith(prefix+'/'))return api(request,env);
     if(url.pathname===options.linkPath && request.method==='GET') {
-      const target=new URL(options.destination,options.origin);
-      for(const key of ['utm_source','utm_medium','utm_campaign','utm_content'])if(url.searchParams.has(key))target.searchParams.set(key,url.searchParams.get(key));
+      const targetKey=url.searchParams.get('target');
+      const destination=options.linkDestinations&&Object.hasOwn(options.linkDestinations,targetKey)?options.linkDestinations[targetKey]:options.destination;
+      const target=new URL(destination,options.origin);
+      for(const key of ['utm_source','utm_medium','utm_campaign','utm_content','aj_page','aj_placement','aj_variant',...(options.forwardKeys||[])])if(url.searchParams.has(key))target.searchParams.set(key,url.searchParams.get(key).slice(0,240));
       if(!target.searchParams.has('utm_source'))target.searchParams.set('utm_source','accessible_japan');
-      if(url.searchParams.get('af_test')==='1')target.searchParams.set('af_test','1');
+      if(url.searchParams.get('af_test')==='1'||url.searchParams.get('aj_test')==='1')target.searchParams.set('af_test','1');
+      if(/prefetch/i.test((request.headers.get('Purpose')||'')+(request.headers.get('Sec-Purpose')||'')))return new Response(null,{status:302,headers:{Location:target.href,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});
       const tracked=new Request(new URL(url.pathname+'?'+target.searchParams,url.origin),request);
-      const ids=await receive(tracked,env,'tracked_link');
-      return new Response(null,{status:302,headers:{Location:target.href,'Cache-Control':'private, no-store','Set-Cookie':`af_visit=${ids.id}; Max-Age=1800; Path=/; HttpOnly; Secure; SameSite=Lax`,'X-Robots-Tag':'noindex'}});
+      let ids;try{ids=await receive(tracked,env,'tracked_link')}catch{console.error('acquisition_redirect_write_failed')}
+      return new Response(null,{status:302,headers:{Location:target.href,'Cache-Control':'private, no-store',...(ids?{'Set-Cookie':visitCookie(ids.id)}:{}),'X-Robots-Tag':'noindex','Referrer-Policy':'no-referrer'}});
     }
     if(url.pathname===options.submitPath && request.method==='POST') {
       const res=await next(request);let body;try{body=await res.clone().json()}catch{}
       const id=request.headers.get('X-Acquisition-Page');
       if(id && request.headers.get('Origin')===options.origin) {
-        try {const page=await getPage(db,id,request);if(page)await insertEvent(db,page.id,res.ok&&options.saved(body)?'submit_success':'submit_error');}catch{console.error('acquisition_submit_write_failed')}
+        try {const page=await getPage(db,id,request);if(page&&cookie(request)===page.visit_id){
+          const saved=res.ok&&options.saved(body);
+          await insertEvent(db,page.id,saved?'submit_success':'submit_error');
+          if(saved)await recordReceipt(db,page,body);
+        }}catch{console.error('acquisition_submit_write_failed')}
       }
       return res;
     }
@@ -1023,6 +1069,20 @@ function createAcquisitionFunnel(options) {
     function emit(event,step=''){if(event==='link_click'){queue.push({event,step,id:crypto.randomUUID()});flush();return}const key=event+':'+step;if(seen.has(key))return;seen.add(key);queue.push({event,step});flush()}
     function flush(){if(flushing||!queue.length)return;flushing=true;const batch=queue.splice(0,12);
       nativeFetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageId:config.pageId,events:batch}),keepalive:true}).then(r=>{if(!r.ok)throw Error();tries=0}).catch(()=>{if(tries++<2){queue.unshift(...batch);setTimeout(flush,1000)}}).finally(()=>{flushing=false;if(queue.length&&tries===0)flush()})}
+    if(config.surface==='form'){
+      const fields=new Set(['first_name','last_name','email','hotel_interest','hotel_match_preference','hotel_grade','travellers','room_count','bed_type','dates_decided','city_schedule','preferred_cities','approximate_timing','approximate_duration','notes']);
+      const observed=new WeakSet(),inView=new Set(),timers=new Map();
+      function inspectField(el){const name=el.getAttribute('data-traffic-field');if(!fields.has(name))return;
+        if(el.getAttribute('data-traffic-complete')==='true')emit('field_complete',name);}
+      function schedule(el){if(timers.has(el)||document.visibilityState!=='visible')return;
+        timers.set(el,setTimeout(()=>{timers.delete(el);if(inView.has(el)&&document.visibilityState==='visible')emit('field_visible',el.getAttribute('data-traffic-field'))},1000));}
+      const io=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting&&e.intersectionRatio>=0.1){inView.add(e.target);schedule(e.target)}else{inView.delete(e.target);clearTimeout(timers.get(e.target));timers.delete(e.target)}}),{threshold:0.1}):null;
+      function scan(){document.querySelectorAll('[data-traffic-field]').forEach(el=>{if(!fields.has(el.getAttribute('data-traffic-field')))return;if(!observed.has(el)){observed.add(el);io?.observe(el)}inspectField(el)})}
+      new MutationObserver(scan).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['data-traffic-complete']});
+      document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')inView.forEach(schedule);else{timers.forEach(clearTimeout);timers.clear()}});
+      window.addEventListener('flat-travel:form-validation',e=>{emit('submit_attempt');for(const name of e.detail?.fields||[])if(fields.has(name))emit('validation_error',name)});
+      document.addEventListener('DOMContentLoaded',scan);scan();
+    }
     if(config.surface==='site'){
       const pending=[];let sending=false,retries=0;
       const post=actions=>nativeFetch('/__acquisition/actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageId:config.pageId,actions}),keepalive:true});
@@ -1070,7 +1130,9 @@ const acquisitionFunnel=createAcquisitionFunnel({
  origin:'https://liffform-studio.pages.dev',surface:'form',
  document:url=>url.pathname==='/public-form'&&url.searchParams.get('id')===ACCESSIBLE_JAPAN_FORM_ID&&!url.searchParams.has('issue'),
  submitPath:'/api/forms/'+ACCESSIBLE_JAPAN_FORM_ID+'/submit',saved:body=>body?.success===true,
+ receipt:body=>body?.data?.id,formVersion:'aj-current-20261006',
  linkPath:'/go/aj-form',destination:'/public-form?id='+ACCESSIBLE_JAPAN_FORM_ID,
+ forwardKeys:['prefill_Hotel Name','prefill_hotel_interest'],
  authorize:hasReportAccess,
 });
 export default {fetch(request,env,context){return acquisitionFunnel.run(request,env,context,r=>formsWorker.fetch(r,env,context));}};
