@@ -5,6 +5,13 @@
   const formId = script?.dataset.formId
   if (!formId) return
 
+  function applyRequestedLanguage() {
+    const language = new URLSearchParams(window.location.search).get('lang')
+    if (!['en', 'ja'].includes(language) || document.documentElement.lang === language) return
+    document.querySelector(`[data-lang-btn="${language}"]`)?.click()
+  }
+  applyRequestedLanguage()
+
   const QUESTION_COUNT = 53
   const FILE_QUESTIONS = new Set([5, 7, 13])
   const STORE_KEY = 'flattravel_intake_v2'

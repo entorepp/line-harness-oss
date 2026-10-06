@@ -1,5 +1,7 @@
 'use client'
 
+import { issuedSurveyRoute } from '@/lib/issued-survey-route'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import FormTraffic from './form-traffic'
@@ -925,6 +927,11 @@ export default function PublicFormPage() {
             throw new Error('このフォームは現在受付を停止しています')
           }
 
+          const customRoute = issuedSurveyRoute(window.location.href, json.data.form.id, json.data.issue.id)
+          if (customRoute) {
+            window.location.replace(customRoute)
+            return
+          }
           setIssue(json.data.issue)
           setForm(json.data.form)
           setValues(collectInitialValues(json.data.form.fields))
