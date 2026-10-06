@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 const core=fs.readFileSync('packages/acquisition-funnel/core.js','utf8');
 const {createAcquisitionFunnel}=await import('data:text/javascript,'+encodeURIComponent(core));
 const origin='https://site.example',f=createAcquisitionFunnel({origin,surface:'site',document:()=>true,submitPath:'/submit',saved:b=>b?.ok});
-const sql=new DatabaseSync(':memory:');for(const name of ['020_acquisition_funnel','021_acquisition_actions'])sql.exec(fs.readFileSync(`packages/db/migrations/${name}.sql`,'utf8'));
+const sql=new DatabaseSync(':memory:');for(const name of ['020_acquisition_funnel','021_acquisition_actions','022_acquisition_conversion_evidence'])sql.exec(fs.readFileSync(`packages/db/migrations/${name}.sql`,'utf8'));
 const db={prepare(q){return{bind(...b){return{async run(){return sql.prepare(q).run(...b)},async first(){return sql.prepare(q).get(...b)||null},async all(){return{results:sql.prepare(q).all(...b)}}}}}}};
 const env={ACQUISITION_DB:db,FUNNEL_V1_ENABLED:'true'};
 const page=await f.run(new Request(origin+'/en?af_test=1&utm_source=meta'),env,null,async()=>new Response('<head></head><main>ok</main>',{headers:{'Content-Type':'text/html'}}));

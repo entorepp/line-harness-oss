@@ -29,6 +29,7 @@ node scripts/verify-forms-studio-release.mjs
 node scripts/verify-form-traffic.mjs
 node scripts/verify-form-server-traffic.mjs
 node scripts/test-acquisition-funnel.mjs
+node scripts/test-acquisition-form-fields.mjs
 node scripts/verify-post-order-survey.mjs
 node scripts/test-post-order-survey-names.mjs
 node scripts/test-post-order-survey-inputs.mjs

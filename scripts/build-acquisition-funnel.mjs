@@ -8,7 +8,9 @@ worker+='// BEGIN GENERATED ACQUISITION FUNNEL\n'+core+`\nconst acquisitionFunne
  origin:'https://liffform-studio.pages.dev',surface:'form',
  document:url=>url.pathname==='/public-form'&&url.searchParams.get('id')===ACCESSIBLE_JAPAN_FORM_ID&&!url.searchParams.has('issue'),
  submitPath:'/api/forms/'+ACCESSIBLE_JAPAN_FORM_ID+'/submit',saved:body=>body?.success===true,
+ receipt:body=>body?.data?.id,formVersion:'aj-current-20261006',
  linkPath:'/go/aj-form',destination:'/public-form?id='+ACCESSIBLE_JAPAN_FORM_ID,
+ forwardKeys:['prefill_Hotel Name','prefill_hotel_interest'],
  authorize:hasReportAccess,
 });
 export default {fetch(request,env,context){return acquisitionFunnel.run(request,env,context,r=>formsWorker.fetch(r,env,context));}};
