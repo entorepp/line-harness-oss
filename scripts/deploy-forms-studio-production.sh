@@ -33,6 +33,7 @@ node scripts/verify-post-order-survey.mjs
 node scripts/test-post-order-survey-names.mjs
 node scripts/test-post-order-survey-inputs.mjs
 node scripts/test-post-order-survey-upload.mjs
+node scripts/test-issued-survey-route.mjs
 
 echo "=== Building shared package ==="
 cd "$ROOT_DIR"
