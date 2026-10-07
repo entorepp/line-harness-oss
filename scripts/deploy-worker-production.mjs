@@ -82,6 +82,7 @@ if (mode === '--check') {
 
 // Publish the checked artifact with no rebundle or automatic retry.
 run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/027_whatsapp_calls.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
+run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/028_whatsapp_call_details.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
 run(wrangler, [
   'd1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/026_whatsapp_template_sends.sql'),
   '--config', resolve(workerRoot, 'wrangler.toml'),

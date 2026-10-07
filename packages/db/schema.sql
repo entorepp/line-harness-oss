@@ -855,3 +855,13 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_call_requests_recipient
 CREATE INDEX IF NOT EXISTS idx_whatsapp_calls_incoming ON whatsapp_calls(direction, state, created_at);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_calls_sdp_expiry ON whatsapp_calls(created_at)
   WHERE offer_sdp IS NOT NULL OR answer_sdp IS NOT NULL;
+
+-- Additive and repeatable: no changes to customers or existing call history.
+CREATE TABLE IF NOT EXISTS whatsapp_call_details (
+  call_id TEXT PRIMARY KEY REFERENCES whatsapp_calls(id),
+  caller_name TEXT,
+  slack_status TEXT NOT NULL DEFAULT 'not_requested',
+  slack_ts TEXT,
+  error_code TEXT,
+  updated_at INTEGER NOT NULL
+);

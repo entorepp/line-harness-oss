@@ -20,8 +20,12 @@ whatsappCalling.onError((error, c) => c.json({ success: false,
 }, error instanceof CallingError ? error.status : 502));
 
 async function globalCall(env: Env['Bindings'], id: string) {
-  const row = await env.DB.prepare('SELECT * FROM whatsapp_calls WHERE id = ?').bind(id).first<CallRow>();
+  const row = await env.DB.prepare(`SELECT c.*, COALESCE(d.caller_name, f.display_name) AS recipient_name FROM whatsapp_calls c LEFT JOIN whatsapp_call_details d ON d.call_id = c.id LEFT JOIN friends f ON f.id = c.friend_id WHERE c.id = ?`).bind(id).first<CallRow>();
   if (!row) throw new CallingError('通話が見つかりません', 404);
+  if (row.state === 'incoming' && row.created_at < Date.now() - 90000) {
+    await env.DB.prepare("UPDATE whatsapp_calls SET state = 'ended', offer_sdp = NULL, updated_at = ? WHERE id = ? AND state = 'incoming'").bind(Date.now(), row.id).run();
+    return globalCall(env, id);
+  }
   return row;
 }
 
@@ -38,13 +42,16 @@ whatsappCalling.get(`${CALL_ROOT}/incoming`, async c => {
   const cursor = (c.req.query('cursor') || '').slice(0, 1000);
   const deadline = Date.now() + waitSeconds * 1000;
   while (true) {
-    const rows = await c.env.DB.prepare(`SELECT c.*, f.display_name AS recipient_name FROM whatsapp_calls c LEFT JOIN friends f ON f.id = c.friend_id
+    const rows = await c.env.DB.prepare(`SELECT c.*, COALESCE(d.caller_name, f.display_name) AS recipient_name FROM whatsapp_calls c LEFT JOIN whatsapp_call_details d ON d.call_id = c.id LEFT JOIN friends f ON f.id = c.friend_id
       WHERE c.direction = 'inbound' AND c.state = 'incoming' AND c.created_at > ? ORDER BY c.created_at LIMIT 20`).bind(Date.now() - 120000).all<CallRow & { recipient_name: string | null }>();
     const calls = [];
     for (const row of rows.results) {
-      if ((await contextForCall(c.env, row)).enabled) calls.push({ ...publicCall(row, false), recipientName: row.recipient_name || `+${row.recipient}` });
+      if ((await contextForCall(c.env, row)).enabled) calls.push(publicCall(row, false));
     }
-    const nextCursor = calls.map(call => call.id).join(',');
+    // Names may resolve after the first ring. Include that change in an opaque
+    // cursor without putting customer names into browser URLs/access logs.
+    const cursorData = JSON.stringify(calls.map(call => [call.id, call.updatedAt, call.recipientName]));
+    const nextCursor = calls.length ? [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(cursorData)))].map(b => b.toString(16).padStart(2, '0')).join('') : '';
     if (nextCursor !== cursor || Date.now() >= deadline || c.req.raw.signal.aborted) return c.json({ success: true, data: { enabled, calls, cursor: nextCursor } });
     // A held HTTP response delivers notifications to background tabs without
     // depending on Chrome's throttled setTimeout loop. No new push provider.
@@ -140,7 +147,7 @@ whatsappCalling.post(`${ROOT}/calling/calls`, async c => {
   const body = await c.req.json<{ requestId: string; sdp: string; confirmed: boolean }>();
   validateRequestId(body.requestId);
   const ctx = await callingContext(c.env, c.req.param('id'));
-  const existing = await c.env.DB.prepare('SELECT * FROM whatsapp_calls WHERE id = ?').bind(body.requestId).first<CallRow>();
+  const existing = await c.env.DB.prepare(`SELECT c.*, COALESCE(d.caller_name, f.display_name) AS recipient_name FROM whatsapp_calls c LEFT JOIN whatsapp_call_details d ON d.call_id = c.id LEFT JOIN friends f ON f.id = c.friend_id WHERE c.id = ?`).bind(body.requestId).first<CallRow>();
   if (existing) {
     if (existing.friend_id !== ctx.friend.id || existing.line_account_id !== ctx.account.id) throw new CallingError('操作IDが別の宛先で使用されています', 409);
     return c.json({ success: true, data: publicCall(existing) });
@@ -153,6 +160,7 @@ whatsappCalling.post(`${ROOT}/calling/calls`, async c => {
   const claim = await c.env.DB.prepare("INSERT OR IGNORE INTO whatsapp_calls (id, friend_id, line_account_id, recipient, state, created_at, updated_at) VALUES (?, ?, ?, ?, 'starting', ?, ?)")
     .bind(body.requestId, ctx.friend.id, ctx.account.id, ctx.recipient, now, now).run();
   if (claim.meta.changes !== 1) throw new CallingError('発信処理中または通話中です。重ねて発信せず状態を確認してください。', 409);
+  await c.env.DB.prepare('INSERT OR IGNORE INTO whatsapp_call_details (call_id, caller_name, updated_at) VALUES (?, ?, ?)').bind(body.requestId, ctx.friend.display_name, now).run();
   try {
     const result = await callGraph(ctx, 'calls', { messaging_product: 'whatsapp', to: ctx.recipient, action: 'connect',
       session: { sdp_type: 'offer', sdp: body.sdp }, biz_opaque_callback_data: body.requestId });

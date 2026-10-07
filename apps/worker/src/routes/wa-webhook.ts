@@ -1,3 +1,4 @@
+import { notifyIncomingCall } from '../services/whatsapp-call-alert.js';
 import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, toJstString, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
@@ -1055,7 +1056,8 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
     if (isMetaWebhookPayload(payload) && account) {
       // Calls require a direct app signature even when a legacy bridge is authorized.
       if (account.channel_secret && await verifyMetaSignature(account.channel_secret, rawBody, signatureHeader)) {
-        await recordCallingWebhook(c.env, account, payload);
+        const alertIds = await recordCallingWebhook(c.env, account, payload);
+        for (const id of alertIds) c.executionCtx.waitUntil(notifyIncomingCall(c.env, id));
       }
       const messages = extractMetaWebhookMessages(payload);
       const statuses = extractMetaWebhookStatuses(payload);
