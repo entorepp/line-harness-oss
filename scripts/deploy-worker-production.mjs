@@ -49,7 +49,7 @@ run('pnpm', ['--filter', '@line-crm/line-sdk', 'build']);
 run('pnpm', ['--filter', '@line-crm/db', 'typecheck']);
 run('pnpm', ['--filter', 'worker', 'typecheck']);
 for (const test of [
-  'test:whatsapp-calling', 'test:whatsapp-operational-templates', 'test:whatsapp-send', 'test:whatsapp-delivery-status', 'test:whatsapp-reply-window', 'test:whatsapp-identity', 'test:accessible-japan-quote-trigger',
+  'test:whatsapp-inbound-welcome', 'test:whatsapp-calling', 'test:whatsapp-operational-templates', 'test:whatsapp-send', 'test:whatsapp-delivery-status', 'test:whatsapp-reply-window', 'test:whatsapp-identity', 'test:accessible-japan-quote-trigger',
   'test:form-response-email', 'test:form-response-email-route', 'test:travel-quote-route',
   'test:form-file-access', 'test:form-file-upload', 'test:slack-form-files', 'test:whatsapp-initiation',
   'test:lead-route-topology', 'test:quote-reference', 'test:survey-validation',
@@ -83,6 +83,7 @@ if (mode === '--check') {
 // Publish the checked artifact with no rebundle or automatic retry.
 run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/027_whatsapp_calls.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
 run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/028_whatsapp_call_details.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
+run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/029_whatsapp_inbound_welcomes.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
 run(wrangler, [
   'd1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/026_whatsapp_template_sends.sql'),
   '--config', resolve(workerRoot, 'wrangler.toml'),

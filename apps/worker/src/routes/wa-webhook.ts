@@ -1,3 +1,4 @@
+import { claimInboundWelcome, sendInboundWelcome } from '../services/whatsapp-inbound-welcome.js';
 import { notifyIncomingCall } from '../services/whatsapp-call-alert.js';
 import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, toJstString, updateChat } from '@line-crm/db';
@@ -684,6 +685,7 @@ async function persistWaMessage(
   account: ResolvedWhatsAppAccount,
   media?: StoredMedia | null,
   allowIdentityLink = false,
+  queueWelcome?: (id: string) => void,
 ): Promise<void> {
   const counterpartyId = resolveCounterpartyId(msg);
   if (!counterpartyId) {
@@ -703,6 +705,12 @@ async function persistWaMessage(
     msg.slackChannelId || null,
   );
 
+  let welcomeId: string | null = null;
+  if (queueWelcome && msg.direction === 'incoming') {
+    try { welcomeId = await claimInboundWelcome(env, { friendId: friend.id, accountId: account.id, phoneId: account.channel_id,
+      recipient: counterpartyId.replace(/^\+/, ''), providerMessageId: msg.messageId, timestamp: Number(msg.timestamp) * 1000, messageType: msg.type, text: msg.text }); }
+    catch { console.error('WhatsApp welcome claim unavailable'); }
+  }
   const stored = normalizeStoredWaMessage(msg, media);
   const duplicate = await db
     .prepare(
@@ -741,6 +749,7 @@ async function persistWaMessage(
   }
 
   await updateChatForWaMessage(db, friend.id, msg.direction, msg.occurredAt);
+  if (welcomeId) queueWelcome!(welcomeId);
 
   if (!duplicate && msg.direction === 'incoming') {
     const eventText = msg.text?.trim() || (
@@ -1055,7 +1064,8 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
 
     if (isMetaWebhookPayload(payload) && account) {
       // Calls require a direct app signature even when a legacy bridge is authorized.
-      if (account.channel_secret && await verifyMetaSignature(account.channel_secret, rawBody, signatureHeader)) {
+      const directlySigned = Boolean(account.channel_secret && await verifyMetaSignature(account.channel_secret, rawBody, signatureHeader));
+      if (directlySigned) {
         const alertIds = await recordCallingWebhook(c.env, account, payload);
         for (const id of alertIds) c.executionCtx.waitUntil(notifyIncomingCall(c.env, id));
       }
@@ -1100,7 +1110,8 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
           }
         }
 
-        await persistWaMessage(c.env, db, msg, account, storedMedia, bridgeAuthorized || Boolean(account.channel_secret));
+        await persistWaMessage(c.env, db, msg, account, storedMedia, bridgeAuthorized || Boolean(account.channel_secret),
+          directlySigned ? (id) => c.executionCtx.waitUntil(sendInboundWelcome(c.env, id).catch(() => console.error('WhatsApp welcome receipt unavailable'))) : undefined);
       }
 
       return c.text('OK', 200);
