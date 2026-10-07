@@ -1,3 +1,4 @@
+import { callerName, resolveCallerName } from './whatsapp-call-alert.js';
 import { getLineAccountById } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { getWhatsappReplyWindow } from './whatsapp-reply-window.js';
@@ -11,7 +12,7 @@ export class CallingProviderError extends CallingError {
     super(unknown ? '通信結果を確認できません。再発信せず、通話状態を確認してください。' : `WhatsAppが操作を受け付けませんでした（${providerCode}）`, 502, unknown ? 'PROVIDER_OUTCOME_UNKNOWN' : 'PROVIDER_REJECTED');
   }
 }
-export type CallRow = { id: string; friend_id: string | null; direction: string; offer_sdp: string | null; owner_id: string | null; line_account_id: string; recipient: string; provider_call_id: string | null; state: string; answer_sdp: string | null; event_timestamp: number; duration: number | null; error_code: string | null; created_at: number; updated_at: number };
+export type CallRow = { recipient_name?: string | null; id: string; friend_id: string | null; direction: string; offer_sdp: string | null; owner_id: string | null; line_account_id: string; recipient: string; provider_call_id: string | null; state: string; answer_sdp: string | null; event_timestamp: number; duration: number | null; error_code: string | null; created_at: number; updated_at: number };
 type Permission = { permission?: { status?: string; expiration_time?: number }; actions?: { action_name?: string; can_perform_action?: boolean }[] };
 export const isTerminal = (state: string) => ['ended', 'failed', 'rejected'].includes(state);
 export function callMode(env: Env['Bindings']) { return ['test', 'live'].includes(env.WHATSAPP_CALLING_MODE || '') ? env.WHATSAPP_CALLING_MODE! : 'off'; }
@@ -62,11 +63,12 @@ export function permissionAllows(permission: Permission, action: string, now = D
     (permission.permission?.status === 'temporary' && Number(permission.permission.expiration_time) * 1000 > now);
 }
 export async function callingReadiness(env: Env['Bindings'], ctx: CallingContext) {
+  ctx.friend.display_name = await resolveCallerName(env, ctx.friend.id, ctx.friend.display_name) || 'お客様（名前未登録）';
   const replyWindow = await getWhatsappReplyWindow(env.DB, ctx.friend.id);
   const active = await env.DB.prepare("SELECT * FROM whatsapp_calls WHERE line_account_id = ? AND recipient = ? AND state NOT IN ('ended','failed','rejected') LIMIT 1")
     .bind(ctx.account.id, ctx.recipient).first<CallRow>();
   const base = { recipientName: ctx.friend.display_name, recipientPhone: `+${ctx.recipient}`, senderName: ctx.account.name, releaseMode: callMode(env), enabled: ctx.enabled,
-    permissionText: PERMISSION_TEXT, replyWindowOpen: replyWindow.canSend, activeCall: active ? publicCall(active, false) : null };
+    permissionText: PERMISSION_TEXT, replyWindowOpen: replyWindow.canSend, activeCall: active ? publicCall({ ...active, recipient_name: ctx.friend.display_name }, false) : null };
   if (!ctx.enabled) return { ...base, callingEnabled: false, canCall: false, canRequestPermission: false, permissionStatus: 'unknown' };
   const [settings, permission] = await Promise.all([
     callGraph(ctx, 'settings?include_sip_credentials=false'),
@@ -88,13 +90,13 @@ export function validateOffer(sdp: unknown): asserts sdp is string {
   }
 }
 export function publicCall(row: CallRow, includeSdp = true) {
-  return { id: row.id, friendId: row.friend_id, direction: row.direction, ownerId: row.owner_id, recipientPhone: `+${row.recipient}`, state: row.state, providerCallId: row.provider_call_id, duration: row.duration, errorCode: row.error_code,
+  return { recipientName: callerName(row.recipient_name) || 'お客様（名前未登録）', id: row.id, friendId: row.friend_id, direction: row.direction, ownerId: row.owner_id, recipientPhone: `+${row.recipient}`, state: row.state, providerCallId: row.provider_call_id, duration: row.duration, errorCode: row.error_code,
     createdAt: row.created_at, updatedAt: row.updated_at,
     offerSdp: includeSdp && row.state === 'incoming' && row.created_at > Date.now() - 120000 ? row.offer_sdp : null,
     answerSdp: includeSdp && !isTerminal(row.state) && row.created_at > Date.now() - 120000 ? row.answer_sdp : null };
 }
 export async function readCall(db: D1Database, friendId: string, id: string) {
-  const row = await db.prepare('SELECT * FROM whatsapp_calls WHERE id = ? AND friend_id = ?').bind(id, friendId).first<CallRow>();
+  const row = await db.prepare(`SELECT c.*, COALESCE(d.caller_name, f.display_name) AS recipient_name FROM whatsapp_calls c LEFT JOIN whatsapp_call_details d ON d.call_id = c.id LEFT JOIN friends f ON f.id = c.friend_id WHERE c.id = ? AND c.friend_id = ?`).bind(id, friendId).first<CallRow>();
   if (!row) throw new CallingError('通話が見つかりません', 404);
   return row;
 }
@@ -102,6 +104,7 @@ export async function readCall(db: D1Database, friendId: string, id: string) {
 // Only direct, signed Meta events reach this function. No bridge-only authority.
 export async function recordCallingWebhook(env: Env['Bindings'], account: { id: string; channel_id: string }, payload: any) {
   const db = env.DB;
+  const alertIds = new Set<string>();
   for (const entry of payload.entry || []) for (const change of entry.changes || []) {
     const value = change.value;
     if (change.field !== 'calls' || value?.metadata?.phone_number_id !== account.channel_id) continue;
@@ -122,6 +125,10 @@ export async function recordCallingWebhook(env: Env['Bindings'], account: { id: 
         await db.prepare(`INSERT OR IGNORE INTO whatsapp_calls (id, friend_id, line_account_id, recipient, provider_call_id, state, direction, offer_sdp, event_timestamp, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, 'inbound', ?, ?, ?, ?)`)
           .bind(crypto.randomUUID(), friend?.id || null, account.id, recipient, event.id, terminal ? 'ended' : 'incoming', terminal ? null : offer, timestamp, timestamp * 1000, Date.now()).run();
+        if (!terminal) {
+          const pending = await db.prepare("SELECT id FROM whatsapp_calls WHERE line_account_id = ? AND provider_call_id = ? AND state = 'incoming'").bind(account.id, event.id).first<{id: string}>();
+          if (pending) alertIds.add(pending.id);
+        }
       }
       const state = terminal ? (event.status === 'FAILED' ? 'failed' : event.status === 'REJECTED' ? 'rejected' : 'ended') :
         event.status === 'ACCEPTED' ? 'accepted' : event.status === 'RINGING' ? 'ringing' : event.event === 'connect' ? 'connecting' : null;
@@ -140,6 +147,7 @@ export async function recordCallingWebhook(env: Env['Bindings'], account: { id: 
           timestamp, Number.isFinite(event.duration) ? event.duration : null, errorCode ? String(errorCode) : null, Date.now(), account.id, recipient, event.id, event.biz_opaque_callback_data || '').run();
     }
   }
+  return [...alertIds];
 }
 
 export async function expireCallingSdp(db: D1Database) {

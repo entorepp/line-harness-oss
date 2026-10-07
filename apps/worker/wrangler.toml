@@ -10,6 +10,7 @@ workers_dev = true
 [vars]
 # Owner-requested browser calling, scoped to the existing 070 account only.
 WHATSAPP_CALLING_MODE = "live"
+WHATSAPP_CALLING_SLACK_ENABLED = "true"
 WHATSAPP_CALLING_ACCOUNTS = "wa-english-001:1096652186863862"
 WORKER_URL = "https://line-flattravel.flat-travel.workers.dev"
 WEB_APP_URL = "https://line-crm-web-2ob.pages.dev"
