@@ -7,6 +7,7 @@ import Header from '@/components/layout/header'
 import ChatComposer from '@/components/chat-composer'
 import ChatMessageContent from '@/components/chat-message-content'
 import type { WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
+import { WhatsAppCallButton } from '@/components/whatsapp-calling'
 import WhatsAppPhone from '@/components/whatsapp-phone'
 import { loadChatFriends } from '@/lib/chat-friends'
 
@@ -993,6 +994,7 @@ export default function ChatsPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {(chatDetail.channelType || selectedAccount?.channelType) === 'whatsapp' && <WhatsAppCallButton friendId={chatDetail.friendId} name={chatDetail.friendName} />}
                   {chatDetail.status !== 'unread' && (
                     <button
                       onClick={() => handleStatusUpdate('unread')}
