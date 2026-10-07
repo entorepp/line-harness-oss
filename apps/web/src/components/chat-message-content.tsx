@@ -315,9 +315,11 @@ export default function ChatMessageContent({
 }) {
   if (messageType === 'whatsapp_template') {
     const data = safeJsonParse(content)
+    const quickReplies = Array.isArray(data?.quickReplies) ? data.quickReplies.filter((label): label is string => typeof label === 'string') : []
     const attachment = data?.document as { key?: string; name?: string } | null
     return <div className="space-y-2">
       <p className="whitespace-pre-wrap break-words">{String(data?.text || 'WhatsAppの案内')}</p>
+      {quickReplies.length > 0 && <p className="text-xs">返信ボタン: {quickReplies.join(' / ')}</p>}
       {attachment?.key && typeof data?.friendId === 'string' && <button type="button" className="break-all text-left underline" onClick={() => void openWhatsAppDocument(String(data.friendId), attachment.key!, attachment.name || 'document.pdf').catch(() => alert('PDFが見つからないか保存期間が終了しました'))}>PDF: {attachment.name}</button>}
     </div>
   }

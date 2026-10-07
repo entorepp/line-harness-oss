@@ -21,7 +21,7 @@ assert.equal(render('whatsapp', { ...window, friendId: 'previous-friend' }).disa
 assert.equal(render('whatsapp', window).disabled, false, 'a current customer reply permits sending')
 const expired = render('whatsapp', { ...window, expiresAt: new Date(now - 1).toISOString() })
 assert.equal(expired.disabled, true, 'the client clock closes stale server metadata')
-assert.ok(expired.html.includes('メールなどで連絡'), 'blocked send provides a recovery step')
+assert.ok(expired.html.includes('案内の返信ボタン'), 'blocked send provides a recovery step')
 assert.ok(!expired.html.match(/<textarea[^>]*disabled/), 'staff can still edit a draft')
 assert.equal(render('whatsapp', { ...window, canSend: false }).disabled, true)
 assert.equal(render('line').disabled, false, 'other messaging channels retain their behavior')
