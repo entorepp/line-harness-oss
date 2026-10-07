@@ -1,6 +1,7 @@
 'use client'
 import { usePathname } from 'next/navigation'
 import Sidebar from './layout/sidebar'
+import WhatsAppCallingProvider from './whatsapp-calling'
 import AuthGuard from './auth-guard'
 import { AccountProvider } from '@/contexts/account-context'
 
@@ -14,12 +15,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
       <AccountProvider>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 pt-[72px] px-4 pb-6 sm:px-6 lg:pt-8 lg:px-8 lg:pb-8 overflow-auto">
-            {children}
-          </main>
-        </div>
+        <WhatsAppCallingProvider>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="flex-1 pt-[72px] px-4 pb-6 sm:px-6 lg:pt-8 lg:px-8 lg:pb-8 overflow-auto">
+              {children}
+            </main>
+          </div>
+        </WhatsAppCallingProvider>
       </AccountProvider>
     </AuthGuard>
   )
