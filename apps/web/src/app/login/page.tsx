@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { callingLoginDestination } from '@/lib/whatsapp-call-link'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
@@ -22,7 +23,7 @@ export default function LoginPage() {
 
       if (res.ok) {
         localStorage.setItem('lh_api_key', apiKey)
-        router.push('/')
+        router.push(callingLoginDestination(window.location.search))
       } else {
         setError('APIキーが正しくありません')
       }
