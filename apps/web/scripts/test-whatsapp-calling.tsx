@@ -20,7 +20,7 @@ let allowed=false; let held=false
 // Real route adapter is covered by Worker tests; UI assertions exercise user actions.
 globalThis.fetch=(async(url:any,init:any={})=>{
  const path=String(url);const body=init.body?JSON.parse(init.body):null;requests.push({path,body})
- if(path.includes('/incoming')) {
+ if(path.includes('/calling/incoming')) {
   if(path.includes('wait=20') && held) return new Promise((_,reject)=>init.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}))
   if(path.includes('wait=20'))held=true
   return Response.json({success:true,data:{enabled:true,calls:incoming?[active]:[],cursor:incoming?active.id:''}})
