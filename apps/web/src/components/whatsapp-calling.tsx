@@ -7,8 +7,8 @@ type Call = { id: string; friendId: string | null; direction: 'inbound' | 'outbo
 type Readiness = { recipientName: string; recipientPhone: string; enabled: boolean; callingEnabled: boolean; canCall: boolean; canRequestPermission: boolean; permissionStatus: string; permissionText: string; replyWindowOpen: boolean; activeCall: Call | null }
 const CallingContext = createContext<(friendId: string, name: string) => void>(() => {})
 const ended = (call: Call | null) => !call || ['ended', 'failed', 'rejected'].includes(call.state)
-const api = async <T,>(path: string, body?: unknown, keepalive = false) => {
-  const response = await fetchApi<{ success: boolean; data: T; error?: string }>(path, body ? { method: 'POST', body: JSON.stringify(body), keepalive } : undefined)
+const api = async <T,>(path: string, body?: unknown, keepalive = false, signal?: AbortSignal) => {
+  const response = await fetchApi<{ success: boolean; data: T; error?: string }>(path, body ? { method: 'POST', body: JSON.stringify(body), keepalive, signal } : { signal })
   if (!response.success) throw new Error(response.error || '通話処理を確認できません')
   return response.data
 }
@@ -75,11 +75,14 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
   useEffect(() => {
     if (!armed) return
     let cancelled = false; let timer: ReturnType<typeof setTimeout>
+    let cursor = ''; const controller = new AbortController()
     const poll = async () => {
       try {
-        const data = await api<{ enabled: boolean; calls: Call[] }>(`${ROOT}/incoming`)
+        const data = await api<{ enabled: boolean; calls: Call[]; cursor?: string }>(`${ROOT}/incoming?wait=20&cursor=${encodeURIComponent(cursor)}`, undefined, false, controller.signal)
+        cursor = data.cursor || ''
         if (cancelled) return
         setAvailable(data.enabled); setIncoming(data.calls)
+        if (!data.enabled) { setArmed(false); return }
         for (const item of data.calls) if (!notified.current.has(item.id)) {
           notified.current.add(item.id)
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -93,11 +96,11 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
           oscillator.connect(gain); gain.connect(ringing.current.destination)
           oscillator.start(); oscillator.stop(ringing.current.currentTime + 0.4)
         }
-      } catch { if (!cancelled) setError('着信確認に接続できません。ネットワークを確認してください。') }
-      if (!cancelled) timer = setTimeout(poll, 2500)
+        if (!cancelled) void poll()
+      } catch { if (!cancelled) { setError('着信確認に接続できません。ネットワークを確認してください。'); timer = setTimeout(poll, 5000) } }
     }
     void poll()
-    return () => { cancelled = true; clearTimeout(timer) }
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
   }, [armed])
 
   useEffect(() => {

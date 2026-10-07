@@ -16,11 +16,15 @@ let peerClosed=0
 ;(globalThis as any).RTCPeerConnection = class {iceGatheringState='complete';localDescription:any=null;remoteDescription:any=null;sender={};async setRemoteDescription(d:any){this.remoteDescription=d}addTrack(){return this.sender}getTransceivers(){return [{sender:this.sender,setCodecPreferences(){}}]}async createAnswer(){return {type:'answer',sdp}}async createOffer(){return {type:'offer',sdp}}async setLocalDescription(d:any){this.localDescription=d}close(){peerClosed++}}
 let active:any={id:'incoming-id',friendId:'f',direction:'inbound',state:'incoming',ownerId:null,recipientPhone:'+15555550100',recipientName:'Internal Test',providerCallId:'wacid.test',offerSdp:sdp,answerSdp:null}
 let incoming=true;const requests:any[]=[];const originalFetch=globalThis.fetch
-let allowed=false
+let allowed=false; let held=false
 // Real route adapter is covered by Worker tests; UI assertions exercise user actions.
 globalThis.fetch=(async(url:any,init:any={})=>{
  const path=String(url);const body=init.body?JSON.parse(init.body):null;requests.push({path,body})
- if(path.endsWith('/incoming'))return Response.json({success:true,data:{enabled:true,calls:incoming?[active]:[]}})
+ if(path.includes('/calling/incoming')) {
+  if(path.includes('wait=20') && held) return new Promise((_,reject)=>init.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}))
+  if(path.includes('wait=20'))held=true
+  return Response.json({success:true,data:{enabled:true,calls:incoming?[active]:[],cursor:incoming?active.id:''}})
+ }
  if(path.endsWith('/status'))return Response.json({success:true,data:{recipientName:'Internal Test',recipientPhone:'+15555550100',enabled:true,callingEnabled:true,canCall:allowed,canRequestPermission:false,permissionStatus:'no_permission',permissionText:'test',replyWindowOpen:true,activeCall:null}})
  if(path.endsWith('/answer')){assert.equal(tracks.at(-1).enabled,false,'microphone muted until provider accepts');active={...active,state:'accepted',ownerId:body.ownerId,offerSdp:null};incoming=false;return Response.json({success:true,data:active})}
  if(path.endsWith('/end')){active={...active,state:'ended'};return Response.json({success:true,data:active})}
