@@ -21,14 +21,15 @@ let peerClosed=0
 ;(globalThis as any).RTCPeerConnection = class {iceGatheringState='complete';localDescription:any=null;remoteDescription:any=null;sender={};async setRemoteDescription(d:any){this.remoteDescription=d}addTrack(){return this.sender}getTransceivers(){return [{sender:this.sender,setCodecPreferences(){}}]}async createAnswer(){return {type:'answer',sdp}}async createOffer(){return {type:'offer',sdp}}async setLocalDescription(d:any){this.localDescription=d}close(){peerClosed++}}
 let active:any={id:'incoming-id',friendId:'f',direction:'inbound',state:'incoming',ownerId:null,recipientPhone:'+15555550100',recipientName:'Internal Test',providerCallId:'wacid.test',offerSdp:sdp,answerSdp:null}
 let incoming=true;const requests:any[]=[];const originalFetch=globalThis.fetch
-let allowed=false; let held=false
+let allowed=false; let held=false; let monitorFailure=false; let monitorEnabled=true; let aborts=0
 // Real route adapter is covered by Worker tests; UI assertions exercise user actions.
 globalThis.fetch=(async(url:any,init:any={})=>{
  const path=String(url);const body=init.body?JSON.parse(init.body):null;requests.push({path,body})
  if(path.includes('/calling/incoming')) {
-  if(path.includes('wait=20') && held) return new Promise((_,reject)=>init.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}))
+  if(monitorFailure) throw Error('offline')
+  if(path.includes('wait=20') && held) return new Promise((_,reject)=>init.signal.addEventListener('abort',()=>{aborts++;reject(new Error('aborted'))},{once:true}))
   if(path.includes('wait=20'))held=true
-  return Response.json({success:true,data:{enabled:true,calls:incoming?[active]:[],cursor:incoming?active.id:''}})
+  return Response.json({success:true,data:{enabled:monitorEnabled,calls:incoming?[active]:[],cursor:incoming?active.id:''}})
  }
  if(path.endsWith('/status'))return Response.json({success:true,data:{recipientName:'Internal Test',recipientPhone:'+15555550100',enabled:true,callingEnabled:true,canCall:allowed,canRequestPermission:false,permissionStatus:'no_permission',permissionText:'test',replyWindowOpen:true,activeCall:null}})
  if(path.endsWith('/answer')){assert.equal(tracks.at(-1).enabled,false,'microphone muted until provider accepts');active={...active,state:'accepted',ownerId:body.ownerId,offerSdp:null};incoming=false;return Response.json({success:true,data:active})}
@@ -45,23 +46,24 @@ async function main() {
 try {
  await act(async()=>{r=create(<WhatsAppCallingProvider><WhatsAppCallButton friendId="f" name="Internal Test"/></WhatsAppCallingProvider>,{createNodeMock:node=>node.type==='audio'?{srcObject:null,play:async()=>{}}:null})})
  assert.equal(requests.some(r=>r.body),false,'mount never answers or dials')
- await click(r!,'待受を開始');assert.match(text(r!.toJSON()),/WhatsApp着信/)
+ assert.match(text(r!.toJSON()),/常時待受 ON/);assert.match(text(r!.toJSON()),/WhatsApp着信/);assert.equal(tracks.length,0,'automatic standby does not capture microphone')
+ await click(r!,'着信音・通知を有効にする');assert.equal(tracks.length,0,'ringtone enablement does not capture microphone')
  await click(r!,'応答');assert.equal(requests.filter(r=>r.path.endsWith('/answer')).length,1);assert.equal(tracks.at(-1).enabled,true)
  assert.match(text(r!.toJSON()),/Internal Test/,'active call keeps customer name');
  await click(r!,'ミュート');assert.equal(tracks.at(-1).enabled,false)
  await click(r!,'ミュート解除');assert.equal(tracks.at(-1).enabled,true)
- await click(r!,'終了');assert.ok(stopped>=2);assert.ok(peerClosed>=1);assert.equal(requests.filter(r=>r.path.endsWith('/end')).length,1)
+ await click(r!,'終了');assert.ok(stopped>=1);assert.ok(peerClosed>=1);assert.equal(requests.filter(r=>r.path.endsWith('/end')).length,1)
  await click(r!,'閉じる');await click(r!,'☎ 通話');assert.match(text(r!.toJSON()),/通話許可が必要/)
  assert.equal(r!.root.findAllByType('button').some(n=>text(n)==='このお客様に発信'),false,'no dial control without permission')
  await act(async()=>r!.unmount())
- // Slack links work without standby and opening a link never answers or grabs audio.
+ // Reloaded staff pages automatically resume standby; links never answer or grab audio.
  store.clear();active={...active,id:deepId,state:'incoming',ownerId:null,offerSdp:sdp};incoming=true;held=false
  const writes=requests.filter(r=>r.body).length;const audioCount=tracks.length
  await act(async()=>{r=create(<WhatsAppCallingProvider><WhatsAppCallLink callId={deepId}/></WhatsAppCallingProvider>,{createNodeMock:node=>node.type==='audio'?{srcObject:null,play:async()=>{}}:null});await new Promise(resolve=>setTimeout(resolve,0))})
- assert.match(text(r!.toJSON()),/Internal Test/);button(r!,'応答')
+ assert.match(text(r!.toJSON()),/常時待受 ON/);assert.match(text(r!.toJSON()),/Internal Test/);button(r!,'応答')
  assert.equal(requests.filter(r=>r.body).length,writes);assert.equal(tracks.length,audioCount)
  await click(r!,'応答');assert.match(text(r!.toJSON()),/通話中/);await click(r!,'終了');await act(async()=>r!.unmount())
- store.clear();active={...active,state:'accepted',ownerId:'another-operator'};const beforeObserved=requests.filter(r=>r.body).length
+ store.clear();incoming=false;active={...active,state:'accepted',ownerId:'another-operator'};const beforeObserved=requests.filter(r=>r.body).length
  await act(async()=>{r=create(<WhatsAppCallingProvider><WhatsAppCallLink callId={deepId}/></WhatsAppCallingProvider>);await new Promise(resolve=>setTimeout(resolve,0))})
  assert.match(text(r!.toJSON()),/別の担当者が応答済み/)
  assert.equal(r!.root.findAllByType('button').some(n=>text(n)==='応答'||text(n)==='終了'),false)
@@ -71,7 +73,15 @@ try {
  assert.match(text(r!.toJSON()),/この着信は終了/);assert.match(text(r!.toJSON()),/Internal Test/)
  assert.equal(r!.root.findAllByType('button').some(n=>text(n)==='応答'),false)
  await act(async()=>r!.unmount())
- console.log('PASS WhatsApp call UI: explicit standby, incoming alert, manual answer, microphone gate, mute, termination, permission guard and cleanup')
+ // Connection loss must not claim standby is healthy; disabled mode remains quiet.
+ monitorFailure=true;held=false;const priorWrites=requests.filter(r=>r.body).length;const priorAudio=tracks.length
+ await act(async()=>{r=create(<WhatsAppCallingProvider><span>Another page</span></WhatsAppCallingProvider>);await new Promise(resolve=>setTimeout(resolve,0))})
+ assert.match(text(r!.toJSON()),/待受に接続中/);assert.ok(!text(r!.toJSON()).includes('常時待受 ON'));await act(async()=>r!.unmount())
+ monitorFailure=false;monitorEnabled=false;held=false
+ await act(async()=>{r=create(<WhatsAppCallingProvider><span>Another page</span></WhatsAppCallingProvider>);await new Promise(resolve=>setTimeout(resolve,0))})
+ assert.match(text(r!.toJSON()),/待受準備中/);await act(async()=>r!.unmount())
+ assert.equal(requests.filter(r=>r.body).length,priorWrites);assert.equal(tracks.length,priorAudio);assert.ok(aborts>0,'unmount aborts long polling')
+ console.log('PASS WhatsApp call UI: automatic standby and remount, disconnected/disabled state, no automatic microphone, ringtone-only enablement, incoming alert, manual answer, microphone gate, mute, termination, permission guard and cleanup')
 } finally {globalThis.fetch=originalFetch}
 }
 main().then(()=>process.exit(0),error=>{console.error(error);process.exit(1)})

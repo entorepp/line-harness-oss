@@ -28,7 +28,8 @@ export function WhatsAppCallButton({ friendId, name }: { friendId: string; name:
 }
 
 export default function WhatsAppCallingProvider({ children }: { children: React.ReactNode }) {
-  const [armed, setArmed] = useState(false)
+  const [soundReady, setSoundReady] = useState(false)
+  const [monitorConnected, setMonitorConnected] = useState(false)
   const [available, setAvailable] = useState<boolean | null>(null)
   const [incoming, setIncoming] = useState<Call[]>([])
   const [linkedId, setLinkedId] = useState<string | null>(null)
@@ -94,7 +95,6 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
     mounted.current = true; ownerId.current = crypto.randomUUID()
     const abandoned = sessionStorage.getItem('wa-active-call')
     if (abandoned) void api<Call>(`${ROOT}/calls/${abandoned}`).then(saved => { if (!ended(saved)) { ownsCall.current = true; updateCall(saved) } else sessionStorage.removeItem('wa-active-call') }).catch(() => {})
-    void api<{ enabled: boolean; calls: Call[] }>(`${ROOT}/incoming`).then(data => setAvailable(data.enabled)).catch(() => setAvailable(false))
     const leaving = (event: BeforeUnloadEvent) => { if ((ownsCall.current && !ended(current.current)) || lock.current) { event.preventDefault(); event.returnValue = '' } }
     window.addEventListener('beforeunload', leaving)
     return () => {
@@ -105,7 +105,6 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
   }, [])
 
   useEffect(() => {
-    if (!armed) return
     let cancelled = false; let timer: ReturnType<typeof setTimeout>
     let cursor = ''; const controller = new AbortController()
     const poll = async () => {
@@ -113,8 +112,8 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
         const data = await api<{ enabled: boolean; calls: Call[]; cursor?: string }>(`${ROOT}/incoming?wait=20&cursor=${encodeURIComponent(cursor)}`, undefined, false, controller.signal)
         cursor = data.cursor || ''
         if (cancelled) return
-        setAvailable(data.enabled); setIncoming(data.calls)
-        if (!data.enabled) { setArmed(false); return }
+        setAvailable(data.enabled); setIncoming(data.calls); setMonitorConnected(true)
+        if (!data.enabled) { timer = setTimeout(poll, 30000); return }
         for (const item of data.calls) if (!notified.current.has(item.id)) {
           notified.current.add(item.id)
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -129,11 +128,11 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
           oscillator.start(); oscillator.stop(ringing.current.currentTime + 0.4)
         }
         if (!cancelled) void poll()
-      } catch { if (!cancelled) { setError('着信確認に接続できません。ネットワークを確認してください。'); timer = setTimeout(poll, 5000) } }
+      } catch { if (!cancelled) { setMonitorConnected(false); timer = setTimeout(poll, 5000) } }
     }
     void poll()
     return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
-  }, [armed])
+  }, [])
 
   useEffect(() => {
     if (!call || ended(call)) return
@@ -227,18 +226,25 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
     } catch (e) { setError(e instanceof Error ? e.message : '許可依頼を確認できません') }
     finally { lock.current = false; setBusy(false) }
   }
-  async function arm() {
-    setError('')
+  // Browsers require a user gesture for ringtone playback, not for incoming polling.
+  const enableSound = useCallback(async () => {
     try {
-      if (!ringing.current) ringing.current = new AudioContext()
-      await ringing.current.resume()
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); stream.getTracks().forEach(t => t.stop())
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default') await Notification.requestPermission()
-      const data = await api<{ enabled: boolean; calls: Call[] }>(`${ROOT}/incoming`)
-      setAvailable(data.enabled)
-      if (!data.enabled) throw new Error('通話の利用準備中です。設定が有効になってから再度お試しください。')
-      setArmed(true)
-    } catch (e) { setError(e instanceof Error ? e.message : 'マイクと通知の利用を許可してください') }
+      if (!ringing.current || ringing.current.state === 'closed') ringing.current = new AudioContext()
+      if (ringing.current.state !== 'running') await ringing.current.resume()
+      if (mounted.current) setSoundReady(ringing.current.state === 'running')
+    } catch { if (mounted.current) setSoundReady(false) }
+  }, [])
+  useEffect(() => {
+    const activate = () => { void enableSound() }
+    window.addEventListener('pointerdown', activate)
+    window.addEventListener('keydown', activate)
+    return () => { window.removeEventListener('pointerdown', activate); window.removeEventListener('keydown', activate) }
+  }, [enableSound])
+  async function enableAlerts() {
+    await enableSound()
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try { await Notification.requestPermission() } catch { /* Slack and in-page alerts remain available. */ }
+    }
   }
 
   const ringingCall = linkedCall?.state === 'incoming' && linkedCall.id !== call?.id ? linkedCall : incoming.find(item => item.id !== call?.id)
@@ -247,8 +253,10 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
     {children}
     <audio ref={audio} autoPlay playsInline />
     <div className={`fixed ${target || call || ringingCall || linkedId || error ? 'bottom-4 w-[min(360px,calc(100vw-2rem))]' : 'top-3 w-auto'} right-4 z-50 rounded-2xl border border-emerald-200 bg-white p-3 shadow-xl`} aria-label="WhatsApp通話">
-      <div className="flex items-center justify-between gap-2"><strong className="text-sm">☎ WhatsApp通話</strong><button type="button" disabled={busy || !ended(call)} onClick={() => armed ? setArmed(false) : void arm()} className={`rounded-full px-3 py-1 text-xs font-semibold ${armed ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'}`}>{armed ? '待受 ON' : '待受を開始'}</button></div>
+      <div className="flex items-center justify-between gap-2"><strong className="text-sm">☎ WhatsApp通話</strong><span role="status" className={`rounded-full px-3 py-1 text-xs font-semibold ${monitorConnected && available ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'}`}>{monitorConnected && available ? '常時待受 ON' : available === false ? '待受準備中' : '待受に接続中'}</span></div>
 
+      <button type="button" onClick={() => void enableAlerts()} className="mt-1 text-xs text-emerald-800 underline">{soundReady ? '着信音・通知の設定' : '着信音・通知を有効にする'}</button>
+      {!monitorConnected && <p className="mt-1 text-xs text-gray-500">着信確認に自動接続します。閉じている間の着信はSlackで通知します。</p>}
       {available === false && <p className="mt-2 text-xs text-amber-700">通話設定を準備中</p>}
       {ringingCall && ended(call) && <div className="mt-3 rounded-xl bg-emerald-50 p-3" role="alert"><p className="font-semibold">WhatsApp着信</p><p className="break-all text-sm">{ringingCall.recipientName || 'お客様（名前未登録）'}</p><p className="text-xs text-gray-500">{ringingCall.recipientPhone}</p><div className="mt-3 flex gap-2"><button disabled={busy} onClick={() => void answer(ringingCall)} className="rounded-lg bg-emerald-600 px-5 py-2 font-semibold text-white">応答</button><button disabled={busy} onClick={() => void end(ringingCall)} className="rounded-lg bg-gray-200 px-4 py-2">拒否</button></div></div>}
       {otherLinkedCall && <div className="mt-3 rounded-xl bg-gray-50 p-3" role="status"><p className="font-semibold">{ended(otherLinkedCall) ? 'この着信は終了しています' : 'この着信は別の担当者が応答済み、または対応中です'}</p><p className="break-all text-sm">{otherLinkedCall.recipientName || 'お客様（名前未登録）'}</p><p className="text-xs text-gray-500">{otherLinkedCall.recipientPhone}</p><button onClick={() => { setLinkedId(null); setLinkedCall(null) }} className="mt-2 text-sm underline">通知を閉じる</button></div>}
