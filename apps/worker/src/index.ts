@@ -44,6 +44,8 @@ import { wechatKfWebhook } from './routes/wechat-kf-webhook.js';
 import { travelQuoteIntents } from './routes/travel-quote-intents.js';
 import { metaWebhook } from './routes/meta-webhook.js';
 import { metaDataDeletion } from './routes/meta-data-deletion.js';
+import { expireCallingSdp } from './services/whatsapp-calling.js';
+import { whatsappCalling } from './routes/whatsapp-calling.js';
 import { whatsappTemplates } from './routes/whatsapp-templates.js';
 import { whatsappInitiation } from './routes/whatsapp-initiation.js';
 import { formResponseEmails } from './routes/form-response-emails.js';
@@ -71,6 +73,9 @@ export type Env = {
     QUOTE_CHAT_DELIVERY_ENABLED?: string;
     WHATSAPP_INITIAL_CONTACT_MODE?: string;
     WHATSAPP_OPERATIONAL_TEMPLATES_MODE?: string;
+    WHATSAPP_CALLING_MODE?: string;
+    WHATSAPP_CALLING_ACCOUNTS?: string;
+    WHATSAPP_CALLING_TEST_PHONE_HASHES?: string;
     WHATSAPP_INITIAL_CONTACT_TEST_PHONE_HASHES?: string;
     GOOGLE_TRANSLATE_API_KEY: string;
     FORMS_ENABLE_LINE_FOLLOWUP?: string;
@@ -143,6 +148,7 @@ app.route('/', users);
 app.route('/', lineAccounts);
 app.route('/', whatsappInitiation);
 app.route('/', whatsappTemplates);
+app.route('/', whatsappCalling);
 app.route('/', conversions);
 app.route('/', affiliates);
 app.route('/', openapi);
@@ -287,6 +293,7 @@ async function scheduled(
     );
   }
   jobs.push(processScheduledMessages(env));
+  jobs.push(expireCallingSdp(env.DB));
   jobs.push(checkAccountHealth(env.DB));
   jobs.push(processAccessibleJapanQuoteJobs(env, { limit: 3 }));
 

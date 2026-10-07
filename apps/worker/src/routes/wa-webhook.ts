@@ -10,6 +10,8 @@ import {
   type WhatsappDeliveryStatus,
 } from '../services/whatsapp-delivery.js';
 
+import { recordCallingWebhook } from '../services/whatsapp-calling.js';
+
 const waWebhook = new Hono<Env>();
 const GRAPH_API = 'https://graph.facebook.com/v25.0';
 
@@ -109,6 +111,7 @@ interface MetaMessage {
     emoji?: string;
   };
   interactive?: {
+    type?: string;
     button_reply?: {
       title?: string;
       id?: string;
@@ -818,6 +821,8 @@ function extractMetaWebhookMessages(payload: MetaWebhookPayload): NormalizedWaMe
 
       if (change.field === 'messages' && value?.messages?.length) {
         for (const message of value.messages) {
+          // A permission reply is not an ordinary customer message or a new reply window.
+          if (message.interactive?.type === 'call_permission_reply') continue;
           const media = getMetaMediaObject(message);
           const contact =
             value.contacts?.find((item) => item.wa_id === message.from) ??
@@ -1048,6 +1053,10 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
     }
 
     if (isMetaWebhookPayload(payload) && account) {
+      // Calls require a direct app signature even when a legacy bridge is authorized.
+      if (account.channel_secret && await verifyMetaSignature(account.channel_secret, rawBody, signatureHeader)) {
+        await recordCallingWebhook(c.env, account, payload);
+      }
       const messages = extractMetaWebhookMessages(payload);
       const statuses = extractMetaWebhookStatuses(payload);
       console.log('WA Meta webhook received', {
