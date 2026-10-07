@@ -851,3 +851,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_call_permission_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_whatsapp_call_requests_recipient
   ON whatsapp_call_permission_requests(line_account_id, recipient, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_calls_incoming ON whatsapp_calls(direction, state, created_at);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_calls_sdp_expiry ON whatsapp_calls(created_at)
+  WHERE offer_sdp IS NOT NULL OR answer_sdp IS NOT NULL;
