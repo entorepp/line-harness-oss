@@ -47,6 +47,7 @@ const inbound=(id:string,event='connect')=>({id,from:'15555550100',to:'817000000
 function row(id:string):any{return sqlite.prepare('SELECT * FROM whatsapp_calls WHERE id = ?').get(id)}
 try {
  assert.equal((await request(root+'/status',undefined,false)).status,401);
+ const waited=Date.now();const waitResult=await request('/api/whatsapp/calling/incoming?wait=0.02&cursor=');assert.equal(waitResult.body.data.cursor,'');assert.ok(Date.now()-waited>=15,'long poll waits on the server');
  assert.equal((await request(root+'/status')).body.data.canCall,true);
  env.WHATSAPP_CALLING_MODE='test';assert.equal((await request(root+'/status')).body.data.canCall,false,'test mode denies unlisted recipient');
  env.WHATSAPP_CALLING_MODE='off';assert.equal((await request(root+'/status')).body.data.canCall,false);

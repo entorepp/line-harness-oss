@@ -34,13 +34,22 @@ whatsappCalling.get(`${CALL_ROOT}/incoming`, async c => {
     .bind(Date.now() - 120000).run();
   await c.env.DB.prepare('UPDATE whatsapp_calls SET offer_sdp = NULL, answer_sdp = NULL WHERE created_at < ? AND (offer_sdp IS NOT NULL OR answer_sdp IS NOT NULL)')
     .bind(Date.now() - 120000).run();
-  const rows = await c.env.DB.prepare(`SELECT c.*, f.display_name AS recipient_name FROM whatsapp_calls c LEFT JOIN friends f ON f.id = c.friend_id
-    WHERE c.direction = 'inbound' AND c.state = 'incoming' AND c.created_at > ? ORDER BY c.created_at LIMIT 20`).bind(Date.now() - 120000).all<CallRow & { recipient_name: string | null }>();
-  const calls = [];
-  for (const row of rows.results) {
-    if ((await contextForCall(c.env, row)).enabled) calls.push({ ...publicCall(row, false), recipientName: row.recipient_name || `+${row.recipient}` });
+  const waitSeconds = Math.max(0, Math.min(20, Number(c.req.query('wait')) || 0));
+  const cursor = (c.req.query('cursor') || '').slice(0, 1000);
+  const deadline = Date.now() + waitSeconds * 1000;
+  while (true) {
+    const rows = await c.env.DB.prepare(`SELECT c.*, f.display_name AS recipient_name FROM whatsapp_calls c LEFT JOIN friends f ON f.id = c.friend_id
+      WHERE c.direction = 'inbound' AND c.state = 'incoming' AND c.created_at > ? ORDER BY c.created_at LIMIT 20`).bind(Date.now() - 120000).all<CallRow & { recipient_name: string | null }>();
+    const calls = [];
+    for (const row of rows.results) {
+      if ((await contextForCall(c.env, row)).enabled) calls.push({ ...publicCall(row, false), recipientName: row.recipient_name || `+${row.recipient}` });
+    }
+    const nextCursor = calls.map(call => call.id).join(',');
+    if (nextCursor !== cursor || Date.now() >= deadline || c.req.raw.signal.aborted) return c.json({ success: true, data: { enabled, calls, cursor: nextCursor } });
+    // A held HTTP response delivers notifications to background tabs without
+    // depending on Chrome's throttled setTimeout loop. No new push provider.
+    await new Promise(resolve => setTimeout(resolve, Math.min(2500, Math.max(0, deadline - Date.now()))));
   }
-  return c.json({ success: true, data: { enabled, calls } });
 });
 
 whatsappCalling.get(`${CALL_ROOT}/calls/:callId`, async c => {
