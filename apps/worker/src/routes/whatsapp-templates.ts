@@ -57,7 +57,7 @@ async function prepare(env: Env['Bindings'], id: string, body: SendInput) {
   if (template.documentRequired !== Boolean(body.documentKey)) throw new InputError(template.documentRequired ? 'PDFを添付してください' : 'この文面にはPDFを添付できません');
   const document = body.documentKey ? await documentFor(env, ctx, body.documentKey) : null;
   const preview = { friendId: ctx.friend.id, recipientName: ctx.friend.display_name, recipientPhone: `+${ctx.phone}`, accountName: ctx.account.name,
-    templateName: template.name, templateLanguage: template.language, category: template.category, text: message.text, links: message.links,
+    templateName: template.name, templateLanguage: template.language, category: template.category, text: message.text, links: message.links, quickReplies: template.quickReplies.map(({ label }) => label),
     document: document ? { key: document.key, name: document.name, size: document.size, sha256: document.sha256 } : null };
   return { ctx, template, message, document, preview };
 }
