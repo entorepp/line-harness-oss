@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { callingReturnPath } from '@/lib/whatsapp-call-link'
 import { useRouter, usePathname } from 'next/navigation'
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -15,7 +16,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
     const key = localStorage.getItem('lh_api_key')
     if (!key) {
-      router.replace('/login')
+      const next = callingReturnPath(window.location.pathname, window.location.search)
+      router.replace(next ? `/login?next=${encodeURIComponent(next)}` : '/login')
     } else {
       setChecked(true)
     }

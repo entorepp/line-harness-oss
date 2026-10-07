@@ -1,7 +1,12 @@
+import { callingReturnPath, callingLoginDestination } from '../src/lib/whatsapp-call-link'
 import assert from 'node:assert/strict'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import WhatsAppCallingProvider, { WhatsAppCallButton } from '../src/components/whatsapp-calling'
+import WhatsAppCallingProvider, { WhatsAppCallButton, WhatsAppCallLink } from '../src/components/whatsapp-calling'
 ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+const deepId = '12345678-1234-4234-8234-123456789abc'
+assert.equal(callingReturnPath('/calls', '?wa_call='+deepId), '/calls?wa_call='+deepId)
+assert.equal(callingLoginDestination('?next='+encodeURIComponent('/calls?wa_call='+deepId)), '/calls?wa_call='+deepId)
+for (const next of ['https://evil.test', '//evil.test/calls?wa_call='+deepId, '/calls?wa_call=bad', '/chats', '/calls?wa_call='+deepId+'%0aevil']) assert.equal(callingLoginDestination('?next='+encodeURIComponent(next)), '/')
 const store = new Map<string,string>()
 ;(globalThis as any).localStorage = { getItem:()=> 'test' }
 ;(globalThis as any).sessionStorage = { getItem:(k:string)=>store.get(k)||null,setItem:(k:string,v:string)=>store.set(k,v),removeItem:(k:string)=>store.delete(k) }
@@ -42,11 +47,29 @@ try {
  assert.equal(requests.some(r=>r.body),false,'mount never answers or dials')
  await click(r!,'待受を開始');assert.match(text(r!.toJSON()),/WhatsApp着信/)
  await click(r!,'応答');assert.equal(requests.filter(r=>r.path.endsWith('/answer')).length,1);assert.equal(tracks.at(-1).enabled,true)
+ assert.match(text(r!.toJSON()),/Internal Test/,'active call keeps customer name');
  await click(r!,'ミュート');assert.equal(tracks.at(-1).enabled,false)
  await click(r!,'ミュート解除');assert.equal(tracks.at(-1).enabled,true)
  await click(r!,'終了');assert.ok(stopped>=2);assert.ok(peerClosed>=1);assert.equal(requests.filter(r=>r.path.endsWith('/end')).length,1)
  await click(r!,'閉じる');await click(r!,'☎ 通話');assert.match(text(r!.toJSON()),/通話許可が必要/)
  assert.equal(r!.root.findAllByType('button').some(n=>text(n)==='このお客様に発信'),false,'no dial control without permission')
+ await act(async()=>r!.unmount())
+ // Slack links work without standby and opening a link never answers or grabs audio.
+ store.clear();active={...active,id:deepId,state:'incoming',ownerId:null,offerSdp:sdp};incoming=true;held=false
+ const writes=requests.filter(r=>r.body).length;const audioCount=tracks.length
+ await act(async()=>{r=create(<WhatsAppCallingProvider><WhatsAppCallLink callId={deepId}/></WhatsAppCallingProvider>,{createNodeMock:node=>node.type==='audio'?{srcObject:null,play:async()=>{}}:null});await new Promise(resolve=>setTimeout(resolve,0))})
+ assert.match(text(r!.toJSON()),/Internal Test/);button(r!,'応答')
+ assert.equal(requests.filter(r=>r.body).length,writes);assert.equal(tracks.length,audioCount)
+ await click(r!,'応答');assert.match(text(r!.toJSON()),/通話中/);await click(r!,'終了');await act(async()=>r!.unmount())
+ store.clear();active={...active,state:'accepted',ownerId:'another-operator'};const beforeObserved=requests.filter(r=>r.body).length
+ await act(async()=>{r=create(<WhatsAppCallingProvider><WhatsAppCallLink callId={deepId}/></WhatsAppCallingProvider>);await new Promise(resolve=>setTimeout(resolve,0))})
+ assert.match(text(r!.toJSON()),/別の担当者が応答済み/)
+ assert.equal(r!.root.findAllByType('button').some(n=>text(n)==='応答'||text(n)==='終了'),false)
+ await act(async()=>r!.unmount());assert.equal(requests.filter(r=>r.body).length,beforeObserved,'observing another operator never terminates their call')
+ active={...active,state:'ended'}
+ await act(async()=>{r=create(<WhatsAppCallingProvider><WhatsAppCallLink callId={deepId}/></WhatsAppCallingProvider>);await new Promise(resolve=>setTimeout(resolve,0))})
+ assert.match(text(r!.toJSON()),/この着信は終了/);assert.match(text(r!.toJSON()),/Internal Test/)
+ assert.equal(r!.root.findAllByType('button').some(n=>text(n)==='応答'),false)
  await act(async()=>r!.unmount())
  console.log('PASS WhatsApp call UI: explicit standby, incoming alert, manual answer, microphone gate, mute, termination, permission guard and cleanup')
 } finally {globalThis.fetch=originalFetch}

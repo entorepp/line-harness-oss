@@ -1,10 +1,17 @@
 'use client'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { ApiError, fetchApi } from '@/lib/api'
+import { validCallId } from '@/lib/whatsapp-call-link'
 import { WhatsAppAudio } from '@/lib/whatsapp-audio'
 
 type Call = { id: string; friendId: string | null; direction: 'inbound' | 'outbound'; state: string; ownerId: string | null; recipientPhone: string; recipientName?: string; providerCallId: string | null; offerSdp: string | null; answerSdp: string | null; errorCode?: string | null }
 type Readiness = { recipientName: string; recipientPhone: string; enabled: boolean; callingEnabled: boolean; canCall: boolean; canRequestPermission: boolean; permissionStatus: string; permissionText: string; replyWindowOpen: boolean; activeCall: Call | null }
+const CallLinkContext = createContext<(id: string) => void>(() => {})
+export function WhatsAppCallLink({ callId }: { callId: string }) {
+  const open = useContext(CallLinkContext)
+  useEffect(() => { open(callId) }, [callId, open])
+  return null
+}
 const CallingContext = createContext<(friendId: string, name: string) => void>(() => {})
 const ended = (call: Call | null) => !call || ['ended', 'failed', 'rejected'].includes(call.state)
 const api = async <T,>(path: string, body?: unknown, keepalive = false, signal?: AbortSignal) => {
@@ -24,6 +31,8 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
   const [armed, setArmed] = useState(false)
   const [available, setAvailable] = useState<boolean | null>(null)
   const [incoming, setIncoming] = useState<Call[]>([])
+  const [linkedId, setLinkedId] = useState<string | null>(null)
+  const [linkedCall, setLinkedCall] = useState<Call | null>(null)
   const [call, setCall] = useState<Call | null>(null)
   const [target, setTarget] = useState<{ id: string; name: string } | null>(null)
   const [readiness, setReadiness] = useState<Readiness | null>(null)
@@ -57,6 +66,29 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
     setTarget({ id, name }); setReadiness(null); setError(''); setNotice(''); updateCall(null)
     void refresh(id).catch(e => setError(e.message))
   }, [refresh, updateCall])
+
+  const openLink = useCallback((id: string) => {
+    if (!validCallId(id)) { setError('着信リンクが無効です'); return }
+    setError(''); setLinkedCall(null); setLinkedId(id)
+  }, [])
+  useEffect(() => {
+    if (!linkedId) return
+    let cancelled = false; let timer: ReturnType<typeof setTimeout>
+    const controller = new AbortController()
+    const poll = async () => {
+      try {
+        const next = await api<Call>(`${ROOT}/calls/${linkedId}`, undefined, false, controller.signal)
+        if (cancelled) return
+        setLinkedCall(next)
+        if (ended(next)) return
+        timer = setTimeout(poll, 1000)
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : '着信を確認できません')
+      }
+    }
+    void poll()
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer) }
+  }, [linkedId])
 
   useEffect(() => {
     mounted.current = true; ownerId.current = crypto.randomUUID()
@@ -209,20 +241,22 @@ export default function WhatsAppCallingProvider({ children }: { children: React.
     } catch (e) { setError(e instanceof Error ? e.message : 'マイクと通知の利用を許可してください') }
   }
 
-  const ringingCall = incoming.find(item => item.id !== call?.id)
-  return <CallingContext.Provider value={open}>
+  const ringingCall = linkedCall?.state === 'incoming' && linkedCall.id !== call?.id ? linkedCall : incoming.find(item => item.id !== call?.id)
+  const otherLinkedCall = linkedCall && linkedCall.id !== call?.id && linkedCall.state !== 'incoming' ? linkedCall : null
+  return <CallingContext.Provider value={open}><CallLinkContext.Provider value={openLink}>
     {children}
     <audio ref={audio} autoPlay playsInline />
-    <div className={`fixed ${target || call || ringingCall || error ? 'bottom-4 w-[min(360px,calc(100vw-2rem))]' : 'top-3 w-auto'} right-4 z-50 rounded-2xl border border-emerald-200 bg-white p-3 shadow-xl`} aria-label="WhatsApp通話">
+    <div className={`fixed ${target || call || ringingCall || linkedId || error ? 'bottom-4 w-[min(360px,calc(100vw-2rem))]' : 'top-3 w-auto'} right-4 z-50 rounded-2xl border border-emerald-200 bg-white p-3 shadow-xl`} aria-label="WhatsApp通話">
       <div className="flex items-center justify-between gap-2"><strong className="text-sm">☎ WhatsApp通話</strong><button type="button" disabled={busy || !ended(call)} onClick={() => armed ? setArmed(false) : void arm()} className={`rounded-full px-3 py-1 text-xs font-semibold ${armed ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'}`}>{armed ? '待受 ON' : '待受を開始'}</button></div>
 
       {available === false && <p className="mt-2 text-xs text-amber-700">通話設定を準備中</p>}
-      {ringingCall && ended(call) && <div className="mt-3 rounded-xl bg-emerald-50 p-3" role="alert"><p className="font-semibold">WhatsApp着信</p><p className="break-all text-sm">{ringingCall.recipientName || ringingCall.recipientPhone}</p><div className="mt-3 flex gap-2"><button disabled={busy} onClick={() => void answer(ringingCall)} className="rounded-lg bg-emerald-600 px-5 py-2 font-semibold text-white">応答</button><button disabled={busy} onClick={() => void end(ringingCall)} className="rounded-lg bg-gray-200 px-4 py-2">拒否</button></div></div>}
-      {call && <div className="mt-3" aria-live="polite"><p className="font-semibold">{statusLabels[call.state] || call.state}</p><p className="text-sm">{call.recipientPhone}</p>{mediaState === 'disconnected' && <button type="button" onClick={() => void audio.current?.play().catch(() => setError('スピーカーの再生を許可してください'))} className="text-xs underline">音声を再生</button>}{mediaState && !ended(call) && <p className="text-xs text-gray-500">{mediaState === 'connected' ? '音声接続済み' : '音声接続を確認中'}</p>}{!ended(call) ? <div className="mt-3 flex gap-2"><button disabled={busy || !rtc.current} onClick={() => { rtc.current?.mute(!muted); setMuted(!muted) }} className="rounded-lg bg-gray-100 px-3 py-2">{muted ? 'ミュート解除' : 'ミュート'}</button><button disabled={busy} onClick={() => void end()} className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white">終了</button></div> : <button onClick={() => { updateCall(null); if (target) void refresh(target.id).catch(e => setError(e.message)) }} className="mt-2 text-sm text-gray-600 underline">閉じる</button>}</div>}
-      {target && ended(call) && <div className="mt-3 border-t pt-3"><p className="font-semibold">{target.name}</p><p className="text-sm">{readiness?.recipientPhone}</p>{readiness?.canCall ? <button disabled={busy} onClick={() => void dial()} className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white">このお客様に発信</button> : readiness && <><p className="mt-2 text-xs text-gray-600">{!readiness.enabled || !readiness.callingEnabled ? 'この番号の通話はまだ有効になっていません。' : !readiness.replyWindowOpen ? '通話許可がない場合は、お客様から返信を受けて許可依頼を送るか、お客様から電話をかけてもらってください。' : '発信にはお客様の通話許可が必要です。'}</p>{readiness.canRequestPermission && <><p className="mt-2 rounded bg-gray-50 p-2 text-xs">{readiness.permissionText}</p><button disabled={busy} onClick={() => void requestPermission()} className="mt-2 rounded-lg border px-3 py-2 text-sm">この文面で通話許可を依頼</button></>}</>}<div className="mt-2 flex gap-4"><button disabled={busy} onClick={() => void refresh(target.id).catch(e => setError(e.message))} className="text-xs underline">状態を更新</button><button disabled={busy} onClick={() => setTarget(null)} className="text-xs underline">閉じる</button></div></div>}
+      {ringingCall && ended(call) && <div className="mt-3 rounded-xl bg-emerald-50 p-3" role="alert"><p className="font-semibold">WhatsApp着信</p><p className="break-all text-sm">{ringingCall.recipientName || 'お客様（名前未登録）'}</p><p className="text-xs text-gray-500">{ringingCall.recipientPhone}</p><div className="mt-3 flex gap-2"><button disabled={busy} onClick={() => void answer(ringingCall)} className="rounded-lg bg-emerald-600 px-5 py-2 font-semibold text-white">応答</button><button disabled={busy} onClick={() => void end(ringingCall)} className="rounded-lg bg-gray-200 px-4 py-2">拒否</button></div></div>}
+      {otherLinkedCall && <div className="mt-3 rounded-xl bg-gray-50 p-3" role="status"><p className="font-semibold">{ended(otherLinkedCall) ? 'この着信は終了しています' : 'この着信は別の担当者が応答済み、または対応中です'}</p><p className="break-all text-sm">{otherLinkedCall.recipientName || 'お客様（名前未登録）'}</p><p className="text-xs text-gray-500">{otherLinkedCall.recipientPhone}</p><button onClick={() => { setLinkedId(null); setLinkedCall(null) }} className="mt-2 text-sm underline">通知を閉じる</button></div>}
+      {call && <div className="mt-3" aria-live="polite"><p className="font-semibold">{statusLabels[call.state] || call.state}</p><p className="break-all text-sm font-medium">{call.recipientName || target?.name || 'お客様（名前未登録）'}</p><p className="text-xs text-gray-500">{call.recipientPhone}</p>{mediaState === 'disconnected' && <button type="button" onClick={() => void audio.current?.play().catch(() => setError('スピーカーの再生を許可してください'))} className="text-xs underline">音声を再生</button>}{mediaState && !ended(call) && <p className="text-xs text-gray-500">{mediaState === 'connected' ? '音声接続済み' : '音声接続を確認中'}</p>}{!ended(call) ? <div className="mt-3 flex gap-2"><button disabled={busy || !rtc.current} onClick={() => { rtc.current?.mute(!muted); setMuted(!muted) }} className="rounded-lg bg-gray-100 px-3 py-2">{muted ? 'ミュート解除' : 'ミュート'}</button><button disabled={busy} onClick={() => void end()} className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white">終了</button></div> : <button onClick={() => { updateCall(null); if (target) void refresh(target.id).catch(e => setError(e.message)) }} className="mt-2 text-sm text-gray-600 underline">閉じる</button>}</div>}
+      {target && ended(call) && <div className="mt-3 border-t pt-3"><p className="font-semibold">{readiness?.recipientName || target.name}</p><p className="text-sm">{readiness?.recipientPhone}</p>{readiness?.canCall ? <button disabled={busy} onClick={() => void dial()} className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white">このお客様に発信</button> : readiness && <><p className="mt-2 text-xs text-gray-600">{!readiness.enabled || !readiness.callingEnabled ? 'この番号の通話はまだ有効になっていません。' : !readiness.replyWindowOpen ? '通話許可がない場合は、お客様から返信を受けて許可依頼を送るか、お客様から電話をかけてもらってください。' : '発信にはお客様の通話許可が必要です。'}</p>{readiness.canRequestPermission && <><p className="mt-2 rounded bg-gray-50 p-2 text-xs">{readiness.permissionText}</p><button disabled={busy} onClick={() => void requestPermission()} className="mt-2 rounded-lg border px-3 py-2 text-sm">この文面で通話許可を依頼</button></>}</>}<div className="mt-2 flex gap-4"><button disabled={busy} onClick={() => void refresh(target.id).catch(e => setError(e.message))} className="text-xs underline">状態を更新</button><button disabled={busy} onClick={() => setTarget(null)} className="text-xs underline">閉じる</button></div></div>}
       {busy && <p className="mt-2 text-xs text-gray-500" role="status">処理中…</p>}
       {notice && <p className="mt-2 text-xs text-gray-600" role="status">{notice}</p>}
       {error && <p className="mt-2 text-xs text-red-700" role="alert">{error}</p>}
     </div>
-  </CallingContext.Provider>
+  </CallLinkContext.Provider></CallingContext.Provider>
 }
