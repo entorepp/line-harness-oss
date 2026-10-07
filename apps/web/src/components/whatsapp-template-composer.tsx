@@ -12,15 +12,16 @@ type Template = {
 type Catalogue = { friendId: string; recipientName: string; recipientPhone: string; releaseMode: string; canSend: boolean; templates: Template[] }
 export type TemplatePreview = {
   friendId: string; recipientName: string; recipientPhone: string; accountName: string
-  templateName: string; templateLanguage: string; category: string; text: string
+  templateName: string; templateLanguage: string; category: string; text: string; quickReplies?: string[]
   document: { key: string; name: string; size: number } | null
   previewToken: string; previewExpiresAt: number; canSend: boolean
 }
 type Receipt = { status: 'accepted' | 'pending' | 'failed' | 'unknown'; errorCode?: string | null }
 type Response<T> = { success: boolean; data: T; error?: string }
 const errorText = (error: unknown) => error instanceof Error ? error.message : '処理に失敗しました'
-// Keep the operator menu aligned with the three supported daily workflows.
+// Keep operational notices and enquiry reopening available after the reply window expires.
 const NOTICE_PURPOSES = [
+  { name: 'flat_travel_requested_info_ready_v1', label: '会話を再開する（依頼された案内の準備完了）' },
   { name: 'flat_travel_requested_quote_v1', label: '見積書を送る（PDF）' },
   { name: 'flat_travel_payment_link_v1', label: '決済リンクを送る' },
   { name: 'flat_travel_booking_confirmation_v1', label: '予約確定書を送る（PDF）' },
@@ -34,6 +35,11 @@ export function WhatsAppTemplatePreview({ preview }: { preview: TemplatePreview 
     <p>宛先: {preview.recipientName} / {preview.recipientPhone}</p>
     <p className="text-xs">送信元: {preview.accountName} · {preview.templateLanguage} · {preview.category}</p>
     <p className="whitespace-pre-wrap break-words">{preview.text}</p>
+    {Boolean(preview.quickReplies?.length) && <div className="space-y-2">
+      <p className="text-xs">お客様側の返信ボタン</p>
+      <div className="flex flex-wrap gap-2">{preview.quickReplies!.map((label, index) => <span key={index} className="rounded-full border border-emerald-700 px-3 py-1">{label}</span>)}</div>
+      <p className="text-xs">お客様がボタンを押すと返信が届き、その時点から24時間は自由文を送れます。案内を送るだけでは再開しません。</p>
+    </div>}
     {preview.document && <button type="button" className="break-all text-left underline" onClick={() => void openWhatsAppDocument(preview.friendId, preview.document!.key, preview.document!.name).catch(() => alert('PDFを開けませんでした。添付を確認してください'))}>
       PDFを開いて確認: {preview.document.name} ({Math.ceil(preview.document.size / 1024)} KB)
     </button>}
@@ -125,11 +131,11 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
   }
   const locked = busy || Boolean(pendingKey)
   return <div className="rounded-2xl border border-emerald-200 bg-white p-3">
-    <button type="button" className={buttonClass} aria-expanded={open} onClick={() => { setOpen(!open); if (!open && !catalogue) void load() }}>見積書・決済リンク・予約確定書</button>
+    <button type="button" className={buttonClass} aria-expanded={open} onClick={() => { setOpen(!open); if (!open && !catalogue) void load() }}>会話再開・見積書・決済リンク・予約確定書</button>
     {pendingKey && !open && <span className="ml-2 text-xs text-amber-900">前回の送信結果を確認してください</span>}
     {open && <div className="mt-3 space-y-3">
-      <p className="text-xs text-gray-600">承認済みの案内は24時間外も送信できます。変数とPDFはお客様ごとに設定します。</p>
-      {catalogue && !catalogue.canSend && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{catalogue.releaseMode === 'off' ? 'ハーネス側の送信機能が停止中です。Metaのテンプレート承認とは別に、社内の受信テストを完了して送信を有効にする必要があります。現在は準備・プレビューのみ利用できます。' : '現在は指定されたテスト番号だけに送信できます。'}</p>}
+      <p className="text-xs text-gray-600">承認済みの案内は24時間外も送信できます。自由文を送るにはお客様からの返信が必要です。会話再開の案内は、依頼された情報の準備ができたときに使用します。</p>
+      {catalogue && !catalogue.canSend && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{catalogue.releaseMode === 'off' ? 'ハーネス側の送信機能が停止中です。現在は準備・プレビューのみ利用できます。' : '現在は指定されたテスト番号だけに送信できます。'}</p>}
       {catalogue && <p className="text-sm">宛先: {catalogue.recipientName} / {catalogue.recipientPhone}</p>}
       <button type="button" disabled={busy} className="text-xs underline" onClick={() => void load()}>Metaの承認状況を更新</button>
       <fieldset disabled={locked} className="space-y-3 disabled:opacity-60">

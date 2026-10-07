@@ -9,13 +9,13 @@ import ChatMessageContent from '../src/components/chat-message-content'
 const storage = new Map<string,string>()
 ;(globalThis as any).localStorage = { getItem: (key:string) => storage.get(key) || null, setItem: (key:string,value:string) => storage.set(key,value), removeItem: (key:string) => storage.delete(key) }
 const template = {id:'t',name:'flat_travel_booking_confirmation_v1',label:'予約確定書',language:'en_US',status:'APPROVED',category:'UTILITY',bodyText:'Hello {{1}}',available:true,unavailableReason:null,documentRequired:false,parameters:[{key:'body:1',label:'お客様名',isUrl:false}],urlButtons:[]}
-const preview:any = {friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',accountName:'Flat Travel',templateName:'flat_travel_booking_confirmation_v1',templateLanguage:'en_US',category:'UTILITY',text:'Hello Alex',document:null,previewToken:'token',previewExpiresAt:Date.now()+600000,canSend:true}
+const preview:any = {friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',accountName:'Flat Travel',templateName:'flat_travel_booking_confirmation_v1',templateLanguage:'en_US',category:'UTILITY',text:'Hello Alex',quickReplies:['Continue chat'],document:null,previewToken:'token',previewExpiresAt:Date.now()+600000,canSend:true}
 let sends=0;let postOutcome='accepted';let canSend=true;let refreshes=0
 const originalFetch=globalThis.fetch
 const calls: any[]=[]
 globalThis.fetch=(async(url:any,options:any={})=>{
  const path=String(url);calls.push({path,...options})
- if(path.endsWith('/templates'))return Response.json({success:true,data:{friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',releaseMode:canSend?'live':'off',canSend,templates:[template, {...template,name:'flat_travel_requested_quote_v1',documentRequired:true}, {...template,name:'flat_travel_payment_link_v1'}, {...template,name:'flat_travel_rail_document_v1'}, {...template,name:'hello_world'}]}})
+ if(path.endsWith('/templates'))return Response.json({success:true,data:{friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',releaseMode:canSend?'live':'off',canSend,templates:[{...template,name:'flat_travel_requested_info_ready_v1'},template, {...template,name:'flat_travel_requested_quote_v1',documentRequired:true}, {...template,name:'flat_travel_payment_link_v1'}, {...template,name:'flat_travel_rail_document_v1'}, {...template,name:'hello_world'}]}})
  if(path.endsWith('/template-preview'))return Response.json({success:true,data:{...preview,canSend}})
  if(path.endsWith('/template-messages')){
   sends++;const body=JSON.parse(options.body);assert.equal(body.optInConfirmed,true);assert.equal(body.contentConfirmed,true);assert.equal(body.previewToken,'token');assert.ok(storage.get('wa-template-send:a'),'receipt key persisted before network')
@@ -31,8 +31,8 @@ function button(renderer:ReactTestRenderer,label:string){return renderer.root.fi
 async function click(renderer:ReactTestRenderer,label:string){const node=button(renderer,label);assert.ok(node,label);assert.ok(!node.props.disabled,label+' is enabled');await act(async()=>{await node.props.onClick();await new Promise(resolve=>setTimeout(resolve,0))})}
 async function make(){let renderer!:ReactTestRenderer;await act(async()=>{renderer=create(<WhatsAppTemplateComposer friendId="a" onSent={()=>{refreshes++}}/>)});return renderer}
 async function prepare(renderer:ReactTestRenderer){
- await click(renderer,'見積書・決済リンク・予約確定書')
- assert.deepEqual(renderer.root.findAllByType('option').map(node=>node.props.value), ['', 'flat_travel_requested_quote_v1:en_US', 'flat_travel_payment_link_v1:en_US', 'flat_travel_booking_confirmation_v1:en_US'])
+ await click(renderer,'会話再開・見積書・決済リンク・予約確定書')
+ assert.deepEqual(renderer.root.findAllByType('option').map(node=>node.props.value), ['', 'flat_travel_requested_info_ready_v1:en_US', 'flat_travel_requested_quote_v1:en_US', 'flat_travel_payment_link_v1:en_US', 'flat_travel_booking_confirmation_v1:en_US'])
  assert.match(textOf(renderer.toJSON()), /見積書を送る（PDF）/)
  assert.match(textOf(renderer.toJSON()), /決済リンクを送る/)
  assert.match(textOf(renderer.toJSON()), /予約確定書を送る（PDF）/)
@@ -45,6 +45,7 @@ async function prepare(renderer:ReactTestRenderer){
  await act(async()=>{renderer.root.findByType('select').props.onChange({target:{value:'flat_travel_booking_confirmation_v1:en_US'}})})
  assert.equal(renderer.root.findByProps({type:'text'}).props.value,'Alex')
  await click(renderer,'宛先・完成文・添付を確認')
+ assert.match(textOf(renderer.toJSON()),/Continue chat/);assert.match(textOf(renderer.toJSON()),/案内を送るだけでは再開しません/);assert.equal(button(renderer,'Continue chat'),undefined,'preview is display-only, never a simulated customer reply')
  assert.equal(button(renderer,'この案内を送信').props.disabled,true)
  const boxes=renderer.root.findAllByProps({type:'checkbox'});assert.equal(boxes.length,2)
  await act(async()=>{boxes[0].props.onChange({target:{checked:true}});boxes[1].props.onChange({target:{checked:true}})})
@@ -52,11 +53,11 @@ async function prepare(renderer:ReactTestRenderer){
 async function main() {
 try{
  const markup=renderToStaticMarkup(<WhatsAppTemplatePreview preview={{...preview,document:{key:'private-key',name:'Quote.pdf',size:100}}}/>)
- assert.match(markup,/15555550100/);assert.match(markup,/Quote.pdf/);assert.ok(!markup.includes('/api/files/'))
- assert.match(renderToStaticMarkup(<ChatMessageContent messageType="whatsapp_template" content={JSON.stringify({...preview,document:{key:'private-key',name:'Quote.pdf'}})}/>),/Hello Alex/)
+ assert.match(markup,/Continue chat/);assert.match(markup,/その時点から24時間/);assert.match(markup,/15555550100/);assert.match(markup,/Quote.pdf/);assert.ok(!markup.includes('/api/files/'))
+ assert.match(renderToStaticMarkup(<ChatMessageContent messageType="whatsapp_template" content={JSON.stringify({...preview,document:{key:'private-key',name:'Quote.pdf'}})}/>),/Continue chat/)
  const closed=renderToStaticMarkup(<ChatComposer friendId="a" channelType="whatsapp"/>)
- assert.match(closed,/見積書・決済リンク・予約確定書/)
- assert.ok(!renderToStaticMarkup(<ChatComposer friendId="a" channelType="line"/>).includes('見積書・決済リンク・予約確定書'))
+ assert.match(closed,/会話再開・見積書・決済リンク・予約確定書/)
+ assert.ok(!renderToStaticMarkup(<ChatComposer friendId="a" channelType="line"/>).includes('会話再開・見積書・決済リンク・予約確定書'))
  let ui=await make();await prepare(ui)
  // Editing invalidates reviewed content and removes the send action.
  await act(async()=>{ui.root.findByProps({type:'text'}).props.onChange({target:{value:'Changed'}})})
@@ -65,7 +66,7 @@ try{
  await act(async()=>{for(const box of ui.root.findAllByProps({type:'checkbox'}))box.props.onChange({target:{checked:true}})})
  await click(ui,'この案内を送信');assert.equal(sends,1);assert.equal(refreshes,1);assert.equal(button(ui,'この案内を送信').props.disabled,true)
  await act(async()=>{ui.unmount()})
- ui=await make();await click(ui,'見積書・決済リンク・予約確定書');assert.equal(ui.root.findByType('fieldset').props.disabled,true,'refresh restores pending receipt')
+ ui=await make();await click(ui,'会話再開・見積書・決済リンク・予約確定書');assert.equal(ui.root.findByType('fieldset').props.disabled,true,'refresh restores pending receipt')
  await click(ui,'送信結果を確認');assert.equal(sends,1,'receipt lookup is never a send')
  await click(ui,'確認して別の案内を作成');assert.equal(storage.size,0)
  await act(async()=>{ui.unmount()})
