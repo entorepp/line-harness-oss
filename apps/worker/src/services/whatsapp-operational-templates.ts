@@ -20,6 +20,10 @@ export const OPERATIONAL_TEMPLATES = [
   { name: 'flat_travel_payment_link_v1', label: '支払い案内・リンクのみ', document: false,
     body: 'Hello {{1}}, here is the payment link for your Flat Travel booking {{2}}: {{3}}. Please review the amount and payment details on the page before paying. If you have already paid, please disregard this payment request.',
     fields: ['お客様名', '予約・請求書番号', '支払いURL'], examples: ['Alex Example', 'SAMPLE-INVOICE-001', 'https://flat-travel.com/payment/sample'], urlKeys: ['body:3'] },
+  { name: 'flat_travel_requested_info_ready_v1', label: '依頼された案内の準備完了・会話再開', document: false,
+    body: 'Hello {{1}}, the travel information you requested for Flat Travel enquiry {{2}} is ready. Tap Continue chat to receive the details here.',
+    fields: ['お客様名', '問合せ番号'], examples: ['Alex Example', 'SAMPLE-ENQUIRY-001'],
+    quickReplies: ['Continue chat'] },
 ] as const;
 
 export function operationalTemplate(raw: RawWhatsAppTemplate) {
@@ -31,6 +35,8 @@ export function operationalTemplate(raw: RawWhatsAppTemplate) {
   const documentRequired = header?.format?.toUpperCase() === 'DOCUMENT';
   const urlButtons = buttons.flatMap((button, index) => button.type?.toUpperCase() === 'URL'
     ? [{ index, label: button.text || 'リンク', url: button.url || '', dynamic: /{{/.test(button.url || '') }] : []);
+  const quickReplies = buttons.flatMap((button, index) => button.type?.toUpperCase() === 'QUICK_REPLY'
+    ? [{ index, label: button.text || '返信', payload: `wa_template_reply:${base.name}:${index}` }] : []);
   let unavailableReason: string | null = null;
   if (base.status !== 'APPROVED') unavailableReason = `Meta承認待ち・使用不可（${base.status}）`;
   else if (base.category !== 'UTILITY') unavailableReason = `実務連絡にはUTILITY承認が必要です（現在: ${base.category}）`;
@@ -41,7 +47,7 @@ export function operationalTemplate(raw: RawWhatsAppTemplate) {
   else if (base.parameters.length > 32) unavailableReason = '変数が多すぎます';
   const urlKeys: readonly string[] = definition && 'urlKeys' in definition ? definition.urlKeys : [];
   return {
-    ...base, label: definition?.label || base.name, documentRequired, urlButtons,
+    ...base, label: definition?.label || base.name, documentRequired, urlButtons, quickReplies,
     parameters: base.parameters.map((item) => ({ ...item,
       label: item.component === 'body' && definition ? definition.fields[item.index - 1] || item.label : item.label,
       isUrl: urlKeys.includes(item.key),
@@ -58,7 +64,8 @@ export async function listOperationalTemplates(account: LineAccount) {
   for (const definition of OPERATIONAL_TEMPLATES) {
     if (!list.some((item) => item.name === definition.name && item.language === 'en_US')) {
       list.push(operationalTemplate({ name: definition.name, language: 'en_US', status: 'NOT_REGISTERED', category: 'UTILITY',
-        components: [...(definition.document ? [{ type: 'HEADER', format: 'DOCUMENT' }] : []), { type: 'BODY', text: definition.body }] })!);
+        components: [...(definition.document ? [{ type: 'HEADER', format: 'DOCUMENT' }] : []), { type: 'BODY', text: definition.body },
+          ...('quickReplies' in definition ? [{ type: 'BUTTONS', buttons: definition.quickReplies.map((text) => ({ type: 'QUICK_REPLY', text })) }] : [])] })!);
     }
   }
   return list.sort((a, b) => Number(!OPERATIONAL_TEMPLATES.some((t) => t.name === a.name)) - Number(!OPERATIONAL_TEMPLATES.some((t) => t.name === b.name)));
@@ -120,6 +127,7 @@ export function operationalPayload(phone: string, template: OperationalTemplate,
     if (parameters.length) components.push({ type: component, parameters });
   }
   for (const [index, text] of Object.entries(message.buttonValues)) components.push({ type: 'button', sub_type: 'url', index, parameters: [{ type: 'text', text }] });
+  for (const button of template.quickReplies) components.push({ type: 'button', sub_type: 'quick_reply', index: String(button.index), parameters: [{ type: 'payload', payload: button.payload }] });
   return { messaging_product: 'whatsapp', recipient_type: 'individual', to: phone, type: 'template',
     template: { name: template.name, language: { code: template.language }, components } };
 }

@@ -8,6 +8,8 @@ workers_dev = true
 # Do NOT hardcode secrets here
 
 [vars]
+# Owner-authorized existing-conversation notices; per-send consent and preview remain required.
+WHATSAPP_OPERATIONAL_TEMPLATES_MODE = "live"
 # Owner-requested browser calling, scoped to the existing 070 account only.
 WHATSAPP_CALLING_MODE = "live"
 WHATSAPP_CALLING_SLACK_ENABLED = "true"
