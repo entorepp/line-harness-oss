@@ -96,17 +96,51 @@ export class ApiError extends Error {
   }
 }
 
-function getApiKey(): string {
-  if (typeof window !== 'undefined') {
-    return normalizeApiKey(localStorage.getItem(AUTH_STORAGE_KEY) || '')
-  }
-  return normalizeApiKey(process.env.NEXT_PUBLIC_API_KEY || '')
+let sessionPromise: Promise<void> | null = null
+
+function purgeLegacyCredentials() {
+  localStorage.removeItem(AUTH_STORAGE_KEY)
+  localStorage.removeItem(OPERATOR_STORAGE_KEY)
+  sessionStorage.removeItem(OPERATOR_KEY_SESSION_STORAGE_KEY)
+}
+
+export async function startStudioSession(apiKey: string, operatorName: string, operatorKey: string) {
+  const response = await fetch(`${API_URL}/api/forms-studio/session`, {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey: normalizeApiKey(apiKey), operatorName, operatorKey }),
+  })
+  if (!response.ok) throw new ApiError(response.status, await resolveErrorMessage(response))
+  purgeLegacyCredentials()
+  hasRedirectedForUnauthorized = false
+  sessionPromise = Promise.resolve()
+}
+
+export function ensureStudioSession(): Promise<void> {
+  if (sessionPromise) return sessionPromise
+  sessionPromise = (async () => {
+    const key = localStorage.getItem(AUTH_STORAGE_KEY) || ''
+    const operator = localStorage.getItem(OPERATOR_STORAGE_KEY) || ''
+    const operatorKey = sessionStorage.getItem(OPERATOR_KEY_SESSION_STORAGE_KEY) || ''
+    purgeLegacyCredentials()
+    if (key && operator) { await startStudioSession(key, operator, operatorKey); return }
+    const response = await fetch(`${API_URL}/api/forms-studio/session`, { cache: 'no-store' })
+    if (!response.ok) throw new ApiError(response.status, await resolveErrorMessage(response))
+  })().catch(error => { sessionPromise = null; throw error })
+  return sessionPromise
+}
+
+export async function endStudioSession() {
+  const response = await fetch(`${API_URL}/api/forms-studio/session`, { method: 'DELETE', cache: 'no-store' })
+  if (!response.ok) throw new ApiError(response.status, await resolveErrorMessage(response))
+  purgeLegacyCredentials()
+  sessionPromise = null
 }
 
 function handleUnauthorized() {
   if (typeof window === 'undefined' || hasRedirectedForUnauthorized) return
 
   hasRedirectedForUnauthorized = true
+  sessionPromise = null
   localStorage.removeItem(AUTH_STORAGE_KEY)
   localStorage.removeItem(ACCOUNT_STORAGE_KEY)
   localStorage.removeItem(OPERATOR_STORAGE_KEY)
@@ -135,15 +169,8 @@ export async function fetchApi<T>(
   options?: RequestInit & { rawBody?: boolean },
 ): Promise<T> {
   const { rawBody, ...fetchOptions } = options || {}
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${getApiKey()}`,
-  }
-  if (typeof window !== 'undefined') {
-    const operator = localStorage.getItem(OPERATOR_STORAGE_KEY)?.trim()
-    if (operator) headers['X-Forms-Operator'] = encodeURIComponent(operator)
-    const operatorKey = sessionStorage.getItem(OPERATOR_KEY_SESSION_STORAGE_KEY)?.trim()
-    if (operatorKey) headers['X-Forms-Operator-Key'] = operatorKey
-  }
+  await ensureStudioSession()
+  const headers: Record<string, string> = {}
 
   if (!rawBody) {
     headers['Content-Type'] = 'application/json'
@@ -151,6 +178,7 @@ export async function fetchApi<T>(
 
   const res = await fetch(`${API_URL}${path}`, {
     ...fetchOptions,
+    cache: 'no-store',
     headers: {
       ...headers,
       ...fetchOptions?.headers,

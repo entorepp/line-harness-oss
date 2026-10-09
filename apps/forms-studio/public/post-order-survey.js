@@ -11,6 +11,7 @@
     document.querySelector(`[data-lang-btn="${language}"]`)?.click()
   }
   applyRequestedLanguage()
+  window.addEventListener('flat-form-draft-ready', applyRequestedLanguage)
 
   const QUESTION_COUNT = 53
   const FILE_QUESTIONS = new Set([5, 7, 13])
@@ -591,6 +592,7 @@
       if (!response.ok || !result.success) {
         throw new Error(result.error || text('Submission failed.', '送信に失敗しました。'))
       }
+      window.FlatFormDraft?.clear().catch(() => {})
       try { localStorage.removeItem(STORE_KEY) } catch (_error) {}
       button.dataset.submitted = 'true'
       button.dataset.submitting = 'false'

@@ -8,13 +8,15 @@ import {
   AUTH_STORAGE_KEY,
   OPERATOR_KEY_SESSION_STORAGE_KEY,
   OPERATOR_STORAGE_KEY,
+  endStudioSession,
 } from '@/lib/api'
 
 function StudioNav() {
   const pathname = usePathname()
   const router = useRouter()
 
-  const logout = () => {
+  const logout = async () => {
+    try { await endStudioSession() } catch { window.alert('接続を確認して、もう一度ログアウトしてください。'); return }
     localStorage.removeItem(AUTH_STORAGE_KEY)
     localStorage.removeItem(ACCOUNT_STORAGE_KEY)
     localStorage.removeItem(OPERATOR_STORAGE_KEY)

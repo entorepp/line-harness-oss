@@ -2,13 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  API_URL,
-  AUTH_STORAGE_KEY,
-  OPERATOR_KEY_SESSION_STORAGE_KEY,
-  OPERATOR_STORAGE_KEY,
-  normalizeApiKey,
-} from '@/lib/api'
+import { startStudioSession, normalizeApiKey } from '@/lib/api'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -31,41 +25,9 @@ export default function LoginPage() {
       if (normalizedOperatorKey && normalizedOperatorKey.length < 24) {
         throw new Error('管理者個別キーは24文字以上で入力してください')
       }
-      const res = await fetch(`${API_URL}/api/forms`, {
-        headers: { Authorization: `Bearer ${normalizedApiKey}` },
-      })
-
-      if (!res.ok) {
-        throw new Error('APIキーが正しくありません')
-      }
-
-      if (normalizedOperatorKey) {
-        const operatorSession = await fetch(`${API_URL}/api/form-response-email/session`, {
-          headers: {
-            Authorization: `Bearer ${normalizedApiKey}`,
-            'X-Forms-Operator': encodeURIComponent(normalizedOperatorName),
-            'X-Forms-Operator-Key': normalizedOperatorKey,
-          },
-        })
-        if (!operatorSession.ok) {
-          let message = '管理者個別キーを確認できませんでした'
-          try {
-            const body = await operatorSession.json() as { error?: unknown }
-            if (typeof body.error === 'string' && body.error.trim()) message = body.error
-          } catch {
-            // Keep the safe fallback message for non-JSON failures.
-          }
-          throw new Error(message)
-        }
-      }
-
-      localStorage.setItem(AUTH_STORAGE_KEY, normalizedApiKey)
-      localStorage.setItem(OPERATOR_STORAGE_KEY, normalizedOperatorName)
-      if (normalizedOperatorKey) {
-        sessionStorage.setItem(OPERATOR_KEY_SESSION_STORAGE_KEY, normalizedOperatorKey)
-      } else {
-        sessionStorage.removeItem(OPERATOR_KEY_SESSION_STORAGE_KEY)
-      }
+      await startStudioSession(normalizedApiKey, normalizedOperatorName, normalizedOperatorKey)
+      setApiKey('')
+      setOperatorKey('')
       router.replace('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : '接続に失敗しました')
