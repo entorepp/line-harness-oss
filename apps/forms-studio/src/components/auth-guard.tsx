@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { AUTH_STORAGE_KEY } from '@/lib/api'
+import { ensureStudioSession } from '@/lib/api'
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -15,13 +15,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return
     }
 
-    const apiKey = localStorage.getItem(AUTH_STORAGE_KEY)
-    if (!apiKey) {
-      router.replace('/login')
-      return
-    }
-
-    setChecked(true)
+    let active = true
+    ensureStudioSession().then(() => { if (active) setChecked(true) })
+      .catch(() => { if (active) router.replace('/login') })
+    return () => { active = false }
   }, [pathname, router])
 
   if (!checked) {
