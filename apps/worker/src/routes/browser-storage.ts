@@ -16,7 +16,7 @@ browserStorage.use('/api/forms-studio/*', async (c, next) => {
   }
   await next();
 });
-async function body(c: Context<Env>, maximum = 64 * 1024): Promise<Record<string, any>> {
+async function readBrowserStorageJson(c: Context<Env>, maximum = 64 * 1024): Promise<Record<string, any>> {
   const reader = c.req.raw.body?.getReader();
   if (!reader) return {};
   const chunks: Uint8Array[] = [];
@@ -37,7 +37,7 @@ async function body(c: Context<Env>, maximum = 64 * 1024): Promise<Record<string
 browserStorage.post('/api/forms-studio/session', async c => {
   if (!await limitBrowserRequest(c, 'login', 20)) return c.json({ error: 'Too many login attempts' }, 429);
   let input;
-  try { input = await body(c, 4096); } catch { return c.json({ error: 'Invalid login request' }, 400); }
+  try { input = await readBrowserStorageJson(c, 4096); } catch { return c.json({ error: 'Invalid login request' }, 400); }
   const apiKey = String(input.apiKey || '').trim().replace(/^Bearer\s+/i, '');
   if (!apiKey || await sha256Hex(apiKey) !== await sha256Hex(c.env.API_KEY)) return c.json({ error: 'Unauthorized' }, 401);
   let operator: string;
@@ -92,7 +92,7 @@ browserStorage.on(['GET', 'PUT', 'DELETE'], '/api/forms-studio/draft', async c =
   if (!await limitBrowserRequest(c, 'draft', 120)) return c.json({ error: 'Too many draft updates' }, 429);
   let data: Record<string, any> | null = null;
   if (c.req.method === 'PUT') {
-    try { data = await body(c); } catch { return c.json({ error: 'Invalid or oversized draft' }, 400); }
+    try { data = await readBrowserStorageJson(c); } catch { return c.json({ error: 'Invalid or oversized draft' }, 400); }
     if (!data || typeof data !== 'object' || Array.isArray(data) || typeof data.v !== 'object') return c.json({ error: 'Invalid draft' }, 400);
   }
   const version = crypto.randomUUID();
