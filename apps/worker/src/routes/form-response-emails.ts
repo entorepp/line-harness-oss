@@ -81,8 +81,9 @@ function errorStatus(message: string): number {
   return 400;
 }
 
-async function getActor(c: { req: { header(name: string): string | undefined }; env: Env['Bindings'] }): Promise<string> {
-  const encodedActor = c.req.header('X-Forms-Operator') || '';
+export async function getActor(c: { req: { header(name: string): string | undefined }; env: Env['Bindings']; get?: (name: 'formsStudioSession') => Env['Variables']['formsStudioSession'] }): Promise<string> {
+  const session = c.get?.('formsStudioSession');
+  const encodedActor = session ? encodeURIComponent(session.operator) : c.req.header('X-Forms-Operator') || '';
   let decodedActor = encodedActor;
   try {
     decodedActor = decodeURIComponent(encodedActor);
@@ -90,7 +91,7 @@ async function getActor(c: { req: { header(name: string): string | undefined }; 
     throw new Error('管理者名の形式が正しくありません');
   }
   const actor = normalizeOperator(decodedActor);
-  const presentedKey = String(c.req.header('X-Forms-Operator-Key') || '').trim();
+  const presentedKey = session ? session.operatorKey : String(c.req.header('X-Forms-Operator-Key') || '').trim();
   if (!/^[A-Za-z0-9._~+/=-]{24,256}$/u.test(presentedKey)) {
     throw new Error('管理者個別キーが必要です');
   }

@@ -165,7 +165,7 @@ publicPayload.append('file', new File([new Uint8Array([4, 5])], 'ordinary.jpg', 
 }));
 const publicUpload = await uploads.request(
   'https://line-flattravel.example.test/api/upload',
-  { method: 'POST', body: publicPayload },
+  { method: 'POST', headers: { Authorization: 'Bearer test-api-key' }, body: publicPayload },
   env,
 );
 assert.equal(publicUpload.status, 200);

@@ -126,6 +126,11 @@ uploads.post('/api/upload', async (c) => {
     }
 
     const privateFormUpload = requestedAccess === FORM_PRIVATE_UPLOAD_ACCESS;
+    // Public file publication is an authenticated staff action. Anonymous form
+    // attachments continue through the validated, signed private-upload path.
+    if (!privateFormUpload && c.req.header('Authorization') !== `Bearer ${c.env.API_KEY}`) {
+      return c.json({ success: false, error: 'Unauthorized' }, 401);
+    }
     const formId = String(formData.get('formId') || '').trim();
     const fieldName = String(formData.get('fieldName') || '').trim();
     let contentType = file.type;
@@ -352,6 +357,8 @@ uploads.get('/api/files/:key', async (c) => {
   const headers: Record<string, string> = {
     'Content-Type': contentType,
     'Cache-Control': 'public, max-age=31536000, immutable',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; sandbox",
   };
 
   // PDFs and images display inline; other files download
@@ -366,8 +373,8 @@ uploads.get('/api/files/:key', async (c) => {
     'audio/mp4',
     'audio/ogg',
   ];
-  if (!inlineTypes.includes(contentType) && metadata?.originalName) {
-    headers['Content-Disposition'] = buildContentDisposition('attachment', metadata.originalName);
+  if (!inlineTypes.includes(contentType)) {
+    headers['Content-Disposition'] = buildContentDisposition('attachment', metadata?.originalName || key);
   } else if (contentType === 'application/pdf') {
     headers['Content-Disposition'] = metadata?.originalName
       ? buildContentDisposition('inline', metadata.originalName)
@@ -389,10 +396,15 @@ uploads.get('/api/images/:key', async (c) => {
     return c.json({ error: 'Not found' }, 404);
   }
 
+  const detected = detectFormFileType(new Uint8Array(value));
+  if (!detected || !IMAGE_TYPES.includes(detected)) return c.json({ error: 'Not found' }, 404);
+
   return new Response(value as ArrayBuffer, {
     headers: {
-      'Content-Type': metadata?.contentType || 'image/jpeg',
+      'Content-Type': detected,
       'Cache-Control': 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
     },
   });
 });

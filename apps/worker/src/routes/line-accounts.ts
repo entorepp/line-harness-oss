@@ -69,15 +69,21 @@ function serializeLineAccount(row: DbLineAccount) {
 function serializeLineAccountFull(row: DbLineAccount) {
   return {
     ...serializeLineAccount(row),
-    channelAccessToken: row.channel_access_token,
-    channelSecret: row.channel_secret,
+    channelAccessToken: "",
+    channelAccessTokenConfigured: Boolean(row.channel_access_token),
+    channelSecret: "",
+    channelSecretConfigured: Boolean(row.channel_secret),
     whatsappBusinessAccountId: row.whatsapp_business_account_id,
-    wechatEncodingAesKey: row.wechat_encoding_aes_key,
+    wechatEncodingAesKey: "",
+    wechatEncodingAesKeyConfigured: Boolean(row.wechat_encoding_aes_key),
     wechatKfCorpId: row.wechat_kf_corp_id,
-    wechatKfSecret: row.wechat_kf_secret,
+    wechatKfSecret: "",
+    wechatKfSecretConfigured: Boolean(row.wechat_kf_secret),
     wechatKfOpenKfid: row.wechat_kf_open_kfid,
-    wechatKfCallbackToken: row.wechat_kf_callback_token,
-    wechatKfEncodingAesKey: row.wechat_kf_encoding_aes_key,
+    wechatKfCallbackToken: "",
+    wechatKfCallbackTokenConfigured: Boolean(row.wechat_kf_callback_token),
+    wechatKfEncodingAesKey: "",
+    wechatKfEncodingAesKeyConfigured: Boolean(row.wechat_kf_encoding_aes_key),
     wechatKfContactUrl: row.wechat_kf_contact_url,
     wechatFollowUrl: row.wechat_follow_url,
   };
@@ -222,6 +228,8 @@ lineAccounts.get('/api/line-accounts', async (c) => {
   try {
     const db = c.env.DB;
     const items = await getLineAccounts(db);
+    // Forms needs only selector labels; avoid provider profile calls and stats.
+    if (c.get('formsStudioSession')) return c.json({ success: true, data: items.map(serializeLineAccount) });
 
     // Get stats for all accounts in parallel
     const results = await Promise.all(
@@ -271,7 +279,7 @@ lineAccounts.get('/api/line-accounts', async (c) => {
   }
 });
 
-// GET /api/line-accounts/:id - get single (includes secrets)
+// GET /api/line-accounts/:id - settings only; credentials are write-only
 lineAccounts.get('/api/line-accounts/:id', async (c) => {
   try {
     const account = await getLineAccountById(c.env.DB, c.req.param('id'));
@@ -586,6 +594,12 @@ lineAccounts.put('/api/line-accounts/:id', async (c) => {
       wechatFollowUrl?: string | null;
       isActive?: boolean;
     }>();
+
+    // Empty values from the settings form mean unchanged, never reveal or erase a secret.
+    for (const field of ['channelAccessToken', 'channelSecret', 'wechatEncodingAesKey',
+      'wechatKfSecret', 'wechatKfCallbackToken', 'wechatKfEncodingAesKey'] as const) {
+      if (!body[field]?.trim()) delete body[field];
+    }
 
     if (
       body.wechatKfEncodingAesKey !== undefined
