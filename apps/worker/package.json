@@ -23,7 +23,8 @@
     "test:whatsapp-operational-templates": "esbuild scripts/test-whatsapp-operational-templates.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-operational-templates.mjs && node .wrangler/tests/whatsapp-operational-templates.mjs",
     "test:survey-validation": "esbuild scripts/test-survey-validation.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/survey-validation.mjs && node .wrangler/tests/survey-validation.mjs",
     "test:whatsapp-calling": "esbuild scripts/test-whatsapp-calling.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-calling.mjs && node .wrangler/tests/whatsapp-calling.mjs",
-    "test:whatsapp-inbound-welcome": "esbuild scripts/test-whatsapp-inbound-welcome.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-inbound-welcome.mjs && node .wrangler/tests/whatsapp-inbound-welcome.mjs"
+    "test:whatsapp-inbound-welcome": "esbuild scripts/test-whatsapp-inbound-welcome.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-inbound-welcome.mjs && node .wrangler/tests/whatsapp-inbound-welcome.mjs",
+    "test:browser-security": "esbuild scripts/test-browser-security.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/browser-security.mjs && node .wrangler/tests/browser-security.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",

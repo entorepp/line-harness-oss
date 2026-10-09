@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import type { Env } from '../index.js';
+import { formsRouteAllowed, readBrowserSession, sameOrigin } from '../services/browser-storage.js';
 
 export async function authMiddleware(c: Context<Env>, next: Next): Promise<Response | void> {
   // Skip auth for the LINE webhook endpoint — it uses signature verification instead
@@ -38,6 +39,16 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   }
 
   const authHeader = c.req.header('Authorization');
+  if (!authHeader || authHeader === 'Bearer ') {
+    const session = await readBrowserSession(c);
+    if (session) {
+      c.header('Cache-Control', 'private, no-store');
+      if (!formsRouteAllowed(path, method)) return c.json({ error: 'forms_scope_required' }, 403);
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !sameOrigin(c)) return c.json({ error: 'cross_origin_request_rejected' }, 403);
+      c.set('formsStudioSession', session);
+      return next();
+    }
+  }
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return c.json({ success: false, error: 'Unauthorized' }, 401);
   }
@@ -46,6 +57,6 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   if (token !== c.env.API_KEY) {
     return c.json({ success: false, error: 'Unauthorized' }, 401);
   }
-
+  c.header('Cache-Control', 'private, no-store');
   return next();
 }

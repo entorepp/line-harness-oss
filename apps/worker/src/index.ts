@@ -49,8 +49,11 @@ import { whatsappCalling } from './routes/whatsapp-calling.js';
 import { whatsappTemplates } from './routes/whatsapp-templates.js';
 import { whatsappInitiation } from './routes/whatsapp-initiation.js';
 import { formResponseEmails } from './routes/form-response-emails.js';
+import { browserStorage } from './routes/browser-storage.js';
+import type { BrowserSession } from './services/browser-storage.js';
 
 export type Env = {
+  Variables: { formsStudioSession: BrowserSession };
   Bindings: {
     DB: D1Database;
     LINE_CHANNEL_SECRET: string;
@@ -138,6 +141,7 @@ app.get('/public-form', (c) => c.redirect(buildWebAppRedirectUrl(c.req.url, c.en
 app.route('/', metaDataDeletion);
 // Public, origin-checked and rate-limited website estimate notification intake.
 app.route('/', travelQuoteIntents);
+app.route('/', browserStorage);
 
 // Auth middleware — skips /webhook and /docs automatically
 app.use('*', authMiddleware);
