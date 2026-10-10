@@ -58,6 +58,12 @@ function buildFields(source) {
   if (questionNumber !== 53) {
     throw new Error(`Expected 53 numbered questions, found ${questionNumber}`)
   }
+  for (const section of extractSurveyModel(source)) {
+    for (const field of section.extra || []) {
+      if (fields.some(existing => existing.name === `q${field.qn}`)) throw new Error('Duplicate question key')
+      fields.push({ name: `q${field.qn}`, label: `${field.j} / ${field.e}`, type: 'textarea', required: false })
+    }
+  }
   fields.push(
     {
       name: 'additional_interests',

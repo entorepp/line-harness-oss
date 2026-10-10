@@ -10,7 +10,7 @@ const artifact = fs.readFileSync(path.join(publicRoot, 'post-order-survey/index.
 const integration = fs.readFileSync(path.join(publicRoot, 'post-order-survey.js'), 'utf8')
 const worker = fs.readFileSync(path.join(publicRoot, '_worker.js'), 'utf8')
 
-const hook = `<script src="/post-order-survey.js?v=20261010-2" data-form-id="${FORM_ID}"></script>`
+const hook = `<script src="/post-order-survey.js?v=20261010-3" data-form-id="${FORM_ID}"></script>`
 if ((artifact.split(hook).length - 1) !== 1) throw new Error('Integration hook mismatch')
 if (!worker.includes(`['${FORM_ID}', '/post-order-survey/']`)) {
   throw new Error('Canonical public-form route is missing')
@@ -64,7 +64,7 @@ if (artifact.includes('showIf:["wcType",["Powered wheelchair","Mobility scooter"
 }
 
 const requiredIntegrationMarkers = [
-  'const QUESTION_COUNT = 53',
+  'const QUESTION_COUNT = 54',
   'const FILE_QUESTIONS = new Set([5, 7, 13])',
   "payload.append('access', PRIVATE_UPLOAD_ACCESS)",
   "payload.append('formId', formId)",
@@ -85,4 +85,4 @@ if ((artifact.match(/t:"file"/g) || []).length !== 3) {
   throw new Error('Expected group photo, insurance and passport file questions')
 }
 
-console.log('POST_ORDER_SURVEY_STATIC_OK sections=11 questions=53 initial_expected=41 files=3')
+console.log('POST_ORDER_SURVEY_STATIC_OK sections=11 questions=54 initial_expected=41 files=3')

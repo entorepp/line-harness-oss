@@ -102,5 +102,5 @@ for (const language of ['en', 'ja']) {
   }
 }
 assert.match(html, /const STORE="flattravel_intake_v2"/)
-assert.match(html, /post-order-survey\.js\?v=20261010-2/)
+assert.match(html, /post-order-survey\.js\?v=20261010-3/)
 console.log(`POST_ORDER_NAME_REGRESSION_OK cases=${checks} languages=2 traveller_instances=3 submit_gate=passed progress=passed serialization=unchanged consent=required`)
