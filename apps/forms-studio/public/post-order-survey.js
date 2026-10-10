@@ -13,7 +13,7 @@
   applyRequestedLanguage()
   window.addEventListener('flat-form-draft-ready', applyRequestedLanguage)
 
-  const QUESTION_COUNT = 53
+  const QUESTION_COUNT = 54
   const FILE_QUESTIONS = new Set([5, 7, 13])
   const STORE_KEY = 'flattravel_intake_v2'
   const PRIVATE_UPLOAD_ACCESS = 'form-private'

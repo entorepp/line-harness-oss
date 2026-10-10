@@ -428,6 +428,11 @@ const S=[
           ["Smoking","禁煙・喫煙","select",[["Non-smoking","禁煙"],["Smoking","喫煙"],["Either is fine","どちらでも可"]]]]}
  ]},
 {n:7,e:"Care equipment for us to arrange",j:"福祉用具の手配",
+  extra:[{qn:54,after:31,t:"radio",noqn:1,showIf:["hoist",["Already arranged","Please arrange"]],
+   e:"Would you like an explanation of how to use the hoist when it is delivered?",j:"リフト搬入・設置時に使い方の説明を希望されますか",
+   he:"Tell us your preference. We will confirm the delivery arrangements and explanation with the provider separately.",
+   hj:"ご希望をお知らせください。搬入方法と説明の対応可否は事業者へ確認のうえ、別途ご案内します。",
+   o:[["Explanation requested","説明を希望する"],["Explanation not requested","説明は不要"],["Please discuss with me","相談したい・未定"]]}],
   f:[
   {t:"radio",id:"hoist",e:"A transfer hoist — what would you like us to do?",j:"移乗リフトについて",r:1,k:1,
    he:"If you use a hoist to transfer at home, you will most likely need one here too.",
@@ -450,11 +455,13 @@ const S=[
     {v:"Either is fine",e:"Either is fine",j:"どちらでも可"}
    ],
    nj:"種別名だけでは通じないため実機写真を併置する。手配済みの方にも種別は聞く（当日の設置環境の確認に要る）が、料金は手配希望の方にだけ出す。"},
-  {t:"radio",id:"sling",showIf:["hoist",["Already arranged","Please arrange"]],e:"Are you bringing your own sling?",j:"リフト用スリングは持参されますか",r:1,k:1,
-   o:[["Yes, bringing my own","持参する"],["No, please arrange one","手配が必要"],["Other","その他"]],
+  {t:"radio",id:"sling",showIf:["hoist",["Already arranged","Please arrange"]],e:"Will you need to borrow a sling for the hoist?",j:"リフト用スリングシートの貸し出しは必要ですか",r:1,k:1,
+   he:"Please tell us whether you need a rental sling or will bring your own. We will confirm availability, compatibility and any charges separately.",
+   hj:"貸し出しの希望、または持参の有無をお知らせください。在庫・適合性・料金は別途確認してご案内します。",
+   o:[["Yes, bringing my own","不要（持参する）","No, I will bring my own"],["No, please arrange one","必要（貸し出しを希望）","Yes, please arrange a rental sling"],["Other","要相談・その他","Not sure / please discuss with me"]],
    nj:"スリングは体格と障害に合わせた個別品。持参有無を確認せずリフトだけ手配すると当日使えない。リフト手配と必ずセットで聞く。"},
-  {t:"text",showIf:["sling",["Yes, bringing my own","Other"]],e:"Sling size and type",j:"スリングのサイズ・タイプ",noqn:1,
-   he:"For example: full-body, size M, with head support",hj:"例：全身用・Mサイズ・頭部サポート付き"},
+  {t:"text",showIf:["hoist",["Already arranged","Please arrange"]],e:"Sling size and type",j:"スリングのサイズ・タイプ",noqn:1,
+   he:"If known: make/model, size, loop or clip attachment, and head support. Leave blank if unsure.",hj:"分かる範囲で、メーカー・型番・サイズ・取付方式（ループ／クリップ）・頭部サポートの有無をご記入ください。不明な場合は空欄で構いません。"},
   {t:"cardcheck",id:"gear",e:"Other equipment you would like arranged",j:"その他、手配が必要な福祉用具",
    items:[
     {v:"Manual wheelchair",e:"Manual wheelchair",j:"手動車椅子",img:"wcManual",
@@ -660,7 +667,7 @@ function question(f,qn,inst,scoped){
       inp.value=o[0]; inp.dataset.k=QKEY+"_"+i;
       if(f.id) inp.dataset.ctrl=f.id+SFX;
       inputs.push(inp);
-      l.appendChild(inp); l.appendChild(el("span","",T(o[0],o[1]))); box.appendChild(l);
+      l.appendChild(inp); l.appendChild(el("span","",T(o[2]||o[0],o[1]))); box.appendChild(l);
     });
     if(f.t==="check"&&f.exclLast&&inputs.length>1){
       const last=inputs[inputs.length-1], rest=inputs.slice(0,-1);
@@ -1151,7 +1158,13 @@ function render(){
     const base=QN; s.__base=base;
     s.f.forEach((f,i)=>{ if(f.r)req++; if(f.k)keys++ });
     if(!s.repeat){
-      s.f.forEach((f,i)=>{const c=question(f,base+i+1,0); c.dataset.sec=s.n; body.appendChild(c)});
+      s.f.forEach((f,i)=>{
+        const qn=base+i+1;
+        const c=question(f,qn,0); c.dataset.sec=s.n; body.appendChild(c);
+        (s.extra||[]).filter(extra=>extra.after===qn).forEach(extra=>{
+          const additional=question(extra,extra.qn,0); additional.dataset.sec=s.n; body.appendChild(additional);
+        });
+      });
       if(s.sub){
         // 条件付きのくり返しブロック（新幹線の区間など）
         const wrap=el("div","subwrap");
@@ -1292,6 +1305,6 @@ window.FlatFormDraft.ready.then(restoreServerDraft);
 window.addEventListener("flat-form-draft-recovered",restoreServerDraft);
 </script>
 
-<script src="/post-order-survey.js?v=20261010-2" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
+<script src="/post-order-survey.js?v=20261010-3" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
 </body>
 </html>
