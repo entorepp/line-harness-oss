@@ -109,6 +109,21 @@ try{
  assert.throws(()=>prepareOperationalMessage(dynamic,{'body:1':'INV-1'},{}));
  const payment=OPERATIONAL_TEMPLATES[5];const pay=operationalTemplate({name:payment.name,language:'en_US',status:'APPROVED',category:'UTILITY',components:[{type:'BODY',text:payment.body}]})!;
  assert.throws(()=>prepareOperationalMessage(pay,{'body:1':'Alex','body:2':'Invoice','body:3':'javascript:alert(1)'},{}));
+ // The replacement quotation needs only a customer name and the private PDF.
+ const quote=OPERATIONAL_TEMPLATES.find(item=>item.name==='flat_travel_requested_quote_v2')!;
+ raw={id:'quote-v2',name:quote.name,language:'en_US',category:'UTILITY',status:'APPROVED',components:[{type:'HEADER',format:'DOCUMENT'},{type:'BODY',text:quote.body}]};
+ draft={templateName:quote.name,templateLanguage:'en_US',values:{'body:1':'Alex'},buttonValues:{},documentKey:file.key};
+ const catalogue=(await (await request(path+'/templates')).json() as any).data.templates;
+ assert.deepEqual(catalogue.find((item:any)=>item.name===quote.name).parameters.map((item:any)=>({key:item.key,label:item.label})),[{key:'body:1',label:'お客様名'}]);
+ assert.equal((await request(path+'/template-preview',{...draft,documentKey:null})).status,400,'quotation still requires its PDF');
+ assert.equal((await request(path+'/template-preview',{...draft,values:{'body:1':'Alex','body:2':'INVENTED'}})).status,400,'no hidden or fabricated reference is accepted');
+ assert.equal((await request(path+'/template-preview',{...draft,values:{'body:1':''}})).status,400,'name remains required');
+ raw.status='PENDING';assert.equal((await request(path+'/template-preview',draft)).status,400);raw.status='APPROVED';
+ const quotePreview=await preview();assert.equal(quotePreview.document.key,file.key);assert.match(quotePreview.text,/quotation you requested from Flat Travel is attached/);assert.doesNotMatch(quotePreview.text,/enquiry|{{2}}/);
+ assert.equal((await send(body(quotePreview))).status,201);
+ assert.equal(messages.at(-1).template.name,quote.name);
+ assert.deepEqual(messages.at(-1).template.components[1],{type:'body',parameters:[{type:'text',text:'Alex'}]});
+ assert.equal((await getWhatsappReplyWindow(db,'a')).canSend,false,'quotation acceptance does not reopen free text');
  // Live mode permits a reviewed template after expiry, but only a customer reply reopens free text.
  env.WHATSAPP_OPERATIONAL_TEMPLATES_MODE='live';
  const reopen=OPERATIONAL_TEMPLATES.find(item=>item.name==='flat_travel_requested_info_ready_v1')!;
