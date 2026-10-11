@@ -11,12 +11,18 @@ const storage = new Map<string,string>()
 const template = {id:'t',name:'flat_travel_booking_confirmation_v1',label:'予約確定書',language:'en_US',status:'APPROVED',category:'UTILITY',bodyText:'Hello {{1}}',available:true,unavailableReason:null,documentRequired:false,parameters:[{key:'body:1',label:'お客様名',isUrl:false}],urlButtons:[]}
 const preview:any = {friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',accountName:'Flat Travel',templateName:'flat_travel_booking_confirmation_v1',templateLanguage:'en_US',category:'UTILITY',text:'Hello Alex',quickReplies:['Continue chat'],document:null,previewToken:'token',previewExpiresAt:Date.now()+600000,canSend:true}
 let sends=0;let postOutcome='accepted';let canSend=true;let refreshes=0
+let previewError=false;let resultScrolls=0
+const focusedFields: string[]=[]
 const originalFetch=globalThis.fetch
 const calls: any[]=[]
 globalThis.fetch=(async(url:any,options:any={})=>{
  const path=String(url);calls.push({path,...options})
- if(path.endsWith('/templates'))return Response.json({success:true,data:{friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',releaseMode:canSend?'live':'off',canSend,templates:[{...template,name:'flat_travel_requested_info_ready_v1'},template, {...template,name:'flat_travel_requested_quote_v1',documentRequired:true}, {...template,name:'flat_travel_payment_link_v1'}, {...template,name:'flat_travel_rail_document_v1'}, {...template,name:'hello_world'}]}})
- if(path.endsWith('/template-preview'))return Response.json({success:true,data:{...preview,canSend}})
+ if(path.endsWith('/templates'))return Response.json({success:true,data:{friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',releaseMode:canSend?'live':'off',canSend,templates:[{...template,name:'flat_travel_requested_info_ready_v1'},template, {...template,name:'flat_travel_requested_quote_v1',documentRequired:true,parameters:[...template.parameters,{key:'body:2',label:'問合せ・見積り番号',isUrl:false}]}, {...template,name:'flat_travel_payment_link_v1',urlButtons:[{index:0,label:'お支払い',url:'https://example.com/pay/{{1}}',dynamic:true}]}, {...template,name:'flat_travel_rail_document_v1'}, {...template,name:'hello_world'}]}})
+ if(path.endsWith('/documents'))return Response.json({success:true,data:{key:'private-quote',name:'Quote.pdf',size:100}})
+ if(path.endsWith('/template-preview')) {
+  if(previewError)return Response.json({success:false,error:'承認状態が更新されました。再確認してください'},{status:400})
+  return Response.json({success:true,data:{...preview,canSend}})
+ }
  if(path.endsWith('/template-messages')){
   sends++;const body=JSON.parse(options.body);assert.equal(body.optInConfirmed,true);assert.equal(body.contentConfirmed,true);assert.equal(body.previewToken,'token');assert.ok(storage.get('wa-template-send:a'),'receipt key persisted before network')
   if(postOutcome==='network')throw Error('Network stopped')
@@ -29,7 +35,15 @@ globalThis.fetch=(async(url:any,options:any={})=>{
 const textOf=(node:any):string=> typeof node==='string'?node:(node?.children||[]).map(textOf).join('')
 function button(renderer:ReactTestRenderer,label:string){return renderer.root.findAllByType('button').find(node=>textOf(node).includes(label))!}
 async function click(renderer:ReactTestRenderer,label:string){const node=button(renderer,label);assert.ok(node,label);assert.ok(!node.props.disabled,label+' is enabled');await act(async()=>{await node.props.onClick();await new Promise(resolve=>setTimeout(resolve,0))})}
-async function make(){let renderer!:ReactTestRenderer;await act(async()=>{renderer=create(<WhatsAppTemplateComposer friendId="a" onSent={()=>{refreshes++}}/>)});return renderer}
+async function make(){
+ let renderer!:ReactTestRenderer
+ await act(async()=>{renderer=create(<WhatsAppTemplateComposer friendId="a" onSent={()=>{refreshes++}}/>,{
+  createNodeMock:(element)=>element.type==='input'
+   ?{focus:()=>focusedFields.push((element.props as { 'aria-label': string })['aria-label'])}
+   :element.type==='div'?{scrollIntoView:()=>resultScrolls++}:null,
+ })})
+ return renderer
+}
 async function prepare(renderer:ReactTestRenderer){
  await click(renderer,'会話再開・見積書・決済リンク・予約確定書')
  assert.deepEqual(renderer.root.findAllByType('option').map(node=>node.props.value), ['', 'flat_travel_requested_info_ready_v1:en_US', 'flat_travel_requested_quote_v1:en_US', 'flat_travel_payment_link_v1:en_US', 'flat_travel_booking_confirmation_v1:en_US'])
@@ -58,6 +72,43 @@ try{
  const closed=renderToStaticMarkup(<ChatComposer friendId="a" channelType="whatsapp"/>)
  assert.match(closed,/会話再開・見積書・決済リンク・予約確定書/)
  assert.ok(!renderToStaticMarkup(<ChatComposer friendId="a" channelType="line"/>).includes('会話再開・見積書・決済リンク・予約確定書'))
+ // Reproduce the reported quotation: PDF uploaded, enquiry reference empty.
+ let quote=await make();await click(quote,'会話再開・見積書・決済リンク・予約確定書')
+ await act(async()=>quote.root.findByType('select').props.onChange({target:{value:'flat_travel_requested_quote_v1:en_US'}}))
+ await act(async()=>{quote.root.findByProps({type:'file'}).props.onChange({target:{files:[new File(['%PDF-test'],'Quote.pdf',{type:'application/pdf'})]}});await new Promise(resolve=>setTimeout(resolve,0))})
+ const previewCalls=()=>calls.filter(call=>call.path.endsWith('/template-preview'))
+ const before=previewCalls().length
+ for(const value of ['', '   ']) {
+  await act(async()=>quote.root.findByProps({'aria-label':'問合せ・見積り番号'}).props.onChange({target:{value}}))
+  await click(quote,'宛先・完成文・添付を確認')
+  assert.equal(previewCalls().length,before,'missing reference stays local and never submits an invalid preview')
+  assert.equal(focusedFields.at(-1),'問合せ・見積り番号')
+  assert.equal(quote.root.findByProps({'aria-label':'問合せ・見積り番号'}).props['aria-invalid'],true)
+  assert.match(textOf(quote.toJSON()),/問合せ・見積り番号を入力してください/)
+  assert.match(textOf(quote.toJSON()),/添付済み: Quote.pdf/,'validation preserves the attached PDF')
+ }
+ await act(async()=>quote.root.findByProps({'aria-label':'問合せ・見積り番号'}).props.onChange({target:{value:'FT-TEST-123'}}))
+ const scrollsBefore=resultScrolls
+ await click(quote,'宛先・完成文・添付を確認')
+ assert.equal(previewCalls().length,before+1)
+ assert.equal(JSON.parse(previewCalls().at(-1).body).documentKey,'private-quote')
+ assert.ok(resultScrolls>scrollsBefore,'successful preview is scrolled into view')
+ assert.equal(button(quote,'この案内を送信').props.disabled,true,'preview still requires both confirmations')
+ await act(async()=>quote.root.findByProps({'aria-label':'問合せ・見積り番号'}).props.onChange({target:{value:'FT-TEST-456'}}))
+ previewError=true
+ const errorScrolls=resultScrolls
+ await click(quote,'宛先・完成文・添付を確認')
+ assert.match(textOf(quote.toJSON()),/承認状態が更新されました/)
+ assert.ok(resultScrolls>errorScrolls,'server rejection is scrolled into view')
+ assert.equal(button(quote,'この案内を送信'),undefined)
+ previewError=false
+ await act(async()=>quote.root.findByType('select').props.onChange({target:{value:'flat_travel_payment_link_v1:en_US'}}))
+ const beforeButton=previewCalls().length
+ await click(quote,'宛先・完成文・添付を確認')
+ assert.equal(previewCalls().length,beforeButton)
+ assert.equal(focusedFields.at(-1),'お支払い（URL末尾）')
+ assert.equal(sends,0,'validation and previews never send messages')
+ await act(async()=>quote.unmount())
  let ui=await make();await prepare(ui)
  // Editing invalidates reviewed content and removes the send action.
  await act(async()=>{ui.root.findByProps({type:'text'}).props.onChange({target:{value:'Changed'}})})
