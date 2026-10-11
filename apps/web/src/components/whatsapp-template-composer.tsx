@@ -68,9 +68,17 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
   const result = useRef<HTMLDivElement>(null)
   const path = `/api/whatsapp/friends/${encodeURIComponent(friendId)}`
   const storageKey = `wa-template-send:${friendId}`
-  const templates = NOTICE_PURPOSES.flatMap((purpose) =>
-    (catalogue?.templates || []).filter((item) => item.name === purpose.name)
-      .map((item) => ({ ...item, label: purpose.label })))
+  const templates = NOTICE_PURPOSES.flatMap((purpose) => {
+    let matches = (catalogue?.templates || []).filter((item) => item.name === purpose.name)
+    if (purpose.name === 'flat_travel_requested_quote_v2' &&
+      (!matches.some((item) => item.available) || selected.startsWith('flat_travel_requested_quote_v1:'))) {
+      // Keep quotation sending available during Meta review and preserve an open legacy draft.
+      // A fresh composer selects the reference-free version as soon as Meta approves it.
+      const legacy = (catalogue?.templates || []).filter((item) => item.name === 'flat_travel_requested_quote_v1')
+      if (legacy.some((item) => item.available)) matches = legacy
+    }
+    return matches.map((item) => ({ ...item, label: purpose.label }))
+  })
   const template = templates.find((item) => `${item.name}:${item.language}` === selected)
   useEffect(() => {
     alive.current = true
