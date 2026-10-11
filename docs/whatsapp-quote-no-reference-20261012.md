@@ -15,4 +15,3 @@ Existing Harness Worker, D1/KV, Pages and Meta template APIs own this change. Re
 Acceptance: a fresh catalogue lists only the name as a v2 parameter; name plus PDF produces a signed preview without any reference; mocked provider sends contain one body parameter; missing PDF, pending/reclassified templates and extra reference fields are rejected; Web shows no legacy quotation input even when both versions are returned. Existing uncertain-send controls and required Worker/Web CI pass. Guarded deployments, exact live bundles/assets, authenticated API preview and browser display must be verified before completion. Actual customer delivery is outside this verification.
 
 Local Worker real-SQL route and Web React regressions plus type checks passed. Final diff self-review approved for this narrow change; required CI, current Meta approval and guarded release/readback remain deployment gates.
-
