@@ -22,7 +22,7 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : '
 // Keep operational notices and enquiry reopening available after the reply window expires.
 const NOTICE_PURPOSES = [
   { name: 'flat_travel_requested_info_ready_v1', label: '会話を再開する（依頼された案内の準備完了）' },
-  { name: 'flat_travel_requested_quote_v1', label: '見積書を送る（PDF）' },
+  { name: 'flat_travel_requested_quote_v2', label: '見積書を送る（PDF）' },
   { name: 'flat_travel_payment_link_v1', label: '決済リンクを送る' },
   { name: 'flat_travel_booking_confirmation_v1', label: '予約確定書を送る（PDF）' },
 ] as const
