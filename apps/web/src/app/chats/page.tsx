@@ -194,7 +194,7 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
   }, [loadMessages])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 min-w-0 flex-col h-full">
       <div className="px-4 py-4 border-b border-gray-200 flex items-center gap-3">
         <button onClick={onBack} className="lg:hidden text-gray-400 hover:text-gray-600">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -214,7 +214,7 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
           <p className="text-xs text-gray-400">メッセージ履歴</p>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-3">
         {loadingMessages ? (
           <p className="text-center text-gray-400 text-sm">読み込み中...</p>
         ) : messages.length === 0 ? (
@@ -243,7 +243,7 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
           ))
         )}
       </div>
-      <div className="px-4 py-3 border-t border-gray-200">
+      <div role="region" aria-label="メッセージ作成" tabIndex={0} className="min-h-0 min-w-0 max-h-[65%] shrink-0 overflow-y-auto overscroll-contain px-4 py-3 border-t border-gray-200">
         <ChatComposer
           friendId={friendId}
           channelType={channelType}
@@ -917,7 +917,7 @@ export default function ChatsPage() {
         </div>
 
         {/* Right Panel: Chat Detail */}
-        <div className={`flex-1 bg-white rounded-lg shadow-sm border border-gray-200 flex-col overflow-hidden ${selectedChatId || selectedFriendId ? 'flex' : 'hidden lg:flex'}`}>
+        <div className={`min-h-0 min-w-0 flex-1 bg-white rounded-lg shadow-sm border border-gray-200 flex-col overflow-hidden ${selectedChatId || selectedFriendId ? 'flex' : 'hidden lg:flex'}`}>
           {selectedFriendId && !selectedChatId ? (
             /* Direct message to friend without existing chat */
             <DirectMessagePanel
@@ -1118,7 +1118,7 @@ export default function ChatsPage() {
               <div
                 ref={messagesContainerRef}
                 onScroll={handleMessagesScroll}
-                className="flex-1 overflow-y-auto p-4 space-y-2"
+                className="min-h-0 flex-1 overflow-y-auto p-4 space-y-2"
                 style={{ backgroundColor: '#7494C0' }}
               >
                 {loadingOlderMessages && (
@@ -1177,7 +1177,7 @@ export default function ChatsPage() {
               </div>
 
               {/* Send Message Form */}
-              <div className="px-4 py-3 border-t border-gray-200">
+              <div role="region" aria-label="メッセージ作成" tabIndex={0} className="min-h-0 min-w-0 max-h-[65%] shrink-0 overflow-y-auto overscroll-contain px-4 py-3 border-t border-gray-200">
                 <ChatComposer
                   friendId={chatDetail.friendId}
                   chatId={selectedChatId}

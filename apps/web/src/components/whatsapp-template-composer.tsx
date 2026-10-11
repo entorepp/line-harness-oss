@@ -26,7 +26,7 @@ const NOTICE_PURPOSES = [
   { name: 'flat_travel_payment_link_v1', label: '決済リンクを送る' },
   { name: 'flat_travel_booking_confirmation_v1', label: '予約確定書を送る（PDF）' },
 ] as const
-const fieldClass = 'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900'
+const fieldClass = 'min-w-0 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900'
 const buttonClass = 'rounded-full border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40'
 
 export function WhatsAppTemplatePreview({ preview }: { preview: TemplatePreview }) {
@@ -58,11 +58,14 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
   const [confirmed, setConfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [pendingKey, setPendingKey] = useState<string | null>(null)
   const [storageReady, setStorageReady] = useState(false)
   const alive = useRef(true)
   const inFlight = useRef(false)
+  const fields = useRef<Record<string, HTMLInputElement | null>>({})
+  const result = useRef<HTMLDivElement>(null)
   const path = `/api/whatsapp/friends/${encodeURIComponent(friendId)}`
   const storageKey = `wa-template-send:${friendId}`
   const templates = NOTICE_PURPOSES.flatMap((purpose) =>
@@ -76,7 +79,11 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
     return () => { alive.current = false }
   }, [storageKey])
 
-  function changeDraft() { setPreview(null); setConfirmed(false); setReceipt(null); setError('') }
+  useEffect(() => {
+    if (preview || error || receipt) result.current?.scrollIntoView({ block: 'nearest' })
+  }, [preview, error, receipt])
+
+  function changeDraft() { setPreview(null); setConfirmed(false); setReceipt(null); setError(''); setFieldErrors({}) }
   async function task(action: () => Promise<void>) {
     if (inFlight.current) return
     inFlight.current = true; setBusy(true); setError('')
@@ -98,6 +105,25 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
     changeDraft()
   }
   const draft = { templateName: template?.name, templateLanguage: template?.language, values, buttonValues, documentKey: document?.key || null }
+  async function preparePreview() {
+    if (!template?.available || locked || (template.documentRequired && !document)) return
+    const missing: Record<string, string> = {}
+    for (const field of template.parameters) {
+      if (!values[field.key]?.trim()) missing[field.key] = `${field.label}を入力してください`
+    }
+    for (const button of template.urlButtons.filter((item) => item.dynamic)) {
+      if (!buttonValues[String(button.index)]?.trim()) missing[`button:${button.index}`] = `${button.label}（URL末尾）を入力してください`
+    }
+    setFieldErrors(missing)
+    if (Object.keys(missing).length) {
+      fields.current[Object.keys(missing)[0]]?.focus()
+      return
+    }
+    await task(async () => {
+      const response = await fetchApi<Response<TemplatePreview>>(`${path}/template-preview`, { method: 'POST', body: JSON.stringify(draft) })
+      if (alive.current) { setPreview(response.data); setConfirmed(false) }
+    })
+  }
   async function checkReceipt(key = pendingKey) {
     if (!key) return
     await task(async () => {
@@ -138,7 +164,7 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
       {catalogue && !catalogue.canSend && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{catalogue.releaseMode === 'off' ? 'ハーネス側の送信機能が停止中です。現在は準備・プレビューのみ利用できます。' : '現在は指定されたテスト番号だけに送信できます。'}</p>}
       {catalogue && <p className="text-sm">宛先: {catalogue.recipientName} / {catalogue.recipientPhone}</p>}
       <button type="button" disabled={busy} className="text-xs underline" onClick={() => void load()}>Metaの承認状況を更新</button>
-      <fieldset disabled={locked} className="space-y-3 disabled:opacity-60">
+      <fieldset disabled={locked} className="min-w-0 space-y-3 disabled:opacity-60">
         <label className="block text-sm">用途
           <select className={fieldClass} value={selected} onChange={(event) => select(event.target.value)}>
             <option value="">用途を選択してください</option>
@@ -147,14 +173,16 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
         </label>
         {template && !template.available && <p className="text-sm text-amber-900">{template.unavailableReason}</p>}
         {template && <p className="whitespace-pre-wrap rounded-xl bg-gray-50 p-3 text-xs text-gray-600">{template.bodyText}</p>}
-        {template?.parameters.map((field) => <label key={field.key} className="block text-sm">{field.label}
-          <input type={field.isUrl ? 'url' : 'text'} className={fieldClass} value={values[field.key] || ''} maxLength={512} onChange={(event) => { setValues({ ...values, [field.key]: event.target.value }); changeDraft() }} />
+        {template?.parameters.map((field) => <label key={field.key} className="block text-sm">{field.label}<span className="ml-2 text-xs text-red-700">必須</span>
+          <input ref={(node) => { fields.current[field.key] = node }} required aria-label={field.label} aria-invalid={Boolean(fieldErrors[field.key])} aria-describedby={fieldErrors[field.key] ? `${storageKey}-${field.key}-error` : undefined} type={field.isUrl ? 'url' : 'text'} className={fieldClass} value={values[field.key] || ''} maxLength={512} onChange={(event) => { setValues({ ...values, [field.key]: event.target.value }); changeDraft() }} />
+          {fieldErrors[field.key] && <span id={`${storageKey}-${field.key}-error`} role="alert" className="mt-1 block text-xs text-red-700">{fieldErrors[field.key]}</span>}
         </label>)}
-        {template?.urlButtons.filter((button) => button.dynamic).map((button) => <label key={button.index} className="block text-sm">{button.label}（URL末尾）
+        {template?.urlButtons.filter((button) => button.dynamic).map((button) => <label key={button.index} className="block text-sm">{button.label}（URL末尾）<span className="ml-2 text-xs text-red-700">必須</span>
           <span className="block break-all text-xs text-gray-500">{button.url}</span>
-          <input className={fieldClass} value={buttonValues[String(button.index)] || ''} maxLength={512} onChange={(event) => { setButtonValues({ ...buttonValues, [button.index]: event.target.value }); changeDraft() }} />
+          <input ref={(node) => { fields.current[`button:${button.index}`] = node }} required aria-label={`${button.label}（URL末尾）`} aria-invalid={Boolean(fieldErrors[`button:${button.index}`])} aria-describedby={fieldErrors[`button:${button.index}`] ? `${storageKey}-button-${button.index}-error` : undefined} className={fieldClass} value={buttonValues[String(button.index)] || ''} maxLength={512} onChange={(event) => { setButtonValues({ ...buttonValues, [button.index]: event.target.value }); changeDraft() }} />
+          {fieldErrors[`button:${button.index}`] && <span id={`${storageKey}-button-${button.index}-error`} role="alert" className="mt-1 block text-xs text-red-700">{fieldErrors[`button:${button.index}`]}</span>}
         </label>)}
-        {template?.documentRequired && <label className="block text-sm">PDF（10MB以下・保存期間180日）
+        {template?.documentRequired && <label className="block text-sm">PDF（10MB以下・保存期間180日）<span className="ml-2 text-xs text-red-700">必須</span>
           <input key={selected} type="file" accept="application/pdf,.pdf" className={`${fieldClass} block`} onChange={(event) => {
             const file = event.target.files?.[0]; changeDraft(); setDocument(null)
             if (!file) return
@@ -166,11 +194,9 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
           }} />
           {document && <span className="block break-all text-xs">添付済み: {document.name}</span>}
         </label>}
-        <button type="button" disabled={!template?.available || Boolean(template.documentRequired && !document)} className={buttonClass} onClick={() => void task(async () => {
-          const result = await fetchApi<Response<TemplatePreview>>(`${path}/template-preview`, { method: 'POST', body: JSON.stringify(draft) })
-          if (alive.current) { setPreview(result.data); setConfirmed(false) }
-        })}>宛先・完成文・添付を確認</button>
+        <button type="button" disabled={!template?.available || Boolean(template.documentRequired && !document)} className={buttonClass} onClick={() => void preparePreview()}>宛先・完成文・添付を確認</button>
       </fieldset>
+      <div ref={result} className="space-y-3">
       {preview && <>
         <WhatsAppTemplatePreview preview={preview} />
         <label className="flex gap-2 text-sm"><input type="checkbox" disabled={locked} checked={consent} onChange={(event) => setConsent(event.target.checked)} />このお客様はWhatsAppでこの予約・問合せの連絡を受けることに同意しています</label>
@@ -187,6 +213,7 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
           localStorage.removeItem(storageKey); setPendingKey(null); setSelected(''); setValues({}); setDocument(null); setConsent(false); changeDraft()
         }}>確認して別の案内を作成</button>}
       </div>}
+      </div>
     </div>}
   </div>
 }
