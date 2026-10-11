@@ -11,13 +11,13 @@ const storage = new Map<string,string>()
 const template = {id:'t',name:'flat_travel_booking_confirmation_v1',label:'予約確定書',language:'en_US',status:'APPROVED',category:'UTILITY',bodyText:'Hello {{1}}',available:true,unavailableReason:null,documentRequired:false,parameters:[{key:'body:1',label:'お客様名',isUrl:false}],urlButtons:[]}
 const preview:any = {friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',accountName:'Flat Travel',templateName:'flat_travel_booking_confirmation_v1',templateLanguage:'en_US',category:'UTILITY',text:'Hello Alex',quickReplies:['Continue chat'],document:null,previewToken:'token',previewExpiresAt:Date.now()+600000,canSend:true}
 let sends=0;let postOutcome='accepted';let canSend=true;let refreshes=0
-let previewError=false;let resultScrolls=0
+let previewError=false;let resultScrolls=0;let quoteApproved=true
 const focusedFields: string[]=[]
 const originalFetch=globalThis.fetch
 const calls: any[]=[]
 globalThis.fetch=(async(url:any,options:any={})=>{
  const path=String(url);calls.push({path,...options})
- if(path.endsWith('/templates'))return Response.json({success:true,data:{friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',releaseMode:canSend?'live':'off',canSend,templates:[{...template,name:'flat_travel_requested_info_ready_v1'},template, {...template,name:'flat_travel_requested_quote_v2',documentRequired:true}, {...template,name:'flat_travel_requested_quote_v1',documentRequired:true,parameters:[...template.parameters,{key:'body:2',label:'問合せ・見積り番号',isUrl:false}]}, {...template,name:'flat_travel_payment_link_v1',urlButtons:[{index:0,label:'お支払い',url:'https://example.com/pay/{{1}}',dynamic:true}]}, {...template,name:'flat_travel_rail_document_v1'}, {...template,name:'hello_world'}]}})
+ if(path.endsWith('/templates'))return Response.json({success:true,data:{friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',releaseMode:canSend?'live':'off',canSend,templates:[{...template,name:'flat_travel_requested_info_ready_v1'},template, {...template,name:'flat_travel_requested_quote_v2',documentRequired:true,available:quoteApproved,status:quoteApproved?'APPROVED':'PENDING'}, {...template,name:'flat_travel_requested_quote_v1',documentRequired:true,parameters:[...template.parameters,{key:'body:2',label:'問合せ・見積り番号',isUrl:false}]}, {...template,name:'flat_travel_payment_link_v1',urlButtons:[{index:0,label:'お支払い',url:'https://example.com/pay/{{1}}',dynamic:true}]}, {...template,name:'flat_travel_rail_document_v1'}, {...template,name:'hello_world'}]}})
  if(path.endsWith('/documents'))return Response.json({success:true,data:{key:'private-quote',name:'Quote.pdf',size:100}})
  if(path.endsWith('/template-preview')) {
   if(previewError)return Response.json({success:false,error:'承認状態が更新されました。再確認してください'},{status:400})
@@ -72,6 +72,20 @@ try{
  const closed=renderToStaticMarkup(<ChatComposer friendId="a" channelType="whatsapp"/>)
  assert.match(closed,/会話再開・見積書・決済リンク・予約確定書/)
  assert.ok(!renderToStaticMarkup(<ChatComposer friendId="a" channelType="line"/>).includes('会話再開・見積書・決済リンク・予約確定書'))
+ // Meta's asynchronous review must not disable the existing quotation workflow.
+ quoteApproved=false
+ let pendingQuote=await make();await click(pendingQuote,'会話再開・見積書・決済リンク・予約確定書')
+ assert.ok(pendingQuote.root.findAllByType('option').some(node=>node.props.value==='flat_travel_requested_quote_v1:en_US'))
+ assert.ok(!pendingQuote.root.findAllByType('option').some(node=>node.props.value==='flat_travel_requested_quote_v2:en_US'))
+ await act(async()=>pendingQuote.root.findByType('select').props.onChange({target:{value:'flat_travel_requested_quote_v1:en_US'}}))
+ await act(async()=>pendingQuote.root.findByProps({'aria-label':'問合せ・見積り番号'}).props.onChange({target:{value:'EXISTING-DRAFT'}}))
+ await act(async()=>{pendingQuote.root.findByProps({type:'file'}).props.onChange({target:{files:[new File(['%PDF-test'],'Quote.pdf',{type:'application/pdf'})]}});await new Promise(resolve=>setTimeout(resolve,0))})
+ quoteApproved=true
+ await click(pendingQuote,'Metaの承認状況を更新')
+ assert.equal(pendingQuote.root.findByProps({'aria-label':'問合せ・見積り番号'}).props.value,'EXISTING-DRAFT','approval never silently rewrites an open draft')
+ assert.match(textOf(pendingQuote.toJSON()),/添付済み: Quote.pdf/)
+ assert.equal(button(pendingQuote,'宛先・完成文・添付を確認').props.disabled,false)
+ await act(async()=>pendingQuote.unmount())
  // The new quotation has no reference input or hidden reference parameter.
  let quote=await make();await click(quote,'会話再開・見積書・決済リンク・予約確定書')
  await act(async()=>quote.root.findByType('select').props.onChange({target:{value:'flat_travel_requested_quote_v2:en_US'}}))
