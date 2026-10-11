@@ -24,6 +24,9 @@ export const OPERATIONAL_TEMPLATES = [
     body: 'Hello {{1}}, the travel information you requested for Flat Travel enquiry {{2}} is ready. Tap Continue chat to receive the details here.',
     fields: ['お客様名', '問合せ番号'], examples: ['Alex Example', 'SAMPLE-ENQUIRY-001'],
     quickReplies: ['Continue chat'] },
+  { name: 'flat_travel_requested_quote_v2', label: '依頼された見積り', document: true,
+    body: 'Hello {{1}}, the quotation you requested from Flat Travel is attached. Please review the itinerary, price and conditions in the document. Reply to this message with any questions about your quotation.',
+    fields: ['お客様名'], examples: ['Alex Example'] },
 ] as const;
 
 export function operationalTemplate(raw: RawWhatsAppTemplate) {
