@@ -104,7 +104,7 @@ function purgeLegacyCredentials() {
   sessionStorage.removeItem(OPERATOR_KEY_SESSION_STORAGE_KEY)
 }
 
-export async function startStudioSession(apiKey: string, operatorName: string, operatorKey: string) {
+export async function startStudioSession(apiKey: string, operatorName = '共有管理者', operatorKey = '') {
   const response = await fetch(`${API_URL}/api/forms-studio/session`, {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ apiKey: normalizeApiKey(apiKey), operatorName, operatorKey }),

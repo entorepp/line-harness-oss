@@ -2,13 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { startStudioSession, normalizeApiKey } from '@/lib/api'
+import { ApiError, startStudioSession, normalizeApiKey } from '@/lib/api'
 
 export default function LoginPage() {
   const router = useRouter()
   const [apiKey, setApiKey] = useState('')
   const [operatorName, setOperatorName] = useState('')
   const [operatorKey, setOperatorKey] = useState('')
+  const [usePersonalAccess, setUsePersonalAccess] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -19,18 +20,24 @@ export default function LoginPage() {
 
     try {
       const normalizedApiKey = normalizeApiKey(apiKey)
-      const normalizedOperatorName = operatorName.trim()
-      if (!normalizedOperatorName) throw new Error('管理者名を入力してください')
-      const normalizedOperatorKey = operatorKey.trim()
-      if (normalizedOperatorKey && normalizedOperatorKey.length < 24) {
-        throw new Error('管理者個別キーは24文字以上で入力してください')
+      if (usePersonalAccess) {
+        const normalizedOperatorName = operatorName.trim()
+        if (!normalizedOperatorName) throw new Error('管理者名を入力してください')
+        const normalizedOperatorKey = operatorKey.trim()
+        if (normalizedOperatorKey.length < 24) {
+          throw new Error('管理者個別キーは24文字以上で入力してください')
+        }
+        await startStudioSession(normalizedApiKey, normalizedOperatorName, normalizedOperatorKey)
+      } else {
+        await startStudioSession(normalizedApiKey)
       }
-      await startStudioSession(normalizedApiKey, normalizedOperatorName, normalizedOperatorKey)
       setApiKey('')
       setOperatorKey('')
       router.replace('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '接続に失敗しました')
+      setError(err instanceof ApiError && err.status === 401
+        ? 'パスワードが正しくありません'
+        : err instanceof Error ? err.message : '接続に失敗しました')
     } finally {
       setLoading(false)
     }
@@ -74,68 +81,99 @@ export default function LoginPage() {
               </p>
               <h2 className="mt-2 text-2xl font-semibold">管理者ログイン</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                共有APIキーで管理画面へ入り、回答コピー操作を使う場合は管理者個別キーも入力します。
+                パスワードを入力して管理画面へ進んでください。
               </p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-5">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  管理者名
+                <label htmlFor="studio-password" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  パスワード
                 </label>
                 <input
-                  type="text"
-                  autoFocus
-                  autoComplete="name"
-                  value={operatorName}
-                  onChange={(event) => setOperatorName(event.target.value)}
-                  placeholder="送信履歴に記録する担当者名"
-                  maxLength={80}
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-emerald-600"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  API Key
-                </label>
-                <input
+                  id="studio-password"
+                  name="password"
                   type="password"
+                  autoFocus
+                  autoComplete="current-password"
+                  required
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}
-                  placeholder="API key または Bearer key"
+                  placeholder="パスワード"
                   className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-emerald-600"
                 />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  管理者個別キー（回答コピーを使う場合）
-                </label>
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={operatorKey}
-                  onChange={(event) => setOperatorKey(event.target.value)}
-                  placeholder="回答コピー操作専用の個人キー"
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-emerald-600"
-                />
-                <p className="mt-1.5 text-xs leading-5 text-slate-500">
-                  共有APIキーとは別に送信権限を確認し、操作した担当者を監査記録へ結び付けます。このキーはタブを閉じると消去されます。
-                </p>
               </div>
 
               {error && (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {error}
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={loading || !normalizeApiKey(apiKey) || !operatorName.trim()}
+                disabled={loading || !normalizeApiKey(apiKey)
+                  || (usePersonalAccess && (!operatorName.trim() || !operatorKey.trim()))}
                 className="w-full rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? '認証中...' : 'Studio に入る'}
               </button>
+
+              <div className="border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  aria-expanded={usePersonalAccess}
+                  aria-controls="personal-access"
+                  disabled={loading}
+                  onClick={() => {
+                    setUsePersonalAccess(!usePersonalAccess)
+                    setOperatorName('')
+                    setOperatorKey('')
+                    setError('')
+                  }}
+                  className="text-left text-xs text-slate-500 underline underline-offset-4"
+                >
+                  {usePersonalAccess ? '回答コピー送信用の追加認証を閉じる' : '回答コピー送信用の追加認証（任意）'}
+                </button>
+                {usePersonalAccess && (
+                  <div id="personal-access" className="mt-4 space-y-4">
+                    <p className="text-xs leading-5 text-slate-500">
+                      回答コピーの送信権限がある方だけ入力してください。通常の管理画面利用には不要です。
+                    </p>
+                    <div>
+                      <label htmlFor="operator-name" className="mb-1.5 block text-sm font-medium text-slate-700">
+                        管理者名
+                      </label>
+                      <input
+                        id="operator-name"
+                        type="text"
+                        autoComplete="name"
+                        required
+                        value={operatorName}
+                        onChange={(event) => setOperatorName(event.target.value)}
+                        placeholder="送信履歴に記録する担当者名"
+                        maxLength={80}
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-emerald-600"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="operator-key" className="mb-1.5 block text-sm font-medium text-slate-700">
+                        管理者個別キー
+                      </label>
+                      <input
+                        id="operator-key"
+                        type="password"
+                        autoComplete="off"
+                        required
+                        value={operatorKey}
+                        onChange={(event) => setOperatorKey(event.target.value)}
+                        placeholder="回答コピー操作専用の個人キー"
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-emerald-600"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </form>
           </section>
         </div>
