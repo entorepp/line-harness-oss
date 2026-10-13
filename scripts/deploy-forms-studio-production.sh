@@ -37,6 +37,7 @@ node scripts/test-post-order-survey-equipment.mjs
 node scripts/test-post-order-survey-upload.mjs
 node scripts/test-issued-survey-route.mjs
 node scripts/test-server-draft.mjs
+node scripts/test-forms-studio-login.mjs
 
 echo "=== Building shared package ==="
 cd "$ROOT_DIR"
