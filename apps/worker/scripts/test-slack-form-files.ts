@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { fireEvent } from '../src/services/event-bus.js';
 import { notifySlackFormSubmission } from '../src/services/slack.js';
 import { createFormFileAccessUrl, verifyFormFileAccess } from '../src/services/form-file-access.js';
 
@@ -74,6 +75,19 @@ try {
   messages.length = 0;
   await notifySlackFormSubmission({ ...base, answers: [] });
   assert.equal(messages.length, 1, 'Empty form still notifies');
+  messages.length = 0;
+  const queries: string[] = [];
+  const db = { prepare(sql: string) { queries.push(sql); return { bind() { return this; }, async all() { return {results: []}; }, async first() { return null; } }; } } as unknown as D1Database;
+  await fireEvent(db, 'form_submit', {eventData: {
+    formId: 'b20652b4-431c-48f2-876c-8da4c024fd21', formName: 'SYSTEM TEST Corporate',
+    submissionId: 'test-corporate-submission', answers: [{label: 'Agency',value: 'SYSTEM TEST'}],
+  }}, undefined, undefined, {token: 'mock-token'});
+  assert.equal(messages.length, 1, 'Corporate form still sends the normal Slack notification exactly once');
+  assert.ok(queries.length > 0 && queries.every(sql => sql.includes('notification_rules')), 'Corporate form cannot enter business webhooks, scoring or automations');
+  queries.length = 0;
+  await fireEvent(db, 'form_submit', {eventData: {formId: 'another-form'}});
+  assert.ok(queries.some(sql => sql.includes('outgoing_webhooks')), 'Other forms preserve outgoing webhook processing');
+  console.log('CORPORATE_ENQUIRY_NOTIFICATION_ONLY_TEST_OK');
   console.log('SLACK_FORM_FILES_TEST_OK: translation isolation, exact signed links, 1000 attachments, Slack limits');
 } finally {
   globalThis.fetch = originalFetch;

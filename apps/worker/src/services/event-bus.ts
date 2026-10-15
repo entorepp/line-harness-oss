@@ -69,10 +69,16 @@ export async function fireEvent(
   lineAccountId?: string | null,
   slack?: SlackConfig,
 ): Promise<void> {
+  // Corporate enquiries are public staff intake, not case-bound pre-order surveys.
+  // The form ID comes from the persisted server-side form, never the public body.
+  const corporateEnquiry = eventType === 'form_submit'
+    && payload.eventData?.formId === 'b20652b4-431c-48f2-876c-8da4c024fd21';
   await Promise.allSettled([
-    fireOutgoingWebhooks(db, eventType, payload),
-    processScoring(db, eventType, payload),
-    processAutomations(db, eventType, payload, lineAccessToken, lineAccountId),
+    ...(corporateEnquiry ? [] : [
+      fireOutgoingWebhooks(db, eventType, payload),
+      processScoring(db, eventType, payload),
+      processAutomations(db, eventType, payload, lineAccessToken, lineAccountId),
+    ]),
     processNotifications(db, eventType, payload, lineAccountId),
     processSlackNotification(db, eventType, payload, slack),
   ]);
