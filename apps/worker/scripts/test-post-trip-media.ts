@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import worker from '../src/index.js';
-import { formMedia, MEDIA_FORM_ID, CHUNK_BYTES } from '../src/routes/form-media.js';
+import { formMedia, MEDIA_FORM_ID, CHUNK_BYTES, TRANSFER_BYTES, readChunkedMedia } from '../src/routes/form-media.js';
 import { uploads } from '../src/routes/uploads.js';
 
 const stored = new Map<string, { bytes: Uint8Array; metadata: any; expiration?: number }>();
@@ -32,16 +32,21 @@ assert.equal((await start(-1)).status, 400);
 const session = await data(await start(27 * 1024 * 1024));
 const bytes = new Uint8Array(27 * 1024 * 1024); bytes.set([0,0,0,24,...new TextEncoder().encode('ftypqt  ')]); bytes[bytes.length - 1] = 42;
 const chunk = (index: number, buffer: Uint8Array, token = session.token) => request(`/api/form-media/${session.id}/chunks/${index}`, { method: 'POST', headers: { 'X-Upload-Token': token }, body: buffer as any });
-assert.equal((await chunk(0, bytes.slice(0, CHUNK_BYTES), 'forged')).status, 403);
+assert.equal((await chunk(0, bytes.slice(0, session.chunkBytes), 'forged')).status, 403);
 assert.equal((await chunk(99, bytes.slice(0, 1))).status, 400);
 assert.equal((await chunk(0, bytes.slice(0, 12))).status, 400);
 assert.equal((await post(`/api/form-media/${session.id}/complete`, {}, session.token)).status, 409);
 assert.equal((await post(`/api/form-media/${session.id}/complete`, { offset: 1, proof: 'forged' }, session.token)).status, 400);
-for (let i = 0; i < session.count; i++) await data(await chunk(i, bytes.slice(i * CHUNK_BYTES, (i + 1) * CHUNK_BYTES)));
+for (let i = 0; i < session.count; i++) await data(await chunk(i, bytes.slice(i * session.chunkBytes, (i + 1) * session.chunkBytes)));
 const beforeRetry = puts;
-assert.equal((await data(await chunk(0, bytes.slice(0, CHUNK_BYTES)))).reused, true); assert.equal(puts, beforeRetry);
-const wrong = bytes.slice(0, CHUNK_BYTES); wrong[100] = 9; assert.equal((await chunk(0, wrong)).status, 409);
-const file = (await data(await post(`/api/form-media/${session.id}/complete`, {}, session.token))).file;
+assert.equal((await data(await chunk(0, bytes.slice(0, session.chunkBytes)))).reused, true); assert.equal(puts, beforeRetry);
+const wrong = bytes.slice(0, session.chunkBytes); wrong[100] = 9; assert.equal((await chunk(0, wrong)).status, 409);
+let verified = await data(await post(`/api/form-media/${session.id}/complete`, {}, session.token));
+while (!verified.file) verified = await data(await post(`/api/form-media/${session.id}/complete`, { offset: verified.nextOffset, proof: verified.proof }, session.token));
+const file = verified.file;
+assert.equal(session.chunkBytes, 512 * 1024);
+assert.ok(stored.has(`post-trip-media/${session.id}/stored/3`));
+assert.equal(stored.get(`post-trip-media/${session.id}/stored/0`)!.bytes.length, CHUNK_BYTES);
 assert.equal(file.contentType, 'video/quicktime'); assert.equal(file.fileSize, bytes.length);
 const dl = await request(new URL(file.url).pathname + new URL(file.url).search); assert.equal(dl.status, 200); assert.deepEqual(new Uint8Array(await dl.arrayBuffer()), bytes);
 const range = await request(new URL(file.url).pathname + new URL(file.url).search, { headers: { Range: `bytes=${CHUNK_BYTES - 3}-${CHUNK_BYTES + 4}` } }); assert.equal(range.status, 206); assert.equal((await range.arrayBuffer()).byteLength, 8);
@@ -56,11 +61,16 @@ for (const count of [64,64,3]) {
 const albumPage = await request(new URL(previous!).pathname + new URL(previous!).search); assert.equal(albumPage.status, 200); const html = await albumPage.text(); assert.match(html, /131 photos and videos/); assert.match(html, /Earlier photos and videos/); assert.ok(albumPage.headers.get('content-security-policy')?.includes("default-src 'none'"));
 assert.equal((await post('/api/form-media/collection', { files: [{ key: file.key, url: file.url.replace(/sig=[^&]+/, 'sig=forged') }] })).status, 400);
 // Verify continuation proofs across bounded completion requests, without huge allocations.
-const many = await data(await start(CHUNK_BYTES * 33));
-const partBytes = bytes.subarray(0, CHUNK_BYTES);
-for (let i = 0; i < 33; i++) stored.set(`post-trip-media/${many.id}/${i}`, { bytes: partBytes, metadata: { size: CHUNK_BYTES, contentType: i === 0 ? 'video/mp4' : '', access: 'form-private' } });
+const many = await data(await start(TRANSFER_BYTES * 33));
+const partBytes = bytes.subarray(0, TRANSFER_BYTES);
+for (let i = 0; i < 33; i++) stored.set(`post-trip-media/${many.id}/${i}`, { bytes: partBytes, metadata: { size: TRANSFER_BYTES, contentType: i === 0 ? 'video/mp4' : '', access: 'form-private' } });
 const batch = await data(await post(`/api/form-media/${many.id}/complete`, {}, many.token)); assert.equal(batch.nextOffset, 32);
 assert.ok((await data(await post(`/api/form-media/${many.id}/complete`, { offset: batch.nextOffset, proof: batch.proof }, many.token))).file);
+// Previously issued 8 MiB-layout manifests remain readable after the change.
+const legacyId = '11111111-1111-4111-8111-111111111111';
+stored.set(`post-trip-media/${legacyId}/0`, { bytes: new TextEncoder().encode('old'), metadata: { access: 'form-private' } });
+stored.set(`${legacyId}.media`, { bytes: new TextEncoder().encode(JSON.stringify({ kind: 'media', contentType: 'video/mp4', session: { id: legacyId, size: 3, count: 1, name: 'old.mp4', expires: 2000000000, field: 'memory_photos' } })), metadata: { access: 'form-private' } });
+assert.equal(await (await readChunkedMedia(env, `${legacyId}.media`, new Request('https://worker.example/'))).text(), 'old');
 const unsupported = await data(await start(10, 'fake.jpg'));
 assert.equal((await request(`/api/form-media/${unsupported.id}/chunks/0`, { method: 'POST', headers: { 'X-Upload-Token': unsupported.token }, body: '<script>x!' })).status, 400);
 const ctx = { waitUntil() {}, passThroughOnException() {} } as ExecutionContext;
