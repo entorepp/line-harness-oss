@@ -1,6 +1,7 @@
 'use client'
 
 import { issuedSurveyRoute } from '@/lib/issued-survey-route'
+import { appendPostTripUploadScope, validatePostTripUpload } from '@/lib/post-trip-upload'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -1092,9 +1093,10 @@ export default function PublicFormPage() {
     }))
   }
 
-  const uploadFile = async (file: File): Promise<UploadedFormFile> => {
+  const uploadFile = async (file: File, fieldName: string): Promise<UploadedFormFile> => {
     const formData = new FormData()
     formData.append('file', file)
+    const privateUpload = appendPostTripUploadScope(formData, form?.id || '', fieldName)
 
     const res = await fetch(`${API_URL}/api/upload`, {
       method: 'POST',
@@ -1106,6 +1108,7 @@ export default function PublicFormPage() {
       throw new Error(json.error || `${file.name} のアップロードに失敗しました`)
     }
 
+    if (privateUpload) validatePostTripUpload(json.data)
     return json.data
   }
 
@@ -1117,7 +1120,7 @@ export default function PublicFormPage() {
       throw new Error(`${field.label} は最大 ${field.maxFiles} ファイルまでです`)
     }
 
-    return Promise.all(files.map(uploadFile))
+    return Promise.all(files.map(file => uploadFile(file, field.name)))
   }
 
   const buildSubmissionData = async (): Promise<Record<string, unknown>> => {
