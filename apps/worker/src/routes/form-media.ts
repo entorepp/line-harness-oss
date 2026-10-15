@@ -6,12 +6,13 @@ import { detectFormFileType } from '../services/form-file-type.js';
 
 export const MEDIA_FORM_ID = '8dc19365-8dd7-49e7-92fb-fdd697572771';
 export const CHUNK_BYTES = 8 * 1024 * 1024;
+export const TRANSFER_BYTES = 512 * 1024;
 const TTL = FORM_PRIVATE_FILE_RETENTION_SECONDS;
 const PRIVATE = 'form-private';
 const ALBUM_PAGE_SIZE = 64;
 const COMPLETE_BATCH = 32;
 type Bindings = Env['Bindings'];
-type Session = { id: string; size: number; count: number; name: string; expires: number; field: string };
+type Session = { id: string; size: number; count: number; name: string; expires: number; field: string; partBytes?: number };
 type MediaItem = { key: string; fileName: string; fileSize: number; contentType: string };
 type Album = { kind: 'album'; items: MediaItem[]; previous: string | null; count: number; expires: number };
 type Manifest = { kind: 'media'; session: Session; contentType: string };
@@ -21,7 +22,9 @@ const keyFor = (id: string, index: number) => `post-trip-media/${id}/${index}`;
 const metadataKey = (id: string) => `post-trip-media/${id}/session`;
 const expiresNow = () => Math.floor(Date.now() / 1000) + TTL;
 const uuid = (id: string) => /^[a-f0-9-]{36}$/.test(id);
-const bytesAt = (s: Session, i: number) => Math.min(CHUNK_BYTES, s.size - i * CHUNK_BYTES);
+const partBytes = (s: Session) => s.partBytes || CHUNK_BYTES;
+const bytesAt = (s: Session, i: number) => Math.min(partBytes(s), s.size - i * partBytes(s));
+const storedKey = (s: Session, i: number) => s.partBytes ? `post-trip-media/${s.id}/stored/${i}` : keyFor(s.id, i);
 async function signed(env: Bindings, key: string, expires: number) {
   return createFormFileAccessUrl({ workerUrl: base(env), key, expiresAt: expires, secret: secret(env) });
 }
@@ -59,9 +62,9 @@ formMedia.post('/api/form-media/start', async c => {
   const form = await c.env.DB.prepare('SELECT is_active, fields FROM forms WHERE id = ?').bind(MEDIA_FORM_ID).first<{ is_active: number; fields: string }>();
   if (!form?.is_active || !JSON.parse(form.fields).some((f: any) => f.name === body.fieldName && f.type === 'file')) return c.json({ success: false, error: 'The media form is unavailable.' }, 404);
   const id = crypto.randomUUID();
-  const s: Session = { id, size: body.fileSize, count: Math.ceil(body.fileSize / CHUNK_BYTES), name: body.fileName, expires: expiresNow(), field: body.fieldName };
+  const s: Session = { id, size: body.fileSize, count: Math.ceil(body.fileSize / TRANSFER_BYTES), name: body.fileName, expires: expiresNow(), field: body.fieldName, partBytes: TRANSFER_BYTES };
   await c.env.UPLOADS.put(metadataKey(id), JSON.stringify(s), { expirationTtl: TTL, metadata: { access: PRIVATE } });
-  return c.json({ success: true, data: { id, chunkBytes: CHUNK_BYTES, count: s.count, token: await signature(c.env, `media-upload:${id}`, s.expires) } });
+  return c.json({ success: true, data: { id, chunkBytes: TRANSFER_BYTES, count: s.count, token: await signature(c.env, `media-upload:${id}`, s.expires) } });
 });
 formMedia.post('/api/form-media/:id/chunks/:index', async c => {
   const s = await sessionFor(c);
@@ -105,11 +108,31 @@ formMedia.post('/api/form-media/:id/complete', async c => {
   const offset = body.offset ?? 0;
   if (!Number.isSafeInteger(offset) || offset < 0 || offset >= s.count || (offset > 0 && !(await verifyFormFileAccess({ key: `media-verified:${s.id}:${offset}`, signature: body.proof || '', expiresAt: s.expires, secret: secret(c.env) })))) return c.json({ success: false, error: 'Invalid upload verification.' }, 400);
   const end = Math.min(s.count, offset + COMPLETE_BATCH);
+  // Keep transport parts small on slow/mobile connections, but compact them
+  // into 8 MiB storage blocks so large downloads do not require one KV read per
+  // tiny transport part. Old sessions retain their original layout.
+  let block: Uint8Array | null = null;
+  let blockIndex = -1;
+  const flush = async () => {
+    if (!block) return;
+    const key = storedKey(s, blockIndex);
+    const existing = await c.env.UPLOADS.get(key, 'stream');
+    if (existing) { await existing.cancel(); return; }
+    await c.env.UPLOADS.put(key, block, { expiration: s.expires, metadata: { access: PRIVATE, size: block.byteLength } });
+  };
   for (let i = offset; i < end; i++) {
-    const part = await c.env.UPLOADS.getWithMetadata<{ size: number }>(keyFor(s.id, i), 'stream');
-    if (part.value) await part.value.cancel();
-    if (!part.value || part.metadata?.size !== bytesAt(s, i)) return c.json({ success: false, error: 'A media part has not arrived yet. Please retry.', retryable: true }, 409);
+    const part = await c.env.UPLOADS.getWithMetadata<{ size: number }>(keyFor(s.id, i), 'arrayBuffer');
+    if (!part.value || part.metadata?.size !== bytesAt(s, i) || part.value.byteLength !== bytesAt(s, i)) return c.json({ success: false, error: 'A media part has not arrived yet. Please retry.', retryable: true }, 409);
+    if (s.partBytes) {
+      const nextBlock = Math.floor(i * s.partBytes / CHUNK_BYTES);
+      if (nextBlock !== blockIndex) {
+        await flush(); blockIndex = nextBlock;
+        block = new Uint8Array(Math.min(CHUNK_BYTES, s.size - blockIndex * CHUNK_BYTES));
+      }
+      block!.set(new Uint8Array(part.value), (i * s.partBytes) % CHUNK_BYTES);
+    }
   }
+  await flush();
   if (end < s.count) return c.json({ success: true, data: { nextOffset: end, proof: await signature(c.env, `media-verified:${s.id}:${end}`, s.expires) } });
   const first = await c.env.UPLOADS.getWithMetadata<{ contentType: string }>(keyFor(s.id, 0), 'stream');
   if (first.value) await first.value.cancel();
@@ -194,7 +217,7 @@ export async function readChunkedMedia(env: Bindings, key: string, request: Requ
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
       if (index > last) { controller.close(); return; }
-      const bytes = await env.UPLOADS.get(keyFor(s.id, index), 'arrayBuffer');
+      const bytes = await env.UPLOADS.get(storedKey(s, index), 'arrayBuffer');
       if (!bytes) { controller.error(new Error('A media part is unavailable. Please retry.')); return; }
       const from = index === Math.floor(start / CHUNK_BYTES) ? start % CHUNK_BYTES : 0;
       const to = index === last ? end % CHUNK_BYTES + 1 : bytes.byteLength;
