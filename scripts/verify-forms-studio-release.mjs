@@ -30,7 +30,7 @@ assert.match(liveCommit || '', /^[a-f0-9]{40}$/, 'The active deployment has no v
 git('merge-base', '--is-ancestor', liveCommit, 'HEAD')
 
 if (process.argv.includes('--built')) {
-  for (const name of ['form-traffic.html', 'form-traffic.js', 'acquisition-report.html', '_worker.js', 'server-draft.js', 'post-order-survey/index.html', 'post-order-survey.js']) {
+  for (const name of ['form-traffic.html', 'form-traffic.js', 'acquisition-report.html', '_worker.js', 'server-draft.js', 'post-order-survey/index.html', 'post-order-survey.js', 'post-trip-feedback/index.html', 'post-trip-feedback.js']) {
     assert.equal(
       readFileSync(path.join(root, 'apps/forms-studio/out', name), 'utf8'),
       readFileSync(path.join(root, 'apps/forms-studio/public', name), 'utf8'),
