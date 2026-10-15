@@ -9,7 +9,7 @@ assert.equal(payload.saveToMetadata, false)
 assert.equal(payload.onSubmitTagId, null)
 assert.equal(payload.onSubmitScenarioId, null)
 const marketing = payload.fields.filter(f => f.name.startsWith('marketing_'))
-assert.equal(marketing.length, 4)
+assert.equal(marketing.length, 5)
 for (const f of marketing) {
   assert.equal(f.required, false)
   assert.equal(f.defaultValue, undefined)
@@ -17,13 +17,15 @@ for (const f of marketing) {
   assert.equal(f.options.length, 1)
 }
 const required = payload.fields.filter(f => f.required)
-assert.deepEqual(required.map(f => f.name), ['respondent_name', 'overall_rating', 'response_processing_consent_v1'])
+assert.deepEqual(required.map(f => f.name), ['respondent_name', 'overall_rating', 'response_processing_consent_v2'])
 // Exercise the same empty-answer rules used by the Worker, with all marketing declined.
-const valid = { respondent_name: 'Local QA', overall_rating: payload.fields.find(f => f.name === 'overall_rating').options[2], response_processing_consent_v1: [payload.fields.at(-1).options[0]] }
+const valid = { respondent_name: 'Local QA', overall_rating: payload.fields.find(f => f.name === 'overall_rating').options[2], response_processing_consent_v2: [payload.fields.at(-1).options[0]] }
 const missing = data => required.filter(f => data[f.name] == null || data[f.name] === '' || (Array.isArray(data[f.name]) && data[f.name].length === 0))
 assert.equal(missing(valid).length, 0)
-assert.deepEqual(missing({ ...valid, response_processing_consent_v1: [] }).map(f => f.name), ['response_processing_consent_v1'])
-assert.equal(payload.fields.find(f => f.name === 'memory_photos').maxFiles, 5)
+assert.deepEqual(missing({ ...valid, response_processing_consent_v2: [] }).map(f => f.name), ['response_processing_consent_v2'])
+assert.equal(payload.fields.find(f => f.name === 'memory_photos').maxFiles, undefined)
+assert.match(payload.fields.find(f => f.name === 'memory_photos').accept, /video/)
+assert.doesNotMatch(JSON.stringify(payload), /[\u3040-\u30ff\u4e00-\u9fff]/)
 assert.doesNotMatch(buildSql(), /\bUPDATE\b|\bDELETE\b|form_submissions/i)
 
 const exports = {}
