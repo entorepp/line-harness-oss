@@ -15,6 +15,7 @@ import {
 } from '../services/form-file-access.js';
 
 import { detectFormFileType, FORM_FILE_EXTENSIONS } from '../services/form-file-type.js';
+import { readChunkedMedia } from './form-media.js';
 
 const IMAGE_TYPES = [
   'image/jpeg',
@@ -249,6 +250,10 @@ uploads.get('/api/form-files/:key', async (c) => {
   });
   if (!valid) {
     return c.json({ error: 'Invalid or expired file URL' }, 403);
+  }
+
+  if (key.endsWith('.media') || key.endsWith('.album')) {
+    return readChunkedMedia(c.env, key, c.req.raw);
   }
 
   const { value, metadata } = await c.env.UPLOADS.getWithMetadata<StoredUploadMetadata>(
