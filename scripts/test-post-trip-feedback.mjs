@@ -16,12 +16,12 @@ assert.equal(marketing[0].defaultValue, undefined)
 assert.equal(marketing[0].type, 'radio')
 assert.deepEqual(marketing[0].options, ['Yes', 'No'])
 assert.match(marketing[0].helperText, /No or no selection means no permission/)
-assert.equal(payload.fields.length, 6)
-assert.deepEqual(payload.fields.filter(f => f.required).map(f => f.name), ['overall_rating'])
+assert.equal(payload.fields.length, 7)
+assert.deepEqual(payload.fields.filter(f => f.required).map(f => f.name), ['respondent_name', 'overall_rating'])
 const services = payload.fields.find(f => f.name === 'good_service')
 assert.equal(services.type, 'checkbox')
 assert.ok(services.options.includes('Other'))
-for (const removed of ['respondent_name', 'trip_reference', 'contact_email', 'photo_context', 'publication_notes', 'response_processing_consent_v2']) {
+for (const removed of ['trip_reference', 'contact_email', 'photo_context', 'publication_notes', 'response_processing_consent_v2']) {
   assert.ok(!payload.fields.some(f => f.name === removed))
 }
 assert.equal(payload.fields.find(f => f.name === 'memory_photos').maxFiles, undefined)
@@ -44,4 +44,4 @@ exports.validatePostTripUpload({ access: 'form-private', expiresAt: '2027-04-01'
 for (const data of [undefined, { url: 'https://example.com/api/files/public' }, { access: 'form-private', url: 'https://example.com/api/form-files/no-expiry' }]) {
   assert.throws(() => exports.validatePostTripUpload(data))
 }
-console.log('POST_TRIP_FEEDBACK_OK: independent form, optional Yes/No publication, no identity fields, service choices, private photo upload, fail closed, unrelated form preserved')
+console.log('POST_TRIP_FEEDBACK_OK: independent form, optional Yes/No publication, required internal name, service choices, private photo upload, fail closed, unrelated form preserved')

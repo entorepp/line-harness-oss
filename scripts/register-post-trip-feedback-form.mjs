@@ -14,6 +14,7 @@ export const payload = {
   onSubmitTagId: null,
   onSubmitScenarioId: null,
   fields: [
+    f('respondent_name', 'Your name', 'text', { required: true, helperText: 'For our internal reference only. Your name will not be published.' }),
     f('overall_rating', 'How was your overall experience with Flat Travel?', 'radio', { required: true, options: ['5 — Very satisfied', '4 — Satisfied', '3 — Neutral', '2 — Dissatisfied', '1 — Very dissatisfied'] }),
     f('good_memories', 'What did you enjoy most, or what was your most memorable moment?'),
     f('good_service', 'Which services or support were especially helpful?', 'checkbox', { options: ['Trip planning and communication', 'Itinerary and pace', 'Hotels', 'Transport and transfers', 'Guides', 'Meal arrangements', 'Accessibility and individual support', 'Other'], helperText: 'Select all that apply.' }),
