@@ -10,7 +10,8 @@ for (const next of ['https://evil.test', '//evil.test/calls?wa_call='+deepId, '/
 const store = new Map<string,string>()
 ;(globalThis as any).localStorage = { getItem:()=> 'test' }
 ;(globalThis as any).sessionStorage = { getItem:(k:string)=>store.get(k)||null,setItem:(k:string,v:string)=>store.set(k,v),removeItem:(k:string)=>store.delete(k) }
-;(globalThis as any).window = { addEventListener(){},removeEventListener(){},focus(){} }
+const focusHandlers = new Set<() => void>()
+;(globalThis as any).window = { addEventListener(type:string,fn:()=>void){if(type==='focus')focusHandlers.add(fn)},removeEventListener(type:string,fn:()=>void){if(type==='focus')focusHandlers.delete(fn)},focus(){} }
 let stopped=0;const tracks:any[]=[]
 Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:async()=>{const t={enabled:true,stop(){stopped++}};tracks.push(t);return {getTracks:()=>[t],getAudioTracks:()=>[t]}}}}})
 ;(globalThis as any).Notification = {permission:'denied'}
@@ -21,6 +22,7 @@ let peerClosed=0
 ;(globalThis as any).RTCPeerConnection = class {iceGatheringState='complete';localDescription:any=null;remoteDescription:any=null;sender={};async setRemoteDescription(d:any){this.remoteDescription=d}addTrack(){return this.sender}getTransceivers(){return [{sender:this.sender,setCodecPreferences(){}}]}async createAnswer(){return {type:'answer',sdp}}async createOffer(){return {type:'offer',sdp}}async setLocalDescription(d:any){this.localDescription=d}close(){peerClosed++}}
 let active:any={id:'incoming-id',friendId:'f',direction:'inbound',state:'incoming',ownerId:null,recipientPhone:'+15555550100',recipientName:'Internal Test',providerCallId:'wacid.test',offerSdp:sdp,answerSdp:null}
 let incoming=true;const requests:any[]=[];const originalFetch=globalThis.fetch
+let permissionStatus='no_permission';let dialFailure='131044';let allowDialTest=false;
 let allowed=false; let held=false; let monitorFailure=false; let monitorEnabled=true; let aborts=0
 // Real route adapter is covered by Worker tests; UI assertions exercise user actions.
 globalThis.fetch=(async(url:any,init:any={})=>{
@@ -31,10 +33,10 @@ globalThis.fetch=(async(url:any,init:any={})=>{
   if(path.includes('wait=20'))held=true
   return Response.json({success:true,data:{enabled:monitorEnabled,calls:incoming?[active]:[],cursor:incoming?active.id:''}})
  }
- if(path.endsWith('/status'))return Response.json({success:true,data:{recipientName:'Internal Test',recipientPhone:'+15555550100',enabled:true,callingEnabled:true,canCall:allowed,canRequestPermission:false,permissionStatus:'no_permission',permissionText:'test',replyWindowOpen:true,activeCall:null}})
+ if(path.endsWith('/status'))return Response.json({success:true,data:{recipientName:'Internal Test',recipientPhone:'+15555550100',enabled:true,callingEnabled:true,canCall:allowed,canRequestPermission:false,permissionStatus,permissionText:'test',replyWindowOpen:true,activeCall:null}})
  if(path.endsWith('/answer')){assert.equal(tracks.at(-1).enabled,false,'microphone muted until provider accepts');active={...active,state:'accepted',ownerId:body.ownerId,offerSdp:null};incoming=false;return Response.json({success:true,data:active})}
  if(path.endsWith('/end')){active={...active,state:'ended'};return Response.json({success:true,data:active})}
- if(path.endsWith('/calls')){throw new Error('unexpected dial without permission')}
+ if(path.endsWith('/calls')){assert.ok(allowDialTest,'unexpected dial without permission');active={...active,id:body.requestId,direction:'outbound',state:'failed',errorCode:dialFailure};return Response.json({success:true,data:active})}
  if(path.includes('/calls/'))return Response.json({success:true,data:active})
  throw new Error(path)
 }) as typeof fetch
@@ -56,6 +58,21 @@ try {
  await click(r!,'閉じる');await click(r!,'☎ 通話');assert.match(text(r!.toJSON()),/通話許可が必要/)
  assert.equal(r!.root.findAllByType('button').some(n=>text(n)==='このお客様に発信'),false,'no dial control without permission')
  await act(async()=>r!.unmount())
+ // The provider's billing rejection must be actionable, and focus reloads permission.
+ store.clear();incoming=false;held=false;allowed=true;permissionStatus='temporary';allowDialTest=true;active={...active,state:'ended'}
+ await act(async()=>{r=create(<WhatsAppCallingProvider><WhatsAppCallButton friendId="f" name="Internal Test"/></WhatsAppCallingProvider>,{createNodeMock:node=>node.type==='audio'?{srcObject:null,play:async()=>{}}:null})})
+ await click(r!,'☎ 通話');assert.match(text(r!.toJSON()),/一時的な通話許可/)
+ const beforeDial=requests.filter(r=>r.path.endsWith('/calls')).length
+ await click(r!,'このお客様に発信')
+ assert.match(text(r!.toJSON()),/支払方法のエラー/);assert.match(text(r!.toJSON()),/131044/)
+ assert.equal(requests.filter(r=>r.path.endsWith('/calls')).length,beforeDial+1,'never retries provider billing rejection')
+ const beforeFocus=requests.filter(r=>r.path.endsWith('/status')).length
+ allowed=false;permissionStatus='no_permission'
+ await act(async()=>{for(const fn of focusHandlers)fn();await new Promise(resolve=>setTimeout(resolve,0))})
+ assert.ok(requests.filter(r=>r.path.endsWith('/status')).length>beforeFocus,'focus refreshes permission')
+ assert.equal(r!.root.findAllByType('button').some(n=>text(n)==='このお客様に発信'),false)
+ await act(async()=>r!.unmount());assert.equal(focusHandlers.size,0)
+ allowed=false;permissionStatus='no_permission';allowDialTest=false
  // Reloaded staff pages automatically resume standby; links never answer or grab audio.
  store.clear();active={...active,id:deepId,state:'incoming',ownerId:null,offerSdp:sdp};incoming=true;held=false
  const writes=requests.filter(r=>r.body).length;const audioCount=tracks.length
