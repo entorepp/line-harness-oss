@@ -16,6 +16,7 @@ export const payload = {
   fields: [
     f('respondent_name', 'Your name', 'text', { required: true, helperText: 'For our internal reference only. Your name will not be published.' }),
     f('overall_rating', 'How was your overall experience with Flat Travel?', 'radio', { required: true, options: ['5 — Very satisfied', '4 — Satisfied', '3 — Neutral', '2 — Dissatisfied', '1 — Very dissatisfied'] }),
+    f('team_service_feedback', 'How did you feel about the service and support from the Flat Travel team?', 'textarea', { helperText: 'Please share what you were satisfied with and what could have been better. For example, tell us about our advice, communication, arrangements before your trip or support during your travels. Specific examples are welcome.' }),
     f('good_memories', 'What did you enjoy most, or what was your most memorable moment?'),
     f('good_service', 'Which services or support were especially helpful?', 'checkbox', { options: ['Trip planning and communication', 'Itinerary and pace', 'Hotels', 'Transport and transfers', 'Guides', 'Meal arrangements', 'Accessibility and individual support', 'Other'], helperText: 'Select all that apply.' }),
     f('more_improvements', 'What could we improve?', 'textarea', { helperText: 'Please be honest, even about small things.' }),
