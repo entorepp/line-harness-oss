@@ -33,6 +33,9 @@ export const OPERATIONAL_TEMPLATES = [
   { name: 'flat_travel_requested_quote_v3', label: '見積書PDF・相談と予約手続きの返信ボタン付き', document: true,
     body: 'Your requested Flat Travel quotation is attached. Please review the itinerary, price and conditions. Tap Discuss quotation for questions or changes, or Proceed to booking if you would like our team to help you book.',
     fields: [], examples: [], quickReplies: ['Discuss quotation', 'Proceed to booking'] },
+  { name: 'flat_travel_payment_link_v2', label: 'お支払いはこちら・リンクのみ', document: false,
+    body: 'Please use this link to make your payment for your Flat Travel booking: {{1}}. Please check the amount and payment details before paying. If you have already paid, please disregard this message. Tap Payment question or reply here if you need help.',
+    fields: ['支払いURL'], examples: ['https://flat-travel.com/payment/sample'], urlKeys: ['body:1'], quickReplies: ['Payment question'] },
 ] as const;
 
 export function operationalTemplate(raw: RawWhatsAppTemplate) {

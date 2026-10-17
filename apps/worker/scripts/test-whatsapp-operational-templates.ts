@@ -147,6 +147,16 @@ try{
   assert.equal(messages.at(-1).template.components.some((item:any)=>item.type==='body'),false,'fixed notice needs no name/body parameters');
   assert.equal((await getWhatsappReplyWindow(db,'a')).canSend,false,'sending a notice does not substitute for a customer reply');
  }
+ // Link-only payment notice requires exactly one HTTPS URL, no name, reference or PDF.
+ const paymentLink=OPERATIONAL_TEMPLATES.find(item=>item.name==='flat_travel_payment_link_v2')!;
+ raw={id:'payment-v2',name:paymentLink.name,language:'en_US',category:'UTILITY',status:'APPROVED',components:[{type:'BODY',text:paymentLink.body},{type:'BUTTONS',buttons:[{type:'QUICK_REPLY',text:'Payment question'}]}]};
+ draft={templateName:paymentLink.name,templateLanguage:'en_US',values:{'body:1':'https://pay.example.com/test-only'},buttonValues:{},documentKey:null};
+ assert.equal((await request(path+'/template-preview',{...draft,values:{}})).status,400);
+ assert.equal((await request(path+'/template-preview',{...draft,values:{'body:1':'javascript:alert(1)'}})).status,400);
+ assert.equal((await request(path+'/template-preview',{...draft,documentKey:file.key})).status,400,'payment notice never needs an invoice PDF');
+ const paymentPreview=await preview();assert.equal(paymentPreview.document,null);assert.match(paymentPreview.text,/https:\/\/pay.example.com\/test-only/);
+ assert.equal((await send(body(paymentPreview))).status,201);
+ assert.deepEqual(messages.at(-1).template.components[0],{type:'body',parameters:[{type:'text',text:'https://pay.example.com/test-only'}]});
  // Live mode permits a reviewed template after expiry, but only a customer reply reopens free text.
  env.WHATSAPP_OPERATIONAL_TEMPLATES_MODE='live';
  const reopen=OPERATIONAL_TEMPLATES.find(item=>item.name==='flat_travel_requested_info_ready_v1')!;
