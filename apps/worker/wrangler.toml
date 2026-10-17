@@ -8,6 +8,8 @@ workers_dev = true
 # Do NOT hardcode secrets here
 
 [vars]
+# Prepared feature remains off until notice/routing/retention and live acceptance are settled.
+WHATSAPP_CALL_RECORDING_MODE = "off"
 # One owner-authorized acknowledgement on a new signed WhatsApp enquiry.
 WHATSAPP_INBOUND_WELCOME_ENABLED = "true"
 WHATSAPP_INBOUND_WELCOME_ACCOUNTS = "wa-english-001:1096652186863862"
