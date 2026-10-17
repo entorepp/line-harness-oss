@@ -11,6 +11,7 @@ export default function WhatsAppCallRecording({callId,ownerId,connected,audio,is
  const [state,setState]=useState('idle')
  const [error,setError]=useState('')
  const started=useRef(false)
+ const discarded=useRef(false)
  const mounted=useRef(true)
  const path=`/api/whatsapp/calling/calls/${callId}/recording`
  useEffect(()=>{
@@ -29,14 +30,17 @@ export default function WhatsAppCallRecording({callId,ownerId,connected,audio,is
    const start=await fetchApi<{success:boolean;error?:string}>(path+'/start',{method:'POST',body:JSON.stringify({ownerId,consentConfirmed:true,noticeVersion:settings.noticeVersion,consentMethod:method})})
    if(!start.success)throw Error(start.error||'録音を開始できませんでした')
    if(method==='announced'){update('announcing');await connection.announceRecording()}
+   if(discarded.current){onPending(false);return}
    await connection.startRecording({
     async part(part){
+     if(discarded.current)return
      update('saving')
      const result=await fetchApi<{success:boolean;error?:string}>(`${path}/parts/${part.index}`,{method:'PUT',rawBody:true,headers:{'Content-Type':part.blob.type,'X-Recording-Owner':ownerId},body:part.blob})
      if(!result.success)throw Error(result.error||'録音を保存できませんでした')
      update('recording')
     },
     async complete(partCount){
+     if(discarded.current){onPending(false);return}
      update('saving')
      const result=await fetchApi<{success:boolean;error?:string}>(path+'/complete',{method:'POST',body:JSON.stringify({ownerId,partCount})})
      if(!result.success)throw Error(result.error||'録音の保存を確認できませんでした')
@@ -51,8 +55,17 @@ export default function WhatsAppCallRecording({callId,ownerId,connected,audio,is
  return <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" aria-label="通話録音">
   {state==='idle' && settings.noticeMode!=='announced' && <label className="flex gap-2"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>相手に録音・AI要約・社内Slack共有を案内し、同意を確認しました。接続後に自動録音します。</label>}
   {state==='idle' && settings.noticeMode==='announced' && <p>接続後に英語の録音案内を流し、自動録音します。拒否された場合は録音を停止してください。</p>}
-  <p role="status">{{idle:'録音待機',starting:'録音を準備中',announcing:'相手に録音案内を再生中',recording:'● 録音中',saving:'録音を保存中',queued:'音声を保存済み・Slackへの投稿を準備中',published:'音声と要約をSlackに投稿済み',processing:'文字起こし・要約中',publishing:'Slackへ投稿中',stopped:'録音を停止中',failed:'録音・保存に失敗しました'}[state]||state}</p>
-  {['recording','saving','announcing'].includes(state) && <button type="button" onClick={()=>{update('stopped');void audio()?.stopRecording()}} className="mt-2 rounded border px-3 py-1">録音を停止（通話は続ける）</button>}
+  <p role="status">{{idle:'録音待機',starting:'録音を準備中',announcing:'相手に録音案内を再生中',recording:'● 録音中',saving:'録音を保存中',queued:'音声を保存済み・Slackへの投稿を準備中',published:'音声と要約をSlackに投稿済み',processing:'文字起こし・要約中',publishing:'Slackへ投稿中',stopped:'録音を停止中',failed:'録音・保存に失敗しました',cancelled:'録音・共有を中止しました'}[state]||state}</p>
+  {['recording','saving','announcing'].includes(state) && <button type="button" onClick={()=>{update('stopped');void audio()?.stopRecording()}} className="mt-2 rounded border px-3 py-1">録音停止（ここまで保存）</button>}
+  {['starting','announcing','recording','saving','queued','stopped'].includes(state) && <button type="button" className="mt-2 ml-2 rounded border px-3 py-1" onClick={()=>{
+    discarded.current=true
+    void (async()=>{
+      await audio()?.stopRecording()
+      const response=await fetchApi<{success:boolean;error?:string}>(path+'/discard',{method:'POST',body:JSON.stringify({ownerId})})
+      if(!response.success)throw Error(response.error||'共有状態を確認してください')
+      update('cancelled');onPending(false)
+    })().catch(e=>{if(mounted.current)setError(e.message)})
+  }}>録音・共有を中止（相手が拒否した場合）</button>}
   <p className="mt-1 text-xs">音声は{settings.retentionDays}日保存します。Slack側には別の保存設定が適用されます。</p>
   {error && <p role="alert" className="text-red-700">{error} 通話は継続できます。</p>}
  </div>
