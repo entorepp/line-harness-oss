@@ -23,7 +23,6 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : '
 const NOTICE_PURPOSES = [
   { name: 'flat_travel_requested_info_ready_v1', label: '会話を再開する（依頼された案内の準備完了）' },
   { name: 'flat_travel_call_followup_v1', label: '電話後に返信をお願いする' },
-  { name: 'flat_travel_quote_ready_v1', label: '見積り完成を知らせる（返信後に送付）' },
   { name: 'flat_travel_requested_quote_v3', label: '見積書を送る（PDF）' },
   { name: 'flat_travel_payment_link_v1', label: '決済リンクを送る' },
   { name: 'flat_travel_booking_confirmation_v1', label: '予約確定書を送る（PDF）' },
@@ -175,7 +174,7 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
     {pendingKey && !open && <span className="ml-2 text-xs text-amber-900">前回の送信結果を確認してください</span>}
     {open && <div className="mt-3 space-y-3">
       <p className="text-xs text-gray-600">承認済みの案内は24時間外も送信できます。自由文を送るにはお客様からの返信が必要です。会話再開の案内は、依頼された情報の準備ができたときに使用します。</p>
-      <p className="text-xs text-gray-600">電話後の案内は実際に電話した後に使用します。「見積り完成」は返信を受けてから別途見積書を送る案内です。返信ボタンや通話許可だけで見積り承諾・予約確定にはなりません。</p>
+      <p className="text-xs text-gray-600">電話後の案内は実際に電話した後に使用します。見積書の「Proceed to booking」は担当者に予約手続きの希望を伝える返信です。ボタンを押しただけでは予約確定・決済は行われません。</p>
       {catalogue && !catalogue.canSend && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{catalogue.releaseMode === 'off' ? 'ハーネス側の送信機能が停止中です。現在は準備・プレビューのみ利用できます。' : '現在は指定されたテスト番号だけに送信できます。'}</p>}
       {catalogue && <p className="text-sm">宛先: {catalogue.recipientName} / {catalogue.recipientPhone}</p>}
       <button type="button" disabled={busy} className="text-xs underline" onClick={() => void load()}>Metaの承認状況を更新</button>
