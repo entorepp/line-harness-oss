@@ -27,6 +27,15 @@ export const OPERATIONAL_TEMPLATES = [
   { name: 'flat_travel_requested_quote_v2', label: '依頼された見積り', document: true,
     body: 'Hello {{1}}, the quotation you requested from Flat Travel is attached. Please review the itinerary, price and conditions in the document. Reply to this message with any questions about your quotation.',
     fields: ['お客様名'], examples: ['Alex Example'] },
+  { name: 'flat_travel_call_followup_v1', label: '電話後のフォロー・返信依頼', document: false,
+    body: 'We called you earlier about your Flat Travel enquiry and have an update to share. Tap Continue chat below or send a short reply so we can share the details here. If you would rather talk, you can call us back on WhatsApp.',
+    fields: [], examples: [], quickReplies: ['Continue chat'] },
+  { name: 'flat_travel_requested_quote_v3', label: '見積書PDF・相談と予約手続きの返信ボタン付き', document: true,
+    body: 'Your requested Flat Travel quotation is attached. Please review the itinerary, price and conditions. Tap Discuss quotation for questions or changes, or Proceed to booking if you would like our team to help you book.',
+    fields: [], examples: [], quickReplies: ['Discuss quotation', 'Proceed to booking'] },
+  { name: 'flat_travel_payment_link_v2', label: 'お支払いはこちら・リンクのみ', document: false,
+    body: 'Please use this link to make your payment for your Flat Travel booking: {{1}}. Please check the amount and payment details before paying. If you have already paid, please disregard this message. Tap Payment question or reply here if you need help.',
+    fields: ['支払いURL'], examples: ['https://flat-travel.com/payment/sample'], urlKeys: ['body:1'], quickReplies: ['Payment question'] },
 ] as const;
 
 export function operationalTemplate(raw: RawWhatsAppTemplate) {

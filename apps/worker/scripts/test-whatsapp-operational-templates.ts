@@ -124,6 +124,39 @@ try{
  assert.equal(messages.at(-1).template.name,quote.name);
  assert.deepEqual(messages.at(-1).template.components[1],{type:'body',parameters:[{type:'text',text:'Alex'}]});
  assert.equal((await getWhatsappReplyWindow(db,'a')).canSend,false,'quotation acceptance does not reopen free text');
+ // New notices keep exact reply payloads and never treat a button as quote approval.
+ for (const name of ['flat_travel_call_followup_v1','flat_travel_requested_quote_v3']) {
+  const notice=OPERATIONAL_TEMPLATES.find(item=>item.name===name)!;
+  assert.ok('quickReplies' in notice);
+  const labels='quickReplies' in notice ? [...notice.quickReplies] : [];
+  raw={id:name,name,language:'en_US',category:'UTILITY',status:'PENDING',components:[
+   ...(notice.document?[{type:'HEADER',format:'DOCUMENT'}]:[]),{type:'BODY',text:notice.body},
+   {type:'BUTTONS',buttons:labels.map(text=>({type:'QUICK_REPLY',text}))},
+  ]};
+  draft={templateName:name,templateLanguage:'en_US',values:{},buttonValues:{},documentKey:notice.document?file.key:null};
+  const beforeNotice=count();
+  assert.equal((await request(path+'/template-preview',draft)).status,400,'unapproved notices cannot be previewed for sending');
+  assert.equal(count(),beforeNotice);
+  raw.status='APPROVED';
+  const noticePreview=await preview();assert.deepEqual(noticePreview.quickReplies,labels);
+  assert.equal((await request(path+'/template-preview',{...draft,values:{'body:1':'Unneeded name'}})).status,400,'name is no longer an input');
+  assert.equal(noticePreview.document?.key??null,notice.document?file.key:null);
+  if(notice.document)assert.equal((await request(path+'/template-preview',{...draft,documentKey:null})).status,400);
+  assert.equal((await send(body(noticePreview))).status,201);
+  assert.deepEqual(messages.at(-1).template.components.filter((item:any)=>item.sub_type==='quick_reply'),labels.map((_label,index)=>({type:'button',sub_type:'quick_reply',index:String(index),parameters:[{type:'payload',payload:`wa_template_reply:${name}:${index}`}]})));
+  assert.equal(messages.at(-1).template.components.some((item:any)=>item.type==='body'),false,'fixed notice needs no name/body parameters');
+  assert.equal((await getWhatsappReplyWindow(db,'a')).canSend,false,'sending a notice does not substitute for a customer reply');
+ }
+ // Link-only payment notice requires exactly one HTTPS URL, no name, reference or PDF.
+ const paymentLink=OPERATIONAL_TEMPLATES.find(item=>item.name==='flat_travel_payment_link_v2')!;
+ raw={id:'payment-v2',name:paymentLink.name,language:'en_US',category:'UTILITY',status:'APPROVED',components:[{type:'BODY',text:paymentLink.body},{type:'BUTTONS',buttons:[{type:'QUICK_REPLY',text:'Payment question'}]}]};
+ draft={templateName:paymentLink.name,templateLanguage:'en_US',values:{'body:1':'https://pay.example.com/test-only'},buttonValues:{},documentKey:null};
+ assert.equal((await request(path+'/template-preview',{...draft,values:{}})).status,400);
+ assert.equal((await request(path+'/template-preview',{...draft,values:{'body:1':'javascript:alert(1)'}})).status,400);
+ assert.equal((await request(path+'/template-preview',{...draft,documentKey:file.key})).status,400,'payment notice never needs an invoice PDF');
+ const paymentPreview=await preview();assert.equal(paymentPreview.document,null);assert.match(paymentPreview.text,/https:\/\/pay.example.com\/test-only/);
+ assert.equal((await send(body(paymentPreview))).status,201);
+ assert.deepEqual(messages.at(-1).template.components[0],{type:'body',parameters:[{type:'text',text:'https://pay.example.com/test-only'}]});
  // Live mode permits a reviewed template after expiry, but only a customer reply reopens free text.
  env.WHATSAPP_OPERATIONAL_TEMPLATES_MODE='live';
  const reopen=OPERATIONAL_TEMPLATES.find(item=>item.name==='flat_travel_requested_info_ready_v1')!;
@@ -149,5 +182,12 @@ try{
  assert.equal(sql.prepare("SELECT content FROM messages_log WHERE friend_id='a' AND direction='incoming' ORDER BY created_at DESC LIMIT 1").get()!.content,'Continue chat');
  assert.equal((await deliverReply(signature)).status,200,'provider replay remains idempotent');
  assert.equal(sql.prepare("SELECT count(*) AS n FROM messages_log WHERE friend_id='a' AND direction='incoming'").get()!.n,2);
+ // Booking CTA communicates intent to staff; it never triggers another outgoing message.
+ const beforeBookingReply=count();
+ const bookingReply=JSON.stringify({object:'whatsapp_business_account',entry:[{id:'1234567890',changes:[{field:'messages',value:{metadata:{phone_number_id:'12345'},messages:[{from:'15555550100',id:'wamid.booking-intent-reply',timestamp:String(Math.floor(Date.now()/1000)),type:'button',button:{text:'Proceed to booking',payload:'wa_template_reply:flat_travel_requested_quote_v3:1'}}]}}]}]});
+ const bookingSignature='sha256='+createHmac('sha256','app-secret').update(bookingReply).digest('hex');
+ assert.equal((await app.fetch(new Request('https://test.invalid/webhook/whatsapp',{method:'POST',body:bookingReply,headers:{'Content-Type':'application/json','X-Hub-Signature-256':bookingSignature}}),env)).status,200);
+ assert.ok(sql.prepare("SELECT id FROM messages_log WHERE friend_id='a' AND direction='incoming' AND content='Proceed to booking'").get(),'booking request is retained as an incoming reply');
+ assert.equal(count(),beforeBookingReply,'booking interest causes no automatic send or provider booking/payment operation');
  console.log('PASS: live quick reply payload and signed customer reply reopen, real SQL claims, private recipient-bound PDFs, auth, consent, off/test gates, fresh Meta approval, stale preview/recipient, expired-window template send, body/URL variables, concurrent/replayed/unknown sends, receipt recovery and signed delivery callback');
 }finally{globalThis.fetch=originalFetch;sql.close()}
