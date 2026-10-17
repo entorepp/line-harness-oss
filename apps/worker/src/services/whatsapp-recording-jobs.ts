@@ -71,7 +71,7 @@ async function processOne(env:Env['Bindings'],row:RecordingRow) {
   const url=new URL(upload.upload_url);
   if(url.protocol!=='https:' || !(url.hostname==='files.slack.com'||url.hostname.endsWith('.slack.com')) || typeof upload.file_id!=='string')throw Error('slack_upload_url_invalid');
   await env.DB.prepare("UPDATE whatsapp_call_recording_parts SET state='publishing',slack_file_id=?,updated_at=? WHERE call_id=? AND part_index=?").bind(upload.file_id,Date.now(),row.call_id,part.part_index).run();
-  const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:bytes,signal:AbortSignal.timeout(60000)});
+  const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:bytes,redirect:'error',signal:AbortSignal.timeout(60000)});
   if(!response.ok)throw Error(`slack_upload_http_${response.status}`);
   await slack(env,'files.completeUploadExternal',{files:[{id:upload.file_id,title:`通話音声 ${part.part_index+1}/${parts.length}`}],channel_id:row.channel_id,thread_ts:message.ts});
   await env.DB.prepare("UPDATE whatsapp_call_recording_parts SET state='published',updated_at=? WHERE call_id=? AND part_index=?").bind(Date.now(),row.call_id,part.part_index).run();
@@ -83,7 +83,7 @@ export async function processWhatsappRecordings(env:Env['Bindings']) {
  if(!['test','live'].includes(env.WHATSAPP_CALL_RECORDING_MODE||''))return;
  // No raw audio, transcript, names or provider response bodies in logs/D1.
  await env.DB.prepare("UPDATE whatsapp_call_recordings SET state='attention',error_code='processing_interrupted',updated_at=? WHERE state IN ('processing','publishing') AND updated_at<?").bind(Date.now(),Date.now()-20*60000).run();
- const row=await env.DB.prepare("SELECT * FROM whatsapp_call_recordings WHERE state='queued' AND expires_at>? ORDER BY updated_at LIMIT 1").bind(Date.now()+60000).first<RecordingRow>();
+ const row=await env.DB.prepare("SELECT r.* FROM whatsapp_call_recordings r JOIN whatsapp_calls c ON c.id=r.call_id WHERE r.state='queued' AND r.expires_at>? AND c.state IN ('ended','failed','rejected') ORDER BY r.updated_at LIMIT 1").bind(Date.now()+60000).first<RecordingRow>();
  if(!row)return;
  const claim=await env.DB.prepare("UPDATE whatsapp_call_recordings SET state='processing',updated_at=? WHERE call_id=? AND state='queued'").bind(Date.now(),row.call_id).run();
  if(claim.meta.changes!==1)return;

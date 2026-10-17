@@ -21,7 +21,7 @@ export async function storeRecordingBytes(env:Env['Bindings'],name:string,bytes:
  const result=new Uint8Array(12+encrypted.byteLength);result.set(iv);result.set(new Uint8Array(encrypted),12);
  const expiration=Math.floor(expiresAt/1000);
  if(expiration<=Math.floor(Date.now()/1000)+60)throw Error('recording_expired');
- await env.UPLOADS.put(name,result,{expiration});
+ await env.UPLOADS.put(name,result,{expiration,metadata:{access:'whatsapp-call-private'}});
 }
 export async function loadRecordingBytes(env:Env['Bindings'],name:string) {
  const value=await env.UPLOADS.get(name,'arrayBuffer');

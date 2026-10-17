@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { Env } from '../index.js';
 import { contextForCall, validateRequestId, type CallRow } from '../services/whatsapp-calling.js';
-import { audioKey, loadRecordingBytes, MAX_RECORDING_PART_BYTES, MAX_RECORDING_PARTS, NOTICE_VERSION, recordingAllowed, recordingHash, recordingRetentionDays, storeRecordingBytes, type RecordingRow, type RecordingPart } from '../services/whatsapp-recording-storage.js';
+import { audioKey, textKey, summaryKey, loadRecordingBytes, MAX_RECORDING_PART_BYTES, MAX_RECORDING_PARTS, NOTICE_VERSION, recordingAllowed, recordingHash, recordingRetentionDays, storeRecordingBytes, type RecordingRow, type RecordingPart } from '../services/whatsapp-recording-storage.js';
 
 export const whatsappRecordings=new Hono<Env>();
 const ROOT='/api/whatsapp/calling/calls/:callId/recording';
@@ -84,9 +84,20 @@ whatsappRecordings.post(`${ROOT}/complete`,async c=>{
  await c.env.DB.prepare("UPDATE whatsapp_call_recordings SET state='queued',part_count=?,updated_at=? WHERE call_id=? AND state='recording'").bind(body.partCount,Date.now(),saved.call_id).run();
  return c.json({success:true,data:publicRow(await record(c.env,saved.call_id))});
 });
+whatsappRecordings.post(`${ROOT}/discard`,async c=>{
+ const body=await c.req.json<{ownerId:string}>();
+ const saved=await record(c.env,c.req.param('callId'));
+ if(!saved || saved.owner_id!==body.ownerId)return c.json({success:false,error:'録音が見つかりません'},404);
+ const result=await c.env.DB.prepare("UPDATE whatsapp_call_recordings SET state='cancelled',updated_at=? WHERE call_id=? AND state IN ('recording','queued','cancelled')").bind(Date.now(),saved.call_id).run();
+ if(result.meta.changes!==1)return c.json({success:false,error:'共有処理が始まっています。Slackへの共有状態を確認してください。'},409);
+ const parts=(await c.env.DB.prepare('SELECT part_index FROM whatsapp_call_recording_parts WHERE call_id=?').bind(saved.call_id).all<{part_index:number}>()).results;
+ for(const part of parts){await c.env.UPLOADS.delete(audioKey(saved.call_id,part.part_index));await c.env.UPLOADS.delete(textKey(saved.call_id,part.part_index))}
+ await c.env.UPLOADS.delete(summaryKey(saved.call_id));
+ return c.json({success:true,data:{state:'cancelled'}});
+});
 whatsappRecordings.get(`${ROOT}/parts/:index`,async c=>{
  const saved=await record(c.env,c.req.param('callId'));
- if(!saved || !await call(c.env,saved.call_id))return c.json({success:false,error:'録音が見つかりません'},404);
+ if(!saved || saved.state==='cancelled' || !await call(c.env,saved.call_id))return c.json({success:false,error:'録音が見つかりません'},404);
  const part=await c.env.DB.prepare('SELECT * FROM whatsapp_call_recording_parts WHERE call_id=? AND part_index=?').bind(saved.call_id,Number(c.req.param('index'))).first<RecordingPart>();
  if(!part || part.state==='uploading')return c.json({success:false,error:'録音が見つかりません'},404);
  const bytes=await loadRecordingBytes(c.env,audioKey(saved.call_id,part.part_index));

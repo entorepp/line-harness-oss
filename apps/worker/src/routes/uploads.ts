@@ -348,6 +348,7 @@ uploads.get('/api/files/line/:accountId/:messageId', async (c) => {
 // GET /api/files/:key — serve file from KV (public, no auth)
 uploads.get('/api/files/:key', async (c) => {
   const key = c.req.param('key');
+  if (key.startsWith('wa-recording-v1:')) return c.json({ error: 'Not found' }, 404);
   const { value, metadata } = await c.env.UPLOADS.getWithMetadata<StoredUploadMetadata>(
     key,
     'arrayBuffer',
@@ -392,6 +393,7 @@ uploads.get('/api/files/:key', async (c) => {
 // Keep old /api/images/:key path working for backward compatibility
 uploads.get('/api/images/:key', async (c) => {
   const key = c.req.param('key');
+  if (key.startsWith('wa-recording-v1:')) return c.json({ error: 'Not found' }, 404);
   const { value, metadata } = await c.env.UPLOADS.getWithMetadata<StoredUploadMetadata>(
     key,
     'arrayBuffer',
