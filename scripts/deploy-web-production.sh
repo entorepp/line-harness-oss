@@ -34,6 +34,7 @@ export NEXT_PUBLIC_API_URL="$PRODUCTION_API_URL"
 pnpm --filter @line-crm/shared build
 pnpm --filter web test:chat-scheduling
 pnpm --filter web test:whatsapp-calling
+pnpm --filter web test:whatsapp-recorder
 pnpm --filter web test:whatsapp-phone
 pnpm --filter web test:whatsapp-templates
 pnpm --filter web test:whatsapp-reply-window
