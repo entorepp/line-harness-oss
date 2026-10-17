@@ -28,14 +28,11 @@ export const OPERATIONAL_TEMPLATES = [
     body: 'Hello {{1}}, the quotation you requested from Flat Travel is attached. Please review the itinerary, price and conditions in the document. Reply to this message with any questions about your quotation.',
     fields: ['お客様名'], examples: ['Alex Example'] },
   { name: 'flat_travel_call_followup_v1', label: '電話後のフォロー・返信依頼', document: false,
-    body: 'Hello {{1}}, we called you earlier about your Flat Travel enquiry and have an update to share. Tap Continue chat below or send a short reply so we can share the details here. If you would rather talk, you can call us back on WhatsApp.',
-    fields: ['お客様名'], examples: ['Alex Example'], quickReplies: ['Continue chat'] },
-  { name: 'flat_travel_quote_ready_v1', label: '見積り完成通知・返信後に送付', document: false,
-    body: 'Hello {{1}}, your requested Flat Travel quotation is ready. Tap Receive quotation below or send a short reply, and our team will share it with you here. You can then ask questions or request changes.',
-    fields: ['お客様名'], examples: ['Alex Example'], quickReplies: ['Receive quotation'] },
-  { name: 'flat_travel_requested_quote_v3', label: '見積書PDF・相談と修正の返信ボタン付き', document: true,
-    body: 'Hello {{1}}, your requested Flat Travel quotation is attached. Please review the itinerary, price and conditions. Tap Discuss quotation below or reply with your questions or requested changes, so our team can help with the next steps.',
-    fields: ['お客様名'], examples: ['Alex Example'], quickReplies: ['Discuss quotation', 'Request changes'] },
+    body: 'We called you earlier about your Flat Travel enquiry and have an update to share. Tap Continue chat below or send a short reply so we can share the details here. If you would rather talk, you can call us back on WhatsApp.',
+    fields: [], examples: [], quickReplies: ['Continue chat'] },
+  { name: 'flat_travel_requested_quote_v3', label: '見積書PDF・相談と予約手続きの返信ボタン付き', document: true,
+    body: 'Your requested Flat Travel quotation is attached. Please review the itinerary, price and conditions. Tap Discuss quotation for questions or changes, or Proceed to booking if you would like our team to help you book.',
+    fields: [], examples: [], quickReplies: ['Discuss quotation', 'Proceed to booking'] },
 ] as const;
 
 export function operationalTemplate(raw: RawWhatsAppTemplate) {
