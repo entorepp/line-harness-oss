@@ -24,7 +24,7 @@ const NOTICE_PURPOSES = [
   { name: 'flat_travel_requested_info_ready_v1', label: '会話を再開する（依頼された案内の準備完了）' },
   { name: 'flat_travel_call_followup_v1', label: '電話後に返信をお願いする' },
   { name: 'flat_travel_requested_quote_v3', label: '見積書を送る（PDF）' },
-  { name: 'flat_travel_payment_link_v1', label: '決済リンクを送る' },
+  { name: 'flat_travel_payment_link_v2', label: '決済リンクを送る' },
   { name: 'flat_travel_booking_confirmation_v1', label: '予約確定書を送る（PDF）' },
 ] as const
 const fieldClass = 'min-w-0 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900'
@@ -71,8 +71,11 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
   const storageKey = `wa-template-send:${friendId}`
   const templates = NOTICE_PURPOSES.flatMap((purpose) => {
     let matches = (catalogue?.templates || []).filter((item) => item.name === purpose.name)
-    if (purpose.name === 'flat_travel_requested_quote_v3') {
-      const versions = ['flat_travel_requested_quote_v3', 'flat_travel_requested_quote_v2', 'flat_travel_requested_quote_v1']
+    const versions = purpose.name === 'flat_travel_requested_quote_v3'
+      ? ['flat_travel_requested_quote_v3', 'flat_travel_requested_quote_v2', 'flat_travel_requested_quote_v1']
+      : purpose.name === 'flat_travel_payment_link_v2'
+        ? ['flat_travel_payment_link_v2', 'flat_travel_payment_link_v1'] : null
+    if (versions) {
       const quotes = (catalogue?.templates || []).filter((item) => versions.includes(item.name))
       // Review must not interrupt existing sends or replace a draft already being edited.
       matches = [...new Set(quotes.map((item) => item.language))].flatMap((language) => {
