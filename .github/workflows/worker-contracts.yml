@@ -31,6 +31,7 @@ jobs:
       - run: pnpm --filter worker test:whatsapp-operational-templates
       - run: pnpm --filter worker test:whatsapp-inbound-welcome
       - run: pnpm --filter worker test:whatsapp-calling
+      - run: pnpm --filter worker test:whatsapp-recordings
       - run: pnpm --filter worker test:whatsapp-send
       - run: pnpm --filter worker test:whatsapp-delivery-status
       - run: pnpm --filter worker test:whatsapp-reply-window

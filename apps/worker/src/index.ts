@@ -47,6 +47,8 @@ import { metaWebhook } from './routes/meta-webhook.js';
 import { metaDataDeletion } from './routes/meta-data-deletion.js';
 import { expireCallingSdp } from './services/whatsapp-calling.js';
 import { whatsappCalling } from './routes/whatsapp-calling.js';
+import { whatsappRecordings } from './routes/whatsapp-recordings.js';
+import { processWhatsappRecordings } from './services/whatsapp-recording-jobs.js';
 import { whatsappTemplates } from './routes/whatsapp-templates.js';
 import { whatsappInitiation } from './routes/whatsapp-initiation.js';
 import { formResponseEmails } from './routes/form-response-emails.js';
@@ -57,6 +59,12 @@ export type Env = {
   Variables: { formsStudioSession: BrowserSession };
   Bindings: {
     DB: D1Database;
+    WHATSAPP_CALL_RECORDING_MODE?: string;
+    WHATSAPP_CALL_RECORDING_NOTICE_MODE?: string;
+    WHATSAPP_CALL_RECORDING_TEST_PHONE_HASHES?: string;
+    WHATSAPP_CALL_RECORDING_RETENTION_DAYS?: string;
+    WHATSAPP_CALL_RECORDING_CHANNEL?: string;
+    WHATSAPP_CALL_RECORDING_OPENAI_KEY?: string;
     LINE_CHANNEL_SECRET: string;
     LINE_CHANNEL_ACCESS_TOKEN: string;
     API_KEY: string;
@@ -128,6 +136,7 @@ app.use('*', cors({
     'Authorization',
     'X-Forms-Operator',
     'X-Forms-Operator-Key',
+    'X-Recording-Owner',
   ],
 }));
 
@@ -158,6 +167,7 @@ app.route('/', lineAccounts);
 app.route('/', whatsappInitiation);
 app.route('/', whatsappTemplates);
 app.route('/', whatsappCalling);
+app.route('/', whatsappRecordings);
 app.route('/', conversions);
 app.route('/', affiliates);
 app.route('/', openapi);
@@ -304,6 +314,7 @@ async function scheduled(
   }
   jobs.push(processScheduledMessages(env));
   jobs.push(expireCallingSdp(env.DB));
+  jobs.push(processWhatsappRecordings(env));
   jobs.push(checkAccountHealth(env.DB));
   jobs.push(processAccessibleJapanQuoteJobs(env, { limit: 3 }));
 
