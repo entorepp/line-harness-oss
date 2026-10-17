@@ -58,6 +58,9 @@ const statusFilters: { key: StatusFilter; label: string }[] = [
 const MESSAGE_SCROLL_BOTTOM_THRESHOLD = 120
 const MESSAGE_SCROLL_TOP_LOAD_THRESHOLD = 80
 const MESSAGE_HISTORY_PAGE_SIZE = 200
+const CHAT_LIST_POLL_INTERVAL_MS = 30_000
+const CHAT_DETAIL_POLL_INTERVAL_MS = 10_000
+const FRIEND_LIST_POLL_INTERVAL_MS = 5 * 60_000
 
 function isNearScrollBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= MESSAGE_SCROLL_BOTTOM_THRESHOLD
@@ -131,10 +134,18 @@ function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onE
     loadMessages()
   }, [loadMessages])
 
-  // Polling: auto-refresh messages every 5 seconds
+  // Refresh only while this tab is visible. Hidden chat tabs used to keep
+  // consuming D1 reads indefinitely.
   useEffect(() => {
-    const interval = setInterval(() => loadMessages(true), 5000)
-    return () => clearInterval(interval)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadMessages(true)
+    }
+    const interval = setInterval(refreshWhenVisible, CHAT_DETAIL_POLL_INTERVAL_MS)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [loadMessages])
 
   return (
@@ -262,12 +273,9 @@ export default function ChatsPage() {
       const params: { status?: string; accountId?: string } = {}
       if (statusFilter !== 'all') params.status = statusFilter
       if (selectedAccountId) params.accountId = selectedAccountId
-      const [chatRes, friendRes] = await Promise.allSettled([
-        api.chats.list(params),
-        api.friends.list({ accountId: selectedAccountId || undefined, limit: '100' }),
-      ])
-      if (chatRes.status === 'fulfilled' && chatRes.value.success) {
-        const newChats = chatRes.value.data as unknown as Chat[]
+      const chatRes = await api.chats.list(params)
+      if (chatRes.success) {
+        const newChats = chatRes.data as unknown as Chat[]
         setChats(newChats)
 
         const latestIncomingChat = newChats
@@ -310,15 +318,26 @@ export default function ChatsPage() {
           ? `(${unreadCount}) オペレーターチャット - LINE Harness`
           : 'オペレーターチャット - LINE Harness'
       }
-      if (friendRes.status === 'fulfilled' && friendRes.value.success) {
-        setAllFriends((friendRes.value.data as unknown as { items: FriendItem[] }).items)
-      }
     } catch {
       if (!silent) setError('チャットの読み込みに失敗しました。もう一度お試しください。')
     } finally {
       if (!silent) setLoading(false)
     }
   }, [statusFilter, selectedAccountId])
+
+  const loadFriends = useCallback(async () => {
+    try {
+      const friendRes = await api.friends.list({
+        accountId: selectedAccountId || undefined,
+        limit: '100',
+      })
+      if (friendRes.success) {
+        setAllFriends((friendRes.data as unknown as { items: FriendItem[] }).items)
+      }
+    } catch {
+      // The chat list remains usable even if the optional new-DM picker fails.
+    }
+  }, [selectedAccountId])
 
   const loadChatDetail = useCallback(async (chatId: string, silent = false) => {
     if (!silent) setDetailLoading(true)
@@ -368,6 +387,10 @@ export default function ChatsPage() {
   useEffect(() => {
     loadChats()
   }, [loadChats])
+
+  useEffect(() => {
+    void loadFriends()
+  }, [loadFriends])
 
   useEffect(() => {
     if (selectedChatId) {
@@ -522,21 +545,41 @@ export default function ChatsPage() {
     return () => cancelAnimationFrame(frame)
   }, [chatDetail?.id, chatDetail?.messages])
 
-  // Polling: auto-refresh chat list every 5 seconds
+  // Poll the chat list at a bounded rate and pause network reads in hidden tabs.
   useEffect(() => {
-    const interval = setInterval(() => {
-      loadChats(true) // silent refresh
-    }, 5000)
-    return () => clearInterval(interval)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadChats(true)
+    }
+    const interval = setInterval(refreshWhenVisible, CHAT_LIST_POLL_INTERVAL_MS)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [loadChats])
 
-  // Polling: auto-refresh chat detail every 5 seconds when a chat is selected
+  // Friends are only needed for the optional new-DM picker; they do not need
+  // to be re-fetched with every chat-list poll.
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadFriends()
+    }
+    const interval = setInterval(refreshWhenVisible, FRIEND_LIST_POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [loadFriends])
+
+  // Keep the selected conversation responsive without polling hidden tabs.
   useEffect(() => {
     if (!selectedChatId) return
-    const interval = setInterval(() => {
-      loadChatDetail(selectedChatId, true) // silent refresh
-    }, 5000)
-    return () => clearInterval(interval)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadChatDetail(selectedChatId, true)
+    }
+    const interval = setInterval(refreshWhenVisible, CHAT_DETAIL_POLL_INTERVAL_MS)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [selectedChatId, loadChatDetail])
 
   // Cleanup title on unmount
