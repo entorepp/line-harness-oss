@@ -3,7 +3,7 @@ import { getLineAccountById } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { getWhatsappReplyWindow } from './whatsapp-reply-window.js';
 
-export const PERMISSION_TEXT = 'May Flat Travel call you on WhatsApp to discuss your travel enquiry? Please choose whether to allow calls below.';
+export const PERMISSION_TEXT = 'May Flat Travel call you on WhatsApp about your travel enquiry? A quick call can help us answer questions and confirm your travel preferences with less back-and-forth. Please choose whether to allow calls below. You can also continue by replying here.';
 export class CallingError extends Error {
   constructor(message: string, readonly status: 400 | 403 | 404 | 409 | 502 = 400, readonly code = 'CALL_NOT_STARTED') { super(message); }
 }

@@ -4,8 +4,8 @@ import { callGraph, callingContext, CallingProviderError, permissionAllows } fro
 import { getWhatsappReplyWindow } from './whatsapp-reply-window.js';
 import { recordWhatsappDelivery } from './whatsapp-delivery.js';
 
-export const WELCOME_TEXT = "Thank you for contacting Flat Travel! Our team will review your enquiry and get back to you about your quotation. Please wait for our team's reply.";
-export const WELCOME_PERMISSION_TEXT = WELCOME_TEXT + ' We may also call you on WhatsApp to discuss the details. If you are happy to receive a call, please allow calls below.';
+export const WELCOME_TEXT = "Hello from Flat Travel! Thank you for getting in touch about your trip to Japan. A member of our team will be in touch shortly. You can reply here with any questions or travel details.";
+export const WELCOME_PERMISSION_TEXT = "Hello from Flat Travel! Thank you for getting in touch about your trip to Japan. A member of our team will be in touch shortly. A quick WhatsApp call can help us understand your plans and answer questions with less back-and-forth. If you're happy to receive a call, please allow WhatsApp calls using the option below. Prefer messages? Just reply here - either is fine.";
 type Incoming = { friendId: string; accountId: string; phoneId: string; recipient: string; providerMessageId: string; timestamp: number; messageType: string; text?: string };
 type Welcome = { id: string; friend_id: string; line_account_id: string; phone_id: string; recipient: string; incoming_message_id: string; incoming_at: number; status: string; provider_message_id: string | null; message_text: string | null; permission_requested: number; created_at: number; sent_at: string | null };
 const scoped = (env: Env['Bindings'], accountId: string, phoneId: string) => env.WHATSAPP_INBOUND_WELCOME_ENABLED === 'true' && (env.WHATSAPP_INBOUND_WELCOME_ACCOUNTS || '').split(',').includes(`${accountId}:${phoneId}`);

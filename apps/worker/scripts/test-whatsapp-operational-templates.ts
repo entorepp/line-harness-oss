@@ -124,6 +124,27 @@ try{
  assert.equal(messages.at(-1).template.name,quote.name);
  assert.deepEqual(messages.at(-1).template.components[1],{type:'body',parameters:[{type:'text',text:'Alex'}]});
  assert.equal((await getWhatsappReplyWindow(db,'a')).canSend,false,'quotation acceptance does not reopen free text');
+ // New notices keep exact reply payloads and never treat a button as quote approval.
+ for (const name of ['flat_travel_call_followup_v1','flat_travel_quote_ready_v1','flat_travel_requested_quote_v3']) {
+  const notice=OPERATIONAL_TEMPLATES.find(item=>item.name===name)!;
+  assert.ok('quickReplies' in notice);
+  const labels='quickReplies' in notice ? [...notice.quickReplies] : [];
+  raw={id:name,name,language:'en_US',category:'UTILITY',status:'PENDING',components:[
+   ...(notice.document?[{type:'HEADER',format:'DOCUMENT'}]:[]),{type:'BODY',text:notice.body},
+   {type:'BUTTONS',buttons:labels.map(text=>({type:'QUICK_REPLY',text}))},
+  ]};
+  draft={templateName:name,templateLanguage:'en_US',values:{'body:1':'Alex'},buttonValues:{},documentKey:notice.document?file.key:null};
+  const beforeNotice=count();
+  assert.equal((await request(path+'/template-preview',draft)).status,400,'unapproved notices cannot be previewed for sending');
+  assert.equal(count(),beforeNotice);
+  raw.status='APPROVED';
+  const noticePreview=await preview();assert.deepEqual(noticePreview.quickReplies,labels);
+  assert.equal(noticePreview.document?.key??null,notice.document?file.key:null);
+  if(notice.document)assert.equal((await request(path+'/template-preview',{...draft,documentKey:null})).status,400);
+  assert.equal((await send(body(noticePreview))).status,201);
+  assert.deepEqual(messages.at(-1).template.components.filter((item:any)=>item.sub_type==='quick_reply'),labels.map((_label,index)=>({type:'button',sub_type:'quick_reply',index:String(index),parameters:[{type:'payload',payload:`wa_template_reply:${name}:${index}`}]})));
+  assert.equal((await getWhatsappReplyWindow(db,'a')).canSend,false,'sending a notice does not substitute for a customer reply');
+ }
  // Live mode permits a reviewed template after expiry, but only a customer reply reopens free text.
  env.WHATSAPP_OPERATIONAL_TEMPLATES_MODE='live';
  const reopen=OPERATIONAL_TEMPLATES.find(item=>item.name==='flat_travel_requested_info_ready_v1')!;
