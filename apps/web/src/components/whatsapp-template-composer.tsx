@@ -22,8 +22,9 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : '
 // Keep operational notices and enquiry reopening available after the reply window expires.
 const NOTICE_PURPOSES = [
   { name: 'flat_travel_requested_info_ready_v1', label: '会話を再開する（依頼された案内の準備完了）' },
-  { name: 'flat_travel_requested_quote_v2', label: '見積書を送る（PDF）' },
-  { name: 'flat_travel_payment_link_v1', label: '決済リンクを送る' },
+  { name: 'flat_travel_call_followup_v1', label: '電話後に返信をお願いする' },
+  { name: 'flat_travel_requested_quote_v3', label: '見積書を送る（PDF）' },
+  { name: 'flat_travel_payment_link_v2', label: '決済リンクを送る' },
   { name: 'flat_travel_booking_confirmation_v1', label: '予約確定書を送る（PDF）' },
 ] as const
 const fieldClass = 'min-w-0 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900'
@@ -70,12 +71,19 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
   const storageKey = `wa-template-send:${friendId}`
   const templates = NOTICE_PURPOSES.flatMap((purpose) => {
     let matches = (catalogue?.templates || []).filter((item) => item.name === purpose.name)
-    if (purpose.name === 'flat_travel_requested_quote_v2' &&
-      (!matches.some((item) => item.available) || selected.startsWith('flat_travel_requested_quote_v1:'))) {
-      // Keep quotation sending available during Meta review and preserve an open legacy draft.
-      // A fresh composer selects the reference-free version as soon as Meta approves it.
-      const legacy = (catalogue?.templates || []).filter((item) => item.name === 'flat_travel_requested_quote_v1')
-      if (legacy.some((item) => item.available)) matches = legacy
+    const versions = purpose.name === 'flat_travel_requested_quote_v3'
+      ? ['flat_travel_requested_quote_v3', 'flat_travel_requested_quote_v2', 'flat_travel_requested_quote_v1']
+      : purpose.name === 'flat_travel_payment_link_v2'
+        ? ['flat_travel_payment_link_v2', 'flat_travel_payment_link_v1'] : null
+    if (versions) {
+      const quotes = (catalogue?.templates || []).filter((item) => versions.includes(item.name))
+      // Review must not interrupt existing sends or replace a draft already being edited.
+      matches = [...new Set(quotes.map((item) => item.language))].flatMap((language) => {
+        const candidates = versions.flatMap((name) => quotes.filter((item) => item.name === name && item.language === language))
+        const chosen = candidates.find((item) => `${item.name}:${item.language}` === selected)
+          || candidates.find((item) => item.available) || candidates[0]
+        return chosen ? [chosen] : []
+      })
     }
     return matches.map((item) => ({ ...item, label: purpose.label }))
   })
@@ -169,6 +177,7 @@ export default function WhatsAppTemplateComposer({ friendId, onSent }: { friendI
     {pendingKey && !open && <span className="ml-2 text-xs text-amber-900">前回の送信結果を確認してください</span>}
     {open && <div className="mt-3 space-y-3">
       <p className="text-xs text-gray-600">承認済みの案内は24時間外も送信できます。自由文を送るにはお客様からの返信が必要です。会話再開の案内は、依頼された情報の準備ができたときに使用します。</p>
+      <p className="text-xs text-gray-600">電話後の案内は実際に電話した後に使用します。見積書の「Proceed to booking」は担当者に予約手続きの希望を伝える返信です。ボタンを押しただけでは予約確定・決済は行われません。</p>
       {catalogue && !catalogue.canSend && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{catalogue.releaseMode === 'off' ? 'ハーネス側の送信機能が停止中です。現在は準備・プレビューのみ利用できます。' : '現在は指定されたテスト番号だけに送信できます。'}</p>}
       {catalogue && <p className="text-sm">宛先: {catalogue.recipientName} / {catalogue.recipientPhone}</p>}
       <button type="button" disabled={busy} className="text-xs underline" onClick={() => void load()}>Metaの承認状況を更新</button>
