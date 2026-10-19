@@ -25,7 +25,8 @@
     "test:whatsapp-calling": "esbuild scripts/test-whatsapp-calling.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-calling.mjs && node .wrangler/tests/whatsapp-calling.mjs",
     "test:whatsapp-inbound-welcome": "esbuild scripts/test-whatsapp-inbound-welcome.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-inbound-welcome.mjs && node .wrangler/tests/whatsapp-inbound-welcome.mjs",
     "test:browser-security": "esbuild scripts/test-browser-security.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/browser-security.mjs && node .wrangler/tests/browser-security.mjs",
-    "test:post-trip-media": "esbuild scripts/test-post-trip-media.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/post-trip-media.mjs && node .wrangler/tests/post-trip-media.mjs"
+    "test:post-trip-media": "esbuild scripts/test-post-trip-media.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/post-trip-media.mjs && node .wrangler/tests/post-trip-media.mjs",
+    "test:slack-incoming-text": "esbuild scripts/test-slack-incoming-text.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/slack-incoming-text.mjs && node .wrangler/tests/slack-incoming-text.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",

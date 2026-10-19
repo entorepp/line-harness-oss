@@ -175,6 +175,24 @@ function trimSlackText(text: string, maxLength = 1200): string {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
+function splitSlackIncomingText(text: string): string[] {
+  const chunks: string[] = [];
+  // Leave room below Slack's 3,000-character section limit. Count UTF-16
+  // conservatively and never split an emoji's surrogate pair.
+  for (let start = 0; start < text.length;) {
+    let end = Math.min(start + 2800, text.length);
+    if (end < text.length) {
+      const newline = text.lastIndexOf('\n', end - 1);
+      if (newline >= start + 1400) end = newline + 1;
+      const last = text.charCodeAt(end - 1);
+      if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+    }
+    chunks.push(text.slice(start, end));
+    start = end;
+  }
+  return chunks;
+}
+
 function hasFormFileUrl(text: string): boolean {
   return /https?:\/\/[^\s<>]+\/api\/form-files\//.test(text);
 }
@@ -372,53 +390,51 @@ export async function notifySlackIncoming(opts: {
     }
   }
 
-  // Build blocks
-  const blocks: unknown[] = [
-    {
+  const sections = splitSlackIncomingText(
+    `*${opts.friendName}*${accountLabel} ${copy.incomingLabel}:\n>${contentPreview}${translationLine}`,
+  );
+  const mediaBlocks: unknown[] = [];
+
+  // Keep attachments once, after the complete text.
+  if (opts.mediaUrl && opts.messageType === 'image') {
+    mediaBlocks.push({ type: 'image', image_url: opts.mediaUrl, alt_text: `${opts.friendName} が送信した画像` });
+  } else if (opts.mediaUrl) {
+    const label = opts.fileName || opts.messageType;
+    mediaBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `<${opts.mediaUrl}|${label} を開く>` } });
+  }
+
+  // At most ten sections per post also bounds fallback text below Slack's
+  // 40,000-character message limit, even for unusually large translations.
+  for (let offset = 0; offset < sections.length; offset += 10) {
+    const part = sections.slice(offset, offset + 10);
+    const blocks: unknown[] = part.map((text, index) => ({
       type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*${opts.friendName}*${accountLabel} ${copy.incomingLabel}:\n>${contentPreview}${translationLine}`,
-      },
-      ...(opts.friendPictureUrl ? {
+      text: { type: 'mrkdwn', text },
+      ...(offset === 0 && index === 0 && opts.friendPictureUrl ? {
         accessory: {
           type: 'image',
           image_url: opts.friendPictureUrl,
           alt_text: opts.friendName,
         },
       } : {}),
-    },
-  ];
+    }));
+    if (offset + 10 >= sections.length) blocks.push(...mediaBlocks);
 
-  // Add image block for image messages
-  if (opts.mediaUrl && opts.messageType === 'image') {
-    blocks.push({
-      type: 'image',
-      image_url: opts.mediaUrl,
-      alt_text: `${opts.friendName} が送信した画像`,
+    const sent = await postToSlack({
+      token: opts.slackToken,
+      channel: opts.slackChannelId,
+      text: sections.length <= 10
+        ? `💬 ${opts.friendName}${accountLabel}: ${contentPreview}${translationLine}`
+        : `💬 ${part.join('')}`,
+      username: opts.friendName,
+      iconUrl: opts.friendPictureUrl || undefined,
+      blocks,
     });
+    if (!sent) {
+      console.error('Slack incoming notification stopped after failed part', { part: offset / 10 + 1 });
+      return;
+    }
   }
-
-  // Add file link for file/video/audio messages
-  if (opts.mediaUrl && opts.messageType !== 'image') {
-    const label = opts.fileName || opts.messageType;
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `<${opts.mediaUrl}|${label} を開く>`,
-      },
-    });
-  }
-
-  await postToSlack({
-    token: opts.slackToken,
-    channel: opts.slackChannelId,
-    text: `💬 ${opts.friendName}${accountLabel}: ${contentPreview}${translationLine}`,
-    username: opts.friendName,
-    iconUrl: opts.friendPictureUrl || undefined,
-    blocks,
-  });
 }
 
 /**
