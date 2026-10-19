@@ -45,6 +45,43 @@ export type ApiScheduledMessage = {
   updatedAt: string
 }
 
+export type WhatsAppTemplateParameter = {
+  key: string
+  component: 'header' | 'body'
+  index: number
+  name: string | null
+  label: string
+}
+
+export type WhatsAppInitiationTemplate = {
+  id: string
+  name: string
+  language: string
+  status: string
+  category: string
+  parameterFormat: 'POSITIONAL' | 'NAMED'
+  headerText: string | null
+  bodyText: string
+  footerText: string | null
+  buttonLabels: string[]
+  parameters: WhatsAppTemplateParameter[]
+  supportedForInitiation: boolean
+  unsupportedReason: string | null
+}
+
+export type WhatsAppInitiationResult = {
+  accepted: boolean
+  duplicate: boolean
+  status: 'accepted' | 'pending' | 'failed' | 'unknown'
+  initiationId: string
+  friendId: string
+  chatId: string
+  messageId: string
+  providerMessageId: string | null
+  errorCode: string | null
+  errorMessage: string | null
+}
+
 export type WhatsAppBusinessProfile = {
   about?: string
   address?: string
@@ -424,6 +461,31 @@ export const api = {
       }),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/line-accounts/${id}`, { method: 'DELETE' }),
+  },
+  whatsapp: {
+    listInitiationTemplates: (accountId: string) =>
+      fetchApi<ApiResponse<{
+        configured: boolean
+        releaseMode: 'off' | 'test' | 'live'
+        templates: WhatsAppInitiationTemplate[]
+        reason: string | null
+      }>>(`/api/whatsapp/accounts/${accountId}/templates`),
+    initiate: (data: {
+      idempotencyKey: string
+      lineAccountId: string
+      recipientPhone: string
+      customerName: string
+      numberProvidedConfirmed: boolean
+      optInConfirmed: boolean
+      consentSource: 'web_form' | 'email' | 'phone' | 'in_person' | 'other'
+      consentObtainedAt: string
+      templateName: string
+      templateLanguage: string
+      templateParameters: Record<string, string>
+    }) => fetchApi<ApiResponse<WhatsAppInitiationResult>>('/api/whatsapp/initial-messages', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   },
   conversions: {
     points: () =>
