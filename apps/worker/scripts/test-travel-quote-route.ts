@@ -158,6 +158,34 @@ assert.match(rows[0].body, /Accessible Twin/);
 assert.match(rows[0].body, /8–10 AM/);
 assert.match(rows[0].body, /含まないもの/);
 assert.match(rows[0].body, /FlatWorker: created/);
+assert.match(rows[0].body, /連絡CTA: WhatsApp（WA CTA）/);
+assert.match(rows[0].body, /相談段階: 旅行条件・見積相談/);
+assert.doesNotMatch(rows[0].body, /情報収集段階のため/);
+
+const earlyLead = parseTravelQuoteIntent({ ...payload,
+  source: 'flat-travel-trip-chat', mode: 'private', channel: 'email',
+  title: 'Japan travel information enquiry', tourId: null,
+  startDate: null, days: null, travellers: null, route: [], packageTotalJpy: null,
+  priceStatus: 'not_quoted',
+  agreementSnapshot: { ...payload.agreementSnapshot,
+    itinerary: { title: 'Japan travel information enquiry', tourId: '', startDate: null, days: null, travellers: null, route: [] },
+    hotels: [], railAndTransfers: [], selections: [], supportSelections: [],
+    estimate: { currency: 'JPY', total: null, kind: 'not_quoted', priceConfirmed: false },
+  },
+});
+assert.equal(earlyLead.ok, true);
+if (earlyLead.ok) {
+  for (const named of [false, true]) {
+    const body = travelQuoteNotificationCopy(earlyLead.value, undefined, named).body;
+    assert.match(body, /受付経路: Flat Travel公式サイト・旅行相談チャット/);
+    assert.match(body, /相談段階: 情報収集（Just researching Japan）/);
+    assert.match(body, /未入力項目: 日程・人数・行程（情報収集段階のため、担当者がこれからヒアリング）/);
+    assert.match(body, /連絡CTA: Email（メールCTA）/);
+  }
+  const planning = travelQuoteNotificationCopy({ ...earlyLead.value, title: 'Japan travel planning enquiry' }).body;
+  assert.match(planning, /相談段階: 旅行相談（詳細は担当者確認）/);
+  assert.doesNotMatch(planning, /Just researching Japan|情報収集段階のため/);
+}
 assert.match(rows[0].body, /FlatWorkerへ暗号化保存済み/);
 assert.match(rows[0].body, /自動見積: データ不足 2件/);
 assert.doesNotMatch(rows[0].body, /Alex|Traveller|Permobil|M3 Corpus|Transfer board|Power wheelchair|companion|Remain seated|178\.5|81\.5|207\.4/);
