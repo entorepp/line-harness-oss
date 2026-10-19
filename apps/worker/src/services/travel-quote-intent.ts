@@ -604,6 +604,11 @@ function compactLines(values: string[], limit: number): string[] {
 
 export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: FlatworkerDraftSummary, includeCustomerName = false): { title: string; body: string } {
   const agreement = intent.agreementSnapshot;
+  const fromTripChat = intent.source === 'flat-travel-trip-chat';
+  const informationOnly = fromTripChat && intent.title === 'Japan travel information enquiry'
+    && agreement.estimate.kind === 'not_quoted';
+  const contactCta = { whatsapp: 'WhatsApp（WA CTA）', email: 'Email（メールCTA）', instagram: 'Instagram', messenger: 'Messenger' }[intent.channel];
+  const missingDetails = [!intent.startDate ? '日程' : '', !intent.travellers ? '人数' : '', !intent.route.length ? '行程' : ''].filter(Boolean);
   const journey = intent.title || intent.tourId || (intent.mode === 'private' ? 'Tailor-Made Travel' : 'Selected Journey');
   const hotels = compactLines(agreement.hotels.map((hotel) => {
     const stay = [hotel.city, hotel.nights ? `${hotel.nights}泊` : '', hotel.checkInDate && hotel.checkOutDate ? `${hotel.checkInDate}〜${hotel.checkOutDate}` : ''].filter(Boolean).join(' · ');
@@ -621,6 +626,9 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
   const sections = [
     '【受付・顧客回答】',
     `参照番号: ${intent.quoteReference}`,
+    `受付経路: ${fromTripChat ? 'Flat Travel公式サイト・旅行相談チャット' : 'Flat Travel Webフォーム'}`,
+    `相談段階: ${informationOnly ? '情報収集（Just researching Japan）' : fromTripChat ? '旅行相談（詳細は担当者確認）' : '旅行条件・見積相談'}`,
+    informationOnly && missingDetails.length ? `未入力項目: ${missingDetails.join('・')}（情報収集段階のため、担当者がこれからヒアリング）` : null,
     includeCustomerName ? `顧客名: ${intent.customerName ? intent.customerName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "未入力"}` : null,
     `商品: ${journey}`,
     intent.startDate ? `旅行: ${intent.startDate}${intent.days ? ` · ${intent.days}日間` : ''}` : '旅行: 日付要確認',
@@ -630,7 +638,7 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
     draft?.automationReadiness?.status === 'ready_for_staff_review'
       ? '自動見積: ルール照合済み・担当者レビュー可能'
       : `自動見積: データ不足 ${Number(draft?.automationReadiness?.blockingIssueCount || 0)}件`,
-    `連絡CTA: ${intent.channel}`,
+    `連絡CTA: ${contactCta}`,
     hotels.length ? `【顧客が選択したホテル】\n${hotels.join('\n')}` : null,
     movements.length ? `【合意した移動・時間帯】\n${movements.join('\n')}` : null,
     selections.length ? `【体験・ガイド】\n${selections.join('\n')}` : null,
