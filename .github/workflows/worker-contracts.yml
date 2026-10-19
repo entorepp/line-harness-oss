@@ -42,6 +42,7 @@ jobs:
       - run: pnpm --filter worker test:survey-validation
       - run: pnpm --filter worker test:form-file-access
       - run: pnpm --filter worker test:form-file-upload
+      - run: pnpm --filter worker test:slack-incoming-text
       - run: pnpm --filter worker test:slack-form-files
       - run: pnpm --filter worker test:whatsapp-initiation
       - run: pnpm --filter worker test:lead-route-topology
