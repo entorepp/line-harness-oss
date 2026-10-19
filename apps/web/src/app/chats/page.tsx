@@ -8,6 +8,7 @@ import ChatComposer from '@/components/chat-composer'
 import ChatMessageContent from '@/components/chat-message-content'
 import type { WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
 import { WhatsAppCallButton } from '@/components/whatsapp-calling'
+import WhatsAppInitiationModal from '@/components/whatsapp-initiation-modal'
 import WhatsAppPhone from '@/components/whatsapp-phone'
 import { loadChatFriends } from '@/lib/chat-friends'
 
@@ -268,6 +269,9 @@ export default function ChatsPage() {
     refreshAccounts,
     loading: accountsLoading,
   } = useAccount()
+  const [showWhatsAppInitiation, setShowWhatsAppInitiation] = useState(false)
+  const [showGroupConditions, setShowGroupConditions] = useState(false)
+  const whatsappAccounts = accounts.filter((account) => account.channelType === 'whatsapp' && account.isActive !== false)
   const [chats, setChats] = useState<Chat[]>([])
   const [friendList, setFriendList] = useState<{ accountId: string; items: FriendItem[] } | null>(null)
   const currentAccountIdRef = useRef(selectedAccountId)
@@ -729,6 +733,16 @@ export default function ChatsPage() {
 
   return (
     <div>
+      {whatsappAccounts.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => setShowWhatsAppInitiation(true)} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white">電話番号で新規連絡</button>
+          <button type="button" onClick={() => setShowGroupConditions(!showGroupConditions)} aria-expanded={showGroupConditions} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">案件グループの利用条件</button>
+          {showGroupConditions && <div role="status" className="w-full rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            案件グループ作成は未有効です。MetaのOfficial Business Account（OBA）などの利用資格と、この番号のGroups API対応を確認する必要があります。既存アプリのグループを取り込む機能はありません。参加は本人が招待リンクから行います。
+            <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/groups" target="_blank" rel="noopener noreferrer" className="ml-2 underline">Meta公式の利用条件</a>
+          </div>}
+        </div>
+      )}
       <Header
         title={
           <span className="flex items-center gap-2">
@@ -1198,6 +1212,14 @@ export default function ChatsPage() {
           ) : null}
         </div>
       </div>
+      {showWhatsAppInitiation && <WhatsAppInitiationModal accounts={whatsappAccounts} initialAccountId={selectedAccountId} onClose={() => setShowWhatsAppInitiation(false)} onCreated={(accountId, result) => {
+        setShowWhatsAppInitiation(false)
+        setSelectedAccountId(accountId)
+        setSelectedChatId(result.chatId)
+        setSelectedFriendId(null)
+        setChatDetail(null)
+        if (accountId === selectedAccountId) void loadChats()
+      }} />}
     </div>
   )
 }
