@@ -368,3 +368,40 @@ db.prepare(sql).run('','',incoming,incoming,'test');
 const persisted=JSON.parse(String(db.prepare('SELECT metadata FROM notifications').get()!.metadata));
 assert.deepEqual(persisted.attribution,untrusted);assert.equal(persisted.changed,true);
 console.log('Attribution redaction, forwarding, D1 receipt and actual SQLite duplicate SQL passed');
+
+// Monthly tailor-made requests must survive the actual API sanitizer and staff copy.
+const monthlyPayload = {
+  ...payload, mode: 'private', source: 'private-travel-studio', startDate: null,
+  route: ['Nagasaki', 'Fukuoka'],
+  agreementSnapshot: {
+    ...payload.agreementSnapshot,
+    itinerary: { ...payload.agreementSnapshot.itinerary, startDate: '', route: ['Nagasaki', 'Fukuoka'] },
+    tailorMade: { choices: { startMonth: '2027-11', destinations: ['Nagasaki', 'Fukuoka'], cityStays: 'Nagasaki: 3 days; Fukuoka: 2 days' }, budgetUsd: 15000 },
+  },
+};
+const monthly = parseTravelQuoteIntent(monthlyPayload);
+assert.ok(monthly.ok);
+if (monthly.ok) {
+  assert.equal(monthly.value.startDate, null);
+  assert.equal(monthly.value.agreementSnapshot.tailorMade?.choices.startMonth, '2027-11');
+  assert.equal(monthly.value.agreementSnapshot.tailorMade?.choices.cityStays, 'Nagasaki: 3 days; Fukuoka: 2 days');
+  const copy = travelQuoteNotificationCopy(monthly.value).body;
+  assert.match(copy, /2027年11月のご希望（日付未定）/);
+  assert.match(copy, /Nagasaki → Fukuoka/);
+}
+for (const month of ['', 'November', '2027-00', '2027-13']) {
+  assert.equal(parseTravelQuoteIntent({ ...monthlyPayload, agreementSnapshot: { ...monthlyPayload.agreementSnapshot,
+    tailorMade: { choices: { startMonth: month }, budgetUsd: null },
+  } }).ok, false);
+}
+assert.equal(parseTravelQuoteIntent({ ...monthlyPayload, startDate: '2027-11-12' }).ok, true);
+assert.equal(parseTravelQuoteIntent({ ...monthlyPayload, startDate: '2027-02-30' }).ok, false);
+assert.equal(parseTravelQuoteIntent({ ...monthlyPayload, source: 'flat-travel-trip-chat', agreementSnapshot: { ...monthlyPayload.agreementSnapshot, tailorMade: null } }).ok, true);
+console.log('Tailor month, additional destinations, missing dates and research-only compatibility passed');
+const monthlyResponse = await request({ ...monthlyPayload, quoteReference: 'FT-20261024-MONTH123' });
+assert.equal(monthlyResponse.status, 202);
+assert.equal(flatworkerPosts.at(-1)?.body.agreementSnapshot.tailorMade.choices.startMonth, '2027-11');
+assert.deepEqual(flatworkerPosts.at(-1)?.body.route, ['Nagasaki', 'Fukuoka']);
+assert.equal(flatworkerPosts.at(-1)?.body.startDate, null);
+assert.match(String(slackPosts.at(-1)?.text), /2027年11月のご希望（日付未定）/);
+console.log('Monthly request forwarded through actual route to mocked FlatWorker and Slack');
