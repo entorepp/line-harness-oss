@@ -398,3 +398,10 @@ assert.equal(parseTravelQuoteIntent({ ...monthlyPayload, startDate: '2027-11-12'
 assert.equal(parseTravelQuoteIntent({ ...monthlyPayload, startDate: '2027-02-30' }).ok, false);
 assert.equal(parseTravelQuoteIntent({ ...monthlyPayload, source: 'flat-travel-trip-chat', agreementSnapshot: { ...monthlyPayload.agreementSnapshot, tailorMade: null } }).ok, true);
 console.log('Tailor month, additional destinations, missing dates and research-only compatibility passed');
+const monthlyResponse = await request({ ...monthlyPayload, quoteReference: 'FT-20261024-MONTH123' });
+assert.equal(monthlyResponse.status, 202);
+assert.equal(flatworkerPosts.at(-1)?.body.agreementSnapshot.tailorMade.choices.startMonth, '2027-11');
+assert.deepEqual(flatworkerPosts.at(-1)?.body.route, ['Nagasaki', 'Fukuoka']);
+assert.equal(flatworkerPosts.at(-1)?.body.startDate, null);
+assert.match(String(slackPosts.at(-1)?.text), /2027年11月のご希望（日付未定）/);
+console.log('Monthly request forwarded through actual route to mocked FlatWorker and Slack');
