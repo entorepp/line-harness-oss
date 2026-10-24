@@ -238,8 +238,8 @@ function dateValue(value: unknown): string | null {
 
 function parseChoiceMap(value: unknown): Record<string, string | string[]> {
   const source = objectValue(value);
-  const allowed = new Set(['destinations', 'themes', 'startDate', 'duration', 'partySize', 'budget', 'namedHotels', 'transportPreferences']);
-  const longAnswers = new Set(['namedHotels', 'transportPreferences']);
+  const allowed = new Set(['destinations', 'cityStays', 'themes', 'startDate', 'startMonth', 'duration', 'partySize', 'budget', 'namedHotels', 'transportPreferences']);
+  const longAnswers = new Set(['cityStays', 'namedHotels', 'transportPreferences']);
   const result: Record<string, string | string[]> = {};
   for (const [key, item] of Object.entries(source)) {
     if (!allowed.has(key)) continue;
@@ -495,6 +495,14 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const normalizedCreatedAt = new Date(createdAt).toISOString();
   const fallback = { ...body, createdAt: normalizedCreatedAt };
   const agreementSnapshot = parseAgreementSnapshot(body.agreementSnapshot, fallback);
+  if (mode === 'private' && body.source === 'private-travel-studio') {
+    const month = agreementSnapshot.tailorMade?.choices.startMonth;
+    const validMonth = typeof month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+    const parsedDate = startDate ? new Date(`${startDate}T00:00:00Z`) : null;
+    const validDate = parsedDate && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === startDate;
+    if (!validDate && !validMonth) return { ok: false, error: 'Travel month or exact starting date required' };
+    if (startDate && !validDate) return { ok: false, error: 'Invalid start date' };
+  }
   if (mode === 'journey') {
     if (!agreementSnapshot.railAndTransfers.length) {
       return { ok: false, error: 'Journey movement tariff contract required' };
@@ -604,6 +612,9 @@ function compactLines(values: string[], limit: number): string[] {
 
 export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: FlatworkerDraftSummary, includeCustomerName = false): { title: string; body: string } {
   const agreement = intent.agreementSnapshot;
+  const requestedMonth = agreement.tailorMade?.choices.startMonth;
+  const monthMatch = typeof requestedMonth === 'string' ? requestedMonth.match(/^(\d{4})-(0[1-9]|1[0-2])$/) : null;
+  const monthLabel = monthMatch ? `${monthMatch[1]}年${Number(monthMatch[2])}月のご希望（日付未定）` : '';
   const fromTripChat = intent.source === 'flat-travel-trip-chat';
   const informationOnly = fromTripChat && intent.title === 'Japan travel information enquiry'
     && agreement.estimate.kind === 'not_quoted';
@@ -631,7 +642,7 @@ export function travelQuoteNotificationCopy(intent: TravelQuoteIntent, draft?: F
     informationOnly && missingDetails.length ? `未入力項目: ${missingDetails.join('・')}（情報収集段階のため、担当者がこれからヒアリング）` : null,
     includeCustomerName ? `顧客名: ${intent.customerName ? intent.customerName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "未入力"}` : null,
     `商品: ${journey}`,
-    intent.startDate ? `旅行: ${intent.startDate}${intent.days ? ` · ${intent.days}日間` : ''}` : '旅行: 日付要確認',
+    intent.startDate ? `旅行: ${intent.startDate}${intent.days ? ` · ${intent.days}日間` : ''}` : monthLabel ? `旅行: ${monthLabel}${intent.days ? ` · ${intent.days}日間` : ''}` : '旅行: 日付要確認',
     intent.travellers ? `人数: ${intent.travellers}名` : '人数: 要確認',
     intent.route.length ? `行き先: ${intent.route.join(' → ')}` : null,
     draft?.profileStored ? '顧客プロフィール: FlatWorkerへ暗号化保存済み' : '顧客プロフィール: FlatWorkerで要確認',
