@@ -84,6 +84,13 @@ export type AgreementMovement = {
   displayGroupSequence: number | null;
   displayGroupMemberCount: number | null;
   timeControlMovement: boolean;
+  category?: 'transfer';
+  quoteTariffKey?: 'fujisakura_transfer';
+  tariffHotelAddress?: string;
+  tariffHotelCity?: string;
+  journeyStage?: 'arrival' | 'departure';
+  supplierId?: string;
+  vehicleCount?: number;
 };
 
 export type AgreementSelection = {
@@ -344,6 +351,19 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       displayGroupSequence: item.displayGroupSequence == null ? null : integer(item.displayGroupSequence, 1, 20),
       displayGroupMemberCount: item.displayGroupMemberCount == null ? null : integer(item.displayGroupMemberCount, 2, 20),
       timeControlMovement: item.timeControlMovement === true,
+      // Preserve the server-resolved airport identity through the relay. The
+      // receiving quotation service rechecks the supplier's registered tariffs
+      // and derives cost/sale itself; these fields do not confirm availability.
+      ...(item.quoteTariffKey === 'fujisakura_transfer' && item.category === 'transfer'
+        && ['arrival', 'departure'].includes(String(item.journeyStage)) ? {
+          category: 'transfer' as const,
+          quoteTariffKey: 'fujisakura_transfer' as const,
+          tariffHotelAddress: text(item.tariffHotelAddress, 500) || '',
+          tariffHotelCity: text(item.tariffHotelCity, 120) || '',
+          journeyStage: item.journeyStage as 'arrival' | 'departure',
+          supplierId: text(item.supplierId, 160) || '',
+          vehicleCount: integer(item.vehicleCount, 1, 20) ?? 1,
+        } : {}),
     };
   });
   const selections = (Array.isArray(source.selections) ? source.selections : []).slice(0, 30).map((raw) => {

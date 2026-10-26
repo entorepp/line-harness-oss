@@ -405,3 +405,27 @@ assert.deepEqual(flatworkerPosts.at(-1)?.body.route, ['Nagasaki', 'Fukuoka']);
 assert.equal(flatworkerPosts.at(-1)?.body.startDate, null);
 assert.match(String(slackPosts.at(-1)?.text), /2027年11月のご希望（日付未定）/);
 console.log('Monthly request forwarded through actual route to mocked FlatWorker and Slack');
+
+// The public site restores these fields from its server-side tariff source.
+// Losing them previously accepted the enquiry but produced an unpriced draft.
+for (const stage of ['arrival', 'departure']) {
+  const airport = {
+    id: 'c21-airport-' + stage, sanityId: 'FT-M-AIR35000',
+    origin: stage === 'arrival' ? 'Narita Airport (NRT)' : 'The Capitol Hotel Tokyu',
+    destination: stage === 'arrival' ? 'The Capitol Hotel Tokyu' : 'Narita Airport (NRT)',
+    category: 'transfer', quoteTariffKey: 'fujisakura_transfer',
+    tariffHotelAddress: '東京都千代田区永田町', tariffHotelCity: 'Tokyo',
+    journeyStage: stage, supplierId: 'registered-fujisakura', vehicleCount: 1,
+    unitPriceJpy: 47000, priceBasis: 'perArrangement', passengerCapacity: null,
+    bidirectional: true, estimateJpy: 47000,
+  };
+  const result = await request({ ...payload,
+    quoteReference: stage === 'arrival' ? 'FTQ-20261026-A1B2C3D4' : 'FTQ-20261026-E5F6A7B8',
+    agreementSnapshot: { ...payload.agreementSnapshot, railAndTransfers: [airport] },
+  });
+  assert.equal(result.status, 202);
+  const forwarded = flatworkerPosts.at(-1)?.body.agreementSnapshot.railAndTransfers[0];
+  for (const [key, value] of Object.entries(airport)) assert.deepEqual(forwarded[key], value, key);
+  assert.equal(flatworkerPosts.at(-1)?.body.agreementSnapshot.hotels[0].estimateJpy, 240000);
+}
+console.log('Airport tariff identity and hotel price survive the actual intake relay in both directions');
