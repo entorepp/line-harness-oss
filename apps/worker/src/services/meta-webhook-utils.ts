@@ -5,6 +5,10 @@ const JST_OFFSET_MS = 9 * 60 * 60_000;
 export type MetaAttachment = {
   type?: string;
   payload?: {
+    template_type?: string;
+    text?: string;
+    elements?: unknown[];
+    buttons?: unknown[];
     url?: string;
     title?: string;
     sticker_id?: number;
@@ -136,4 +140,50 @@ export async function verifyMetaSignature(
   const [algorithm, received] = header.split('=');
   if (algorithm !== 'sha256' || !received) return false;
   return timingSafeEqual(await signHmacSha256(secret, rawBody), received);
+}
+
+// Structured cards have nested URLs, not necessarily payload.url. Never fetch
+// these destinations as media or expose opaque postback payloads as customer text.
+export function describeMetaAttachment(attachment: MetaAttachment): string {
+  const payload = attachment.payload || {};
+  const lines: string[] = [];
+  const addText = (value: unknown) => {
+    if (typeof value === 'string' && value.trim()) lines.push(value.trim().slice(0, 2000));
+  };
+  const addUrl = (value: unknown) => {
+    if (typeof value !== 'string') return;
+    try {
+      const url = new URL(value);
+      if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) addText(url.href);
+    } catch { /* Missing or unsupported URL. */ }
+  };
+  const record = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const buttons = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value.slice(0, 10)) {
+      const button = record(item);
+      addText(button.title);
+      addUrl(button.url);
+    }
+  };
+  addText(payload.title);
+  addText(payload.text);
+  addUrl(payload.url);
+  if (Array.isArray(payload.elements)) {
+    for (const item of payload.elements.slice(0, 10)) {
+      const element = record(item);
+      addText(element.title);
+      addText(element.subtitle);
+      addUrl(element.item_url);
+      addUrl(record(element.default_action).url);
+      addUrl(element.image_url);
+      buttons(element.buttons);
+    }
+  }
+  buttons(payload.buttons);
+  const label = attachment.type === 'template' ? '📩 カード形式のメッセージ' : '📎 添付メッセージ';
+  return lines.length
+    ? `${label}\n${[...new Set(lines)].join('\n')}`
+    : `${label}（通知では内容を取得できません。Instagram／Messengerの元DMを確認してください）`;
 }
