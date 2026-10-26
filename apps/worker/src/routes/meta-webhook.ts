@@ -9,6 +9,7 @@ import {
 } from '../services/meta-messaging.js';
 import {
   channelTypeForObject,
+  describeMetaAttachment,
   normalizeMetaEvent,
   verifyMetaSignature,
   type MetaAttachment,
@@ -31,6 +32,7 @@ type StoredMetaMessage = {
   messageType: string;
   content: string;
   eventText: string;
+  notificationType?: string;
   mediaUrl?: string;
   fileName?: string;
 };
@@ -87,7 +89,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
-async function persistAttachment(
+export async function persistAttachment(
   env: Env['Bindings'],
   attachment: MetaAttachment,
 ): Promise<StoredMetaMessage> {
@@ -99,8 +101,9 @@ async function persistAttachment(
   }
 
   const providerUrl = attachment.payload?.url?.trim();
-  if (!providerUrl) {
-    return { messageType: 'text', content: `[${type}]`, eventText: `[${type}]` };
+  if (type === 'template' || !providerUrl) {
+    const content = describeMetaAttachment(attachment);
+    return { messageType: 'text', content, eventText: content, notificationType: 'attachment' };
   }
 
   let storedUrl = providerUrl;
@@ -342,13 +345,18 @@ async function persistMetaMessage(
 
   try {
     const friend = await ensureMetaFriend(env.DB, account, message.customerId);
-    const stored = message.attachment
+    const stored: StoredMetaMessage = message.attachment
       ? await persistAttachment(env, message.attachment)
       : {
           messageType: 'text',
           content: message.text,
           eventText: message.text,
         } satisfies StoredMetaMessage;
+
+    if (message.text && stored.notificationType === 'attachment') {
+      stored.content = `${message.text}\n${stored.content}`;
+      stored.eventText = stored.content;
+    }
 
     const duplicateEcho = message.direction === 'outgoing'
       && stored.messageType === 'text'
@@ -388,9 +396,11 @@ async function persistMetaMessage(
           friendId: friend.id,
           suppressLineActions: true,
           eventData: {
-            text: message.text || stored.eventText,
+            text: stored.notificationType === 'attachment'
+              ? stored.eventText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              : message.text || stored.eventText,
             matched: false,
-            messageType: stored.messageType,
+            messageType: stored.notificationType || stored.messageType,
             mediaUrl: stored.mediaUrl,
             fileName: stored.fileName,
             provider: account.channel_type,
