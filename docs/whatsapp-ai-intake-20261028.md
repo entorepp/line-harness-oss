@@ -206,7 +206,7 @@ Using the official standard $0.20/$1.25 per million input/output token rates,
 that sample estimates $0.000631 per extraction; actual billing, caching, tax and
 WhatsApp charges are separate. Standard controlled turns make no model call.
 
-The direct-entry revision passes 71/71 pure-policy cases and 58/58 signed-webhook /
+The direct-entry revision passes 71/71 pure-policy cases and 59/59 signed-webhook /
 real-SQL cases, including complete first-message discovery, three grouped answers,
 legacy waiting-state upgrade, no origin gate, ordinary option selection without
 staff handoff, generic-help intent correction, invalid-field clarification and

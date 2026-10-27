@@ -154,6 +154,13 @@ test('a natural explicit human request still hands off when phrased outside the 
   h.modelOutput=answer({},{intent:'human'}); await h.webhook('Could a real person reply to me?');
   assert.equal(h.session().status,'human'); assert.equal(h.session().handoff_notification,'accepted');
 }));
+test('selecting a numbered option preserves its number and public destination without handoff', async () => harness(async h => {
+  h.catalogue.tours=['C07','C10','C21'].map(id=>({...h.catalogue.tours[0],id}));
+  await h.webhook(FULL); await h.webhook('2');
+  assert.equal(h.session().status,'recommended'); assert.equal(h.models.length,1);
+  assert.match(h.sends.at(-1).text.body,/2\. Published fixture/); assert.match(h.sends.at(-1).text.body,/journeys\/c10/);
+  assert.doesNotMatch(h.sends.at(-1).text.body,/journeys\/c07|journeys\/c21/);
+}));
 test('simultaneous duplicate webhooks claim one automatic response', async () => harness(async h => {
   await Promise.all([h.webhook('Hello',{id:'same',flush:false}),h.webhook('Hello',{id:'same',flush:false})]); await h.flush();
   assert.equal(h.sends.length,1); assert.equal(h.sql.prepare('SELECT count(*) n FROM whatsapp_intake_turns').get().n,1);

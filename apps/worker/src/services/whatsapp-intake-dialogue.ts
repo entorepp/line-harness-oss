@@ -81,8 +81,9 @@ export function renderIntakePlan(s: IntakeState, catalogue: CatalogueItem[] = []
   const plan = planIntake(s, catalogue);
   if (plan.action === 'recommend') {
     const follow: Record<Locale, string> = { en: 'Open a link for details and the enquiry or booking steps. Tell us if you would like to change any travel details.', tc: '請開啟連結查看詳情及查詢或預訂步驟。如需更改旅遊條件，直接告訴我們即可。', sc: '请打开链接查看详情及咨询或预订步骤。如需更改旅行条件，直接告诉我们即可。', kr: '링크에서 상세 내용과 문의 또는 예약 절차를 확인해 주세요. 여행 조건을 바꾸고 싶으시면 알려 주세요.' };
-    const candidates = options.selection && plan.candidates[options.selection - 1] ? [plan.candidates[options.selection - 1]] : plan.candidates;
-    const text = `${renderIntakeSummary(s)}\n\n${plan.message}\n\n${candidates.map((p, i) => `${i + 1}. ${p.title}\n${p.url}`).join('\n\n')}\n\n${follow[s.locale]}`;
+    const numbered = plan.candidates.map((candidate, i) => ({ candidate, number: i + 1 }));
+    const candidates = options.selection && numbered[options.selection - 1] ? [numbered[options.selection - 1]] : numbered;
+    const text = `${renderIntakeSummary(s)}\n\n${plan.message}\n\n${candidates.map(({ candidate: p, number }) => `${number}. ${p.title}\n${p.url}`).join('\n\n')}\n\n${follow[s.locale]}`;
     return { plan, text: options.introduction ? `${INTRO[s.locale]}\n\n${text}` : text };
   }
   return { plan, text: options.introduction && plan.action === 'ask' ? `${INTRO[s.locale]}\n\n${plan.message}` : plan.message };
