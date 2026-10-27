@@ -8,9 +8,9 @@ const NOW = Date.parse('2026-10-27T00:00:00Z');
 const FUTURE = '2026-10-28T00:00:00Z';
 const baseSlots: Slots = {
   timing: 'November 2027, exact dates not decided', duration: { value: 7, unit: 'days' }, cities: ['Tokyo', 'Kyoto'],
-  party: { adults: 2, children: 0 }, budget: { amount: 600000, currency: 'JPY', basis: 'party_total', scope: 'trip' }, support: ['none'], residency: 'overseas', preference: 'package',
+  party: { adults: 2, children: 0 }, budget: { amount: 600000, currency: 'JPY', basis: 'party_total', scope: 'trip' }, support: ['none'], preference: 'package',
 };
-function collecting(locale: Locale = 'en') { return advanceIntake(newIntake(locale, true), { type: 'consent', allowed: true }); }
+function collecting(locale: Locale = 'en') { return newIntake(locale, true); }
 function completed(overrides: Partial<Slots> = {}, locale: Locale = 'en') {
   let s = collecting(locale);
   for (const [slot, value] of Object.entries({ ...baseSlots, ...overrides })) s = advanceIntake(s, { type: 'selection', slot: slot as keyof Slots, value });
@@ -30,12 +30,12 @@ const plan = (s: IntakeState, items: CatalogueItem[] = [product()]) => planIntak
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (() => { throw new Error('Offline prototype must never access the network'); }) as typeof fetch;
 
-test('consent precedes collecting any travel or support facts', () => {
-  const s = newIntake('en', true);
-  assert.equal(plan(s).action, 'consent');
-  assert.deepEqual(advanceIntake(s, { type: 'selection', slot: 'support', value: ['power_wheelchair'] }).slots, {});
-  assert.equal(plan(advanceIntake(s, { type: 'consent', allowed: false })).reason, 'ai_consent_declined');
-  assert.equal(plan(collecting()).question, 'residency');
+test('new enquiries begin with service and support, without a YES or visitor gate', () => {
+  const s = newIntake('en', true); const p = plan(s);
+  assert.equal(s.phase, 'collecting'); assert.equal(p.action, 'ask');
+  assert.deepEqual(p.questions, ['preference', 'support']);
+  assert.doesNotMatch(p.message, /AI assistant|YES|HUMAN|residen|overseas|nationality/i);
+  assert.deepEqual(advanceIntake(s, { type: 'selection', slot: 'support', value: ['power_wheelchair'] }).slots.support, ['power_wheelchair']);
 });
 test('existing customers stay human without collecting new facts', () => {
   const s = newIntake('en', false);
@@ -45,18 +45,18 @@ test('existing customers stay human without collecting new facts', () => {
 test('multi-field free text fills known slots once and preserves month-only wording', () => {
   const s = interpreted(collecting(), answer({ timing: { value: 'November 2027', evidence: 'November 2027' }, duration: { value: { value: 7, unit: 'days' }, evidence: '7 days' } }), 'November 2027 for 7 days');
   assert.equal(s.slots.timing, 'November 2027'); assert.deepEqual(s.slots.duration, { value: 7, unit: 'days' });
-  assert.equal(plan(s).question, 'residency'); assert.equal(Object.hasOwn(s.slots, 'startDate'), false);
+  assert.equal(plan(s).question, 'preference'); assert.equal(Object.hasOwn(s.slots, 'startDate'), false);
 });
-test('summary confirmation is required before any candidate is selected', () => {
-  const s = completed(); assert.equal(plan(s).action, 'review'); assert.deepEqual(plan(s).candidates, []);
-  assert.equal(plan(advanceIntake(s, { type: 'confirm', revision: s.revision })).action, 'recommend');
+test('complete details produce discovery options without another confirmation turn', () => {
+  const s = completed(); assert.equal(s.phase, 'recommended'); assert.equal(plan(s).action, 'recommend');
+  assert.equal(plan(s).requiresHumanBeforeBooking, true);
   assert.equal(plan(advanceIntake(collecting(), { type: 'confirm', revision: 1 })).action, 'ask');
 });
-test('correction invalidates previous confirmation including after recommendation', () => {
-  const before = completed(); const s = advanceIntake(before, { type: 'selection', slot: 'cities', value: ['Tokyo'] });
-  assert.equal(advanceIntake(s, { type: 'confirm', revision: before.revision }).phase, 'review');
+test('corrections immediately re-match and never reuse incompatible candidates', () => {
+  const s = advanceIntake(completed(), { type: 'selection', slot: 'cities', value: ['Tokyo'] });
+  assert.equal(plan(s).action, 'handoff'); assert.equal(plan(s).candidates.length, 0);
   const corrected = advanceIntake(confirmed(), { type: 'selection', slot: 'budget', value: { ...baseSlots.budget, amount: 400000 } });
-  assert.equal(corrected.phase, 'review'); assert.equal(plan(corrected).candidates.length, 0);
+  assert.equal(plan(corrected).candidates.length, 0);
 });
 test('source state is immutable', () => {
   const s = collecting(); const snapshot = structuredClone(s); advanceIntake(s, { type: 'selection', slot: 'cities', value: ['Tokyo'] }); assert.deepEqual(s, snapshot);
@@ -78,12 +78,12 @@ for (const intent of ['human', 'urgent', 'existing_booking']) test(`${intent} in
 });
 test('one unclear answer retries the pending question; second hands off with known facts', () => {
   const first = interpreted(collecting(), { intent: 'other', confidence: 0.99, facts: {} });
-  assert.equal(plan(first).question, 'residency'); const second = interpreted(first, null); assert.equal(plan(second).reason, 'repeated_uncertainty');
+  assert.equal(plan(first).question, 'preference'); const second = interpreted(first, null); assert.equal(plan(second).reason, 'repeated_uncertainty');
 });
 test('a valid answer resets uncertainty', () => {
   const first = interpreted(collecting(), null);
   const good = advanceIntake(first, { type: 'selection', slot: 'timing', value: 'Not decided' });
-  assert.equal(good.unclearCount, 0); assert.equal(plan(interpreted(good, null)).question, 'residency');
+  assert.equal(good.unclearCount, 0); assert.equal(plan(interpreted(good, null)).question, 'preference');
 });
 for (const confidence of [0.89, NaN, Infinity, -1, 1.1, '0.99']) test(`invalid or provisional low confidence cannot supply facts: ${String(confidence)}`, () => {
   assert.deepEqual(interpreted(collecting(), { intent: 'answer', confidence, facts: { timing: { value: 'November 2027', evidence: 'November 2027' } } }).slots, {});
@@ -108,7 +108,7 @@ test('specialist support hands off immediately with requirements and missing que
 });
 for (const locale of ['en', 'tc', 'sc', 'kr'] as const) test(`localized questions and summary: ${locale}`, () => {
   assert.ok(plan(collecting(locale)).message.length > 10);
-  assert.equal(plan(completed({}, locale)).action, 'review');
+  assert.equal(completed({}, locale).phase, 'recommended');
   const p = product({ locale, url: `https://flat-travel.com/${locale}/tours/__synthetic_fixture__` });
   assert.equal(planIntake(confirmed({}, locale), [p], NOW).action, 'recommend');
 });

@@ -10,7 +10,7 @@ Quality: critical. Advocate: structured questions and one bounded extractor redu
 repetitive staff work and avoid a model call for each decision. Critic: extraction
 can be wrong, public hotel descriptions do not prove personal fit, cached product
 data can expire, and human replies can race with an automated send. Deterministic
-validation, explicit customer summary confirmation, exact public-route checks,
+validation, correctable summaries, exact public-route checks,
 versioned one-attempt outbox and sticky human ownership address those risks.
 
 ## Runtime and boundaries
@@ -25,8 +25,8 @@ versioned one-attempt outbox and sticky human ownership address those risks.
   `WHATSAPP_INTAKE_ENCRYPTION_KEY`. No values belong in source, logs or this file.
 - Test mode may enroll only the approved existing test conversation. Live mode
   admits only a fresh, directly signed, new conversation after the configured
-  start time; existing histories remain human. Language/phone never establish
-  overseas residence: an explicit visitor-type answer is required.
+  start time; existing histories remain human. No nationality/residence question
+  or service gate is applied. Overseas acquisition targeting is unchanged.
 - Completed Accessible Japan questionnaire enquiries, converted Tailor-Made
   enquiries and package applications bypass AI hearing even on their first WA
   contact. FT/FTQ/FTR/FTH markers, explicit submitted-source wording, a dedicated
@@ -52,28 +52,48 @@ versioned one-attempt outbox and sticky human ownership address those risks.
 
 ## Conversation behaviour
 
-The assistant asks permission to process the enquiry, establishes overseas visitor
-scope, then gathers timing, duration, cities, party size, budget/currency/basis/
-scope, support categories and package/hotel preference. It skips supplied answers,
-accepts undecided timing/budget/duration, preserves days versus nights and
-month-only requests, and asks only missing budget units. Partial budget answers
-retain already supplied amounts. Add/remove city operations preserve the other
-requested cities. A correction invalidates confirmation of the previous summary.
+The owner requested this revision after trying the initial conversation: the
+AI introduction, YES entry gate and visitor-type question delayed useful advice.
+This instruction supersedes those parts of the original design. The service
+speaks as Flat Travel and begins the travel enquiry directly; it does not claim
+that a human is replying. Nationality and residence are neither collected nor
+used to accept or reject the enquiry.
 
-Questions, controlled answers, consent, summary confirmation, thanks, stop and
-human requests use local code. Only bounded free text needing interpretation
-uses one Responses request. A person can take over at any time. Two unclear
-interpretations, specialist care/lifting, sensitive or oversized input, model
-failure, budget limit, missing current product data or expired public routes
-hand off. Domestic-resident requests close with the scope explanation.
+Ask related missing details together: (1) service preference and access/mobility
+support, (2) cities, timing and days/nights, (3) adults/children and approximate
+budget/currency. Supplied fields are skipped. A complete first enquiry is
+extracted immediately and can receive public product options in that first
+reply. A greeting alone asks how Flat Travel can help with the Japan trip.
+Undecided timing/budget/duration is accepted, month-only wording and days/nights
+are preserved, and city add/remove operations retain other requested cities.
 
-After confirming the current summary, customers receive up to three real public
-product links. Names come from the corresponding current localized public page
-titles, not the model. A requested quotation/selection transfers to staff. Product
-discovery, reference budget comparison, individual accessibility fit, room stock,
-final pricing and booking are separate. Discovery-only candidates never prove
-the customer's support requirements are met; the reply explicitly requires
-individual availability and suitability confirmation.
+There is no second YES turn before discovery. Show the current requirements
+with up to three published product links and invite corrections. Names come
+from the current localized public pages. Missing budget basis/scope stays null;
+it does not block unpriced discovery or permit a price comparison. A supplied
+amount without a currency needs currency clarification only. Corrections re-match
+current requirements. Choosing a numbered link keeps the ordinary discovery
+conversation automated. An explicit quotation/booking request or difficult case
+uses the existing human handoff. Product links expose the public enquiry/booking
+steps; the assistant never confirms a price, room, personal fit or booking.
+
+Controlled answers, greetings, thanks, stop and human requests stay local. Only
+bounded free text uses one Responses request. Human requests and staff takeover
+remain available without a repeated HUMAN prompt. Two unclear interpretations,
+specialist care/lifting, sensitive/oversized input, model failure, budget limits,
+missing product data or expired public routes hand off. Old active YES/visitor-
+question sessions upgrade on their next event, retain travel facts and stop asking
+about residence. A deferred initial enquiry from the old gate is consumed once.
+Terminal staff/opt-out sessions remain closed.
+
+Acceptance: no AI introduction/YES/visitor gate; related missing questions only;
+a complete origin-free first enquiry reaches a verified public proposal with one
+extraction; ordinary option selection needs no human; converted-source exclusions,
+privacy, concurrency, opt-out, reply-window and one-attempt send controls remain.
+Advocate: fewer mandatory turns and faster useful product guidance. Critic:
+grouped questions may be answered partially and extraction can still be wrong.
+The state preserves partial answers, exposes a correctable summary and keeps
+all discovery claims distinct from actual inventory, pricing and booking.
 
 ## Model, privacy and limits
 
@@ -83,12 +103,15 @@ one attempt and at most eight seconds. Missing/ambiguous facts are not invented.
 The application validates slot shapes, exact source evidence, numeric/currency
 grounding and explicit city operations. Language is controlled by script/context
 rules so a wrong model language cannot switch a Chinese/Korean conversation to
-English. Customer confirmation remains necessary; no numerical model confidence
-is presented as calibrated accuracy.
+English. Summaries remain correctable; no numerical model confidence is
+presented as calibrated accuracy. A model-labelled human intent requires evidence of an
+actual staff request; ordinary travel help stays automated. A rejected field is
+clarified while other grounded fields remain. Ungrounded budget basis/scope
+guesses become null without discarding a valid amount/currency.
 
 The model receives only the current bounded message and allowlisted trip fields;
-when consent follows a substantial first enquiry, that one initial enquiry is
-processed once after consent. It never receives a full history, attachment,
+the first substantive enquiry is processed on arrival. For an old waiting session,
+only its one deferred initial enquiry may accompany the current turn once. It never receives a full history, attachment,
 profile, contact identifier, public hotel/DIDA payload or supplier record. Known
 display names, explicit identity clauses, email, phone/identifier patterns and URLs
 are removed; medical/payment/passport narratives hand off locally. Pattern
@@ -158,14 +181,14 @@ Protected staff APIs (existing Harness API-key authentication):
 ## Verification and activation
 
 The offline baseline's 71 cases and the new real-SQL/signed-webhook suite cover
-consent, multi-field extraction, corrections, summary confirmation, provider-ID
+direct entry, multi-field extraction, corrections, discovery summaries, provider-ID
 deduplication, queued turns, old/unsigned/bridge/wrong-recipient exclusion, existing
 customer preservation, staff races, opt-out, failures, local receipt recovery,
 model budgets, encrypted state, public catalogue failures, hotel-only discovery,
-domestic scope and TC/SC/KR language controls. Existing Worker contract suites,
+origin-free intake and TC/SC/KR language controls. Existing Worker contract suites,
 typecheck, release contract and dry build must remain passing.
 
-The signed-webhook suite currently passes 48/48, including first-contact AJ form,
+The initial signed-webhook suite passed 48/48, including first-contact AJ form,
 Tailor-Made and package references, existing registered cases without a reference,
 same-message linkage, mid-conversation conversion, qualification ambiguity and
 the test-only simulation boundary. These tests require zero AI questions/model
@@ -182,6 +205,23 @@ This small synthetic set is not production accuracy or WA latency evidence.
 Using the official standard $0.20/$1.25 per million input/output token rates,
 that sample estimates $0.000631 per extraction; actual billing, caching, tax and
 WhatsApp charges are separate. Standard controlled turns make no model call.
+
+The direct-entry revision passes 71/71 pure-policy cases and 58/58 signed-webhook /
+real-SQL cases, including complete first-message discovery, three grouped answers,
+legacy waiting-state upgrade, no origin gate, ordinary option selection without
+staff handoff, generic-help intent correction, invalid-field clarification and
+budget-unit grounding. Typecheck passed. The final diff was self-reviewed against
+the owner-requested behaviour and the advocate/critic risks above; review approval
+is under the owner's standing routine-merge delegation, not a claimed independent
+review or a general-customer activation approval.
+
+This revision used eight additional synthetic extraction calls (56 total setup
+calls). The probes exposed generic travel help being labelled human and an
+invented Korean budget scope. Application guards now require staff-request
+evidence and ground budget units separately. The captured EN/KR responses pass
+local replay with no network call after those fixes; TC/SC direct-entry probes
+passed their extraction checks. These are a small synthetic evaluation and
+regression evidence, not a production accuracy or delivery guarantee.
 
 Activation starts with the approved hashed test recipient only. Verify the
 guarded release, exact bundle/source, binding names, migration and protected

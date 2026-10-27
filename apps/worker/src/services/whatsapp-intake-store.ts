@@ -1,5 +1,5 @@
 import type { Env } from '../index.js';
-import { newIntake, type IntakeState } from './whatsapp-intake.js';
+import { newIntake, upgradeIntake, type IntakeState } from './whatsapp-intake.js';
 import { intakeQualification, submittedEnquirySignal } from './whatsapp-intake-qualification.js';
 
 export type IntakeSession = { id: string; friend_id: string; line_account_id: string; phone_id: string; recipient: string; status: IntakeState['phase']; version: number;
@@ -42,7 +42,7 @@ export async function readIntakeState(env: Env['Bindings'], row: IntakeSession):
   if (state.version !== 1 || !state.slots || !['en', 'tc', 'sc', 'kr'].includes(state.locale)) throw new Error('intake_state_invalid');
   if (state.phase !== row.status && row.status === 'human') state.reason = 'staff_takeover';
   state.phase = row.status;
-  return state;
+  return upgradeIntake(state);
 }
 export async function getIntakeSession(env: Env['Bindings'], friendId: string) {
   return env.DB.prepare('SELECT * FROM whatsapp_intake_sessions WHERE friend_id = ?').bind(friendId).first<IntakeSession>();
@@ -73,7 +73,7 @@ export async function reserveIntake(env: Env['Bindings'], input: { friendId: str
     if (!testCommand || row.lock_token) return { owned: true };
     const ciphertext = await encryptIntake(newIntake('en', true), env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, row.id);
     await env.DB.prepare("UPDATE whatsapp_intake_turns SET status='skipped',error_code='explicit_test_reset' WHERE session_id=? AND status IN ('pending','processing')").bind(row.id).run();
-    const reset = await env.DB.prepare("UPDATE whatsapp_intake_sessions SET status='consent',state_ciphertext=?,version=version+1,initial_message_log_id=NULL,initial_consumed=0,test_unqualified_override=1,handoff_notification='none',expires_at=?,updated_at=? WHERE id=? AND version=? AND lock_token IS NULL")
+    const reset = await env.DB.prepare("UPDATE whatsapp_intake_sessions SET status='collecting',state_ciphertext=?,version=version+1,initial_message_log_id=NULL,initial_consumed=0,test_unqualified_override=1,handoff_notification='none',expires_at=?,updated_at=? WHERE id=? AND version=? AND lock_token IS NULL")
       .bind(ciphertext, now + 30 * 86400000, now, row.id, row.version).run();
     if (!reset.meta.changes) return { owned: true };
     row = await getIntakeSession(env, input.friendId);
@@ -98,7 +98,7 @@ export async function reserveIntake(env: Env['Bindings'], input: { friendId: str
     const ciphertext = await encryptIntake(newIntake('en', true), env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, id);
     await env.DB.prepare(`INSERT OR IGNORE INTO whatsapp_intake_sessions
       (id,friend_id,line_account_id,phone_id,recipient,status,state_ciphertext,expires_at,created_at,updated_at,test_unqualified_override)
-      SELECT ?,?,?,?,?,'consent',?,?,?,?,? WHERE EXISTS(SELECT 1 FROM friends WHERE id=? AND is_following=1)
+      SELECT ?,?,?,?,?,'collecting',?,?,?,?,? WHERE EXISTS(SELECT 1 FROM friends WHERE id=? AND is_following=1)
       AND (?='test' OR NOT EXISTS(SELECT 1 FROM messages_log m JOIN friends f ON f.id=m.friend_id WHERE f.line_account_id=? AND f.line_user_id IN (?,?)))`)
       .bind(id, input.friendId, input.accountId, input.phoneId, input.recipient, ciphertext, now + 30 * 86400000, now, now, testOverride ? 1 : 0,
         input.friendId, intakeMode(env), input.accountId, input.recipient, `+${input.recipient}`).run();

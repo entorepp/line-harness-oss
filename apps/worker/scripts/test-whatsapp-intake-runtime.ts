@@ -14,12 +14,12 @@ import { advanceIntake, newIntake, planIntake } from '../src/services/whatsapp-i
 import { projectHotels, projectJourneys } from '../src/services/whatsapp-intake-catalogue.js';
 
 const PHONE = '15555550100';
-const FULL = 'We are travelling to Japan from Canada in November 2027 for 7 days. Tokyo and Kyoto. Two adults and zero children. Budget JPY 600,000 total for the whole trip. No support needed. We prefer a package tour.';
-const nullableFacts = () => Object.fromEntries(['timing','duration','cities','party','budget','support','residency','preference'].map(k => [k, null]));
+const FULL = 'November 2027 for 7 days. Tokyo and Kyoto. Two adults and zero children. Budget JPY 600,000 total for the whole trip. No support needed. We prefer a package tour.';
+const nullableFacts = () => Object.fromEntries(['timing','duration','cities','party','budget','support','preference'].map(k => [k, null]));
 const fullFacts = () => ({
   timing: { value: 'November 2027', evidence: 'November 2027' }, duration: { value: { value: 7, unit: 'days' }, evidence: '7 days' }, cities: { value: ['Tokyo','Kyoto'], evidence: 'Tokyo and Kyoto' },
   party: { value: { adults: 2, children: 0 }, evidence: 'Two adults and zero children' }, budget: { value: { amount: 600000, currency: 'JPY', basis: 'party_total', scope: 'trip' }, evidence: 'Budget JPY 600,000 total for the whole trip' },
-  support: { value: ['none'], evidence: 'No support needed' }, residency: { value: 'overseas', evidence: 'We are travelling to Japan from Canada' }, preference: { value: 'package', evidence: 'We prefer a package tour' },
+  support: { value: ['none'], evidence: 'No support needed' }, preference: { value: 'package', evidence: 'We prefer a package tour' },
 });
 function answer(facts: any = fullFacts(), extra: any = {}) { return { intent: 'answer', uncertain: false, locale: 'en', citiesOperation: 'replace', facts: { ...nullableFacts(), ...facts }, ...extra }; }
 const catalogue = () => ({ source: 'Sanity published runtime Journey discovery data', dataset: 'production', fetchedAt: new Date().toISOString(), tours: [{ id: 'C07', title: 'Published fixture Tokyo and Kyoto', days: 7, cities: ['Tokyo','Kyoto','Tokyo'], supportedPartySizes: [1,2,3,4] }] });
@@ -80,16 +80,79 @@ async function harness(run: (h: any) => Promise<void>) {
   try { await run(h); } finally { await h.flush(); globalThis.fetch = originalFetch; sql.close(); }
 }
 
-test('signed enquiry -> consent -> one model extraction -> summary -> published proposal -> durable human handoff', async () => harness(async h => {
-  assert.equal((await h.webhook(FULL)).status, 200); assert.equal(h.models.length, 0); assert.equal(h.sends.length, 1); assert.match(h.sends[0].text.body, /AI assistant/);
+test('complete first enquiry -> one extraction -> immediate published proposal -> explicit quotation handoff', async () => harness(async h => {
+  assert.equal((await h.webhook(FULL)).status, 200); assert.equal(h.models.length, 1); assert.equal(h.sends.length, 1);
+  assert.equal(h.session().status, 'recommended'); assert.match(h.sends[0].text.body, /Hi, this is Flat Travel/);
+  assert.doesNotMatch(h.sends[0].text.body, /AI assistant|Reply YES|HUMAN|Visitor type|overseas/i);
   assert.equal(h.sql.prepare('SELECT count(*) n FROM whatsapp_inbound_welcomes').get().n, 0, 'legacy welcome is suppressed');
-  await h.webhook('YES'); assert.equal(h.models.length, 1); assert.equal(h.session().status, 'review'); assert.match(h.sends.at(-1).text.body, /600000 JPY/);
+  assert.match(h.sends[0].text.body, /600000 JPY/); assert.match(h.sends[0].text.body, /https:\/\/flat-travel.com\/en\/journeys\/c07/);
+  assert.match(h.sends[0].text.body, /need confirmation/);
   assert.ok(!h.session().state_ciphertext.includes('manual_wheelchair')); assert.ok(!h.session().state_ciphertext.includes('November'));
-  await h.webhook('YES'); assert.equal(h.models.length, 1, 'confirmation does not call a model'); assert.match(h.sends.at(-1).text.body, /https:\/\/flat-travel.com\/en\/journeys\/c07/); assert.match(h.sends.at(-1).text.body, /need confirmation/);
-  await h.webhook('1'); assert.equal(h.session().status, 'human'); assert.equal(h.session().handoff_notification, 'accepted');
+  await h.webhook('1'); assert.equal(h.models.length, 1); assert.equal(h.session().status, 'recommended'); assert.equal(h.session().handoff_notification, 'none');
+  await h.webhook('quotation'); assert.equal(h.session().status, 'human'); assert.equal(h.session().handoff_notification, 'accepted');
   const count = h.sends.length; await h.webhook('One more question'); assert.equal(h.sends.length, count); assert.equal(h.models.length, 1);
   assert.equal(h.notifications.filter((n: any) => n.text.startsWith('WA AI相談')).length, 1);
   const status = await (await h.api(`/api/whatsapp/intake/${h.friendId()}`)).json(); assert.equal(status.session.phase, 'human'); assert.ok(status.turns.some((t: any) => t.provider_message_id));
+}));
+test('a greeting immediately asks about travel support with no onboarding controls', async () => harness(async h => {
+  await h.webhook('Hello'); assert.equal(h.models.length,0); assert.equal(h.sends.length,1);
+  assert.equal(h.session().status,'collecting'); const body=h.sends[0].text.body;
+  assert.match(body,/Hi, this is Flat Travel/); assert.match(body,/How can we help/);
+  assert.doesNotMatch(body,/AI assistant|YES|HUMAN|nationality|residen|overseas/i);
+}));
+test('three related answers reach a proposal without repeating known details or confirming a summary', async () => harness(async h => {
+  h.modelOutput=answer({preference:{value:'package',evidence:'whole trip'},support:{value:['manual_wheelchair'],evidence:'manual wheelchair'}});
+  await h.webhook('Please plan the whole trip. I use a manual wheelchair.');
+  assert.match(h.sends.at(-1).text.body,/Which cities/); assert.doesNotMatch(h.sends.at(-1).text.body,/mobility needs|hotels only/);
+  h.modelOutput=answer({timing:{value:'November 2027',evidence:'November 2027'},duration:{value:{value:7,unit:'days'},evidence:'7 days'},cities:{value:['Tokyo','Kyoto'],evidence:'Tokyo and Kyoto'}});
+  await h.webhook('Tokyo and Kyoto in November 2027 for 7 days.');
+  assert.match(h.sends.at(-1).text.body,/adults and children/); assert.doesNotMatch(h.sends.at(-1).text.body,/Which cities|When would|How long/);
+  h.modelOutput=answer({party:{value:{adults:2,children:0},evidence:'Two adults and zero children'},budget:{value:{amount:600000,currency:'JPY',basis:null,scope:null},evidence:'Budget JPY 600,000'}});
+  await h.webhook('Two adults and zero children. Budget JPY 600,000.');
+  assert.equal(h.session().status,'recommended'); assert.equal(h.models.length,3); assert.equal(h.sends.length,3);
+  assert.match(h.sends.at(-1).text.body,/journeys\/c07/); assert.doesNotMatch(h.sends.at(-1).text.body,/Reply YES|HUMAN/);
+  const result=await (await h.api(`/api/whatsapp/intake/${h.friendId()}`)).json();
+  assert.equal(result.session.state.slots.budget.basis,null); assert.equal(result.session.state.slots.budget.scope,null);
+  assert.equal(h.session().handoff_notification,'none');
+}));
+test('an old YES-waiting session processes its saved initial enquiry once and drops residency', async () => harness(async h => {
+  await h.webhook('Hello'); const row=h.session();
+  const old={version:1,revision:0,locale:'en',phase:'consent',slots:{residency:'japan'},unclearCount:0};
+  const encrypted=await encryptIntake(old,h.env.WHATSAPP_INTAKE_ENCRYPTION_KEY,row.id);
+  h.sql.prepare("UPDATE whatsapp_intake_sessions SET status='consent',state_ciphertext=?,initial_consumed=0").run(encrypted);
+  h.sql.prepare('UPDATE messages_log SET content=? WHERE id=?').run(FULL,row.initial_message_log_id);
+  await h.webhook('YES'); assert.equal(h.models.length,1); assert.equal(h.session().status,'recommended');
+  const result=await (await h.api(`/api/whatsapp/intake/${h.friendId()}`)).json();
+  assert.equal(result.session.state.slots.residency,undefined); assert.doesNotMatch(h.sends.at(-1).text.body,/Visitor type|Japan resident|Reply YES/);
+  await h.webhook('YES'); assert.equal(h.models.length,1,'saved initial enquiry is never processed twice');
+}));
+for (const [greet,locale] of [['您好','tc'],['你好','tc'],['안녕하세요','kr']]) test(`localized first question begins directly: ${locale}`, async () => harness(async h => {
+  await h.webhook(greet); assert.equal(h.models.length,0); assert.match(h.sends[0].text.body,/Flat Travel/);
+  assert.doesNotMatch(h.sends[0].text.body,/AI|YES|同意|동의|居民|거주/);
+}));
+test('generic travel help never becomes a human request just because the model labels it human', async () => harness(async h => {
+  h.modelOutput=answer({preference:{value:'package',evidence:'whole trip'},support:{value:['manual_wheelchair'],evidence:'manual wheelchair'}},{intent:'human'});
+  await h.webhook('Please help with the whole trip. I use a manual wheelchair.');
+  assert.equal(h.session().status,'collecting'); assert.equal(h.session().handoff_notification,'none');
+  assert.match(h.sends.at(-1).text.body,/Which cities/); assert.equal(h.models.length,1);
+}));
+test('one ungrounded field is clarified while the other supplied answers remain saved', async () => harness(async h => {
+  h.modelOutput=answer({...fullFacts(),budget:{value:{amount:999999,currency:'JPY',basis:null,scope:null},evidence:'Budget JPY 600,000'}});
+  await h.webhook(FULL); assert.equal(h.session().status,'collecting'); assert.equal(h.models.length,1);
+  assert.match(h.sends.at(-1).text.body,/approximate budget/); assert.doesNotMatch(h.sends.at(-1).text.body,/999999|Which cities|How long/);
+  const result=await (await h.api(`/api/whatsapp/intake/${h.friendId()}`)).json();
+  assert.deepEqual(result.session.state.slots.cities,['Tokyo','Kyoto']); assert.equal(result.session.state.slots.budget,undefined);
+}));
+test('model-inferred budget units stay unknown without losing the explicit amount and currency', async () => harness(async h => {
+  h.modelOutput=answer({...fullFacts(),budget:{value:{amount:600000,currency:'JPY',basis:'party_total',scope:'trip'},evidence:'Budget JPY 600,000'}});
+  await h.webhook(FULL); assert.equal(h.session().status,'recommended'); assert.equal(h.models.length,1);
+  const result=await (await h.api(`/api/whatsapp/intake/${h.friendId()}`)).json();
+  assert.deepEqual(result.session.state.slots.budget,{amount:600000,currency:'JPY',basis:null,scope:null});
+  assert.match(h.sends.at(-1).text.body,/600000 JPY/); assert.doesNotMatch(h.sends.at(-1).text.body,/whole trip|all travellers/);
+}));
+test('a natural explicit human request still hands off when phrased outside the local controls', async () => harness(async h => {
+  h.modelOutput=answer({},{intent:'human'}); await h.webhook('Could a real person reply to me?');
+  assert.equal(h.session().status,'human'); assert.equal(h.session().handoff_notification,'accepted');
 }));
 test('simultaneous duplicate webhooks claim one automatic response', async () => harness(async h => {
   await Promise.all([h.webhook('Hello',{id:'same',flush:false}),h.webhook('Hello',{id:'same',flush:false})]); await h.flush();
@@ -116,7 +179,7 @@ test('registered case/customer linkage bypasses hearing even without a reference
 test('uncertain or unavailable qualification fails closed without an AI introduction', async () => harness(async h => {
   h.identity={status:'review_required'}; await h.webhook('Hello'); assert.equal(h.sends.length,0); h.identity={status:'unavailable'}; await h.webhook('Hello again'); assert.equal(h.models.length,0); assert.equal(h.sends.length,0);
 }));
-test('a generic package interest is still an unqualified enquiry', async () => harness(async h => { await h.webhook('I am interested in a package tour.'); assert.equal(h.session().status,'consent'); assert.match(h.sends[0].text.body,/AI assistant/); }));
+test('a generic package interest is still an unqualified enquiry', async () => harness(async h => { h.modelOutput=answer({preference:{value:'package',evidence:'package tour'}}); await h.webhook('I am interested in a package tour.'); assert.equal(h.session().status,'collecting'); assert.match(h.sends[0].text.body,/Flat Travel/); assert.doesNotMatch(h.sends[0].text.body,/AI assistant|YES/); }));
 test('a conversion or identity link appearing mid-conversation stops hearing before another question', async () => harness(async h => {
   await h.webhook('Hello'); const n=h.sends.length; await h.webhook('I submitted my tailor-made enquiry. FT-20261028-ABCDEFGH'); assert.equal(h.session().status,'human'); await h.webhook('YES'); assert.equal(h.sends.length,n); assert.equal(h.models.length,0);
 }));
@@ -138,15 +201,15 @@ test('the approved test command may simulate a latent lead but never bypasses su
 test('live mode preserves existing conversations and starts only a genuinely new lead', async () => harness(async h => {
   h.env.WHATSAPP_INTAKE_MODE='off'; await h.webhook('Old conversation'); h.env.WHATSAPP_INTAKE_MODE='live'; const before=h.sends.length;
   await h.webhook('New question from existing customer'); assert.equal(h.session(),undefined); assert.equal(h.sends.length,before);
-  await h.webhook('Hello',{phone:'15555550222'}); assert.equal(h.session().recipient,'15555550222'); assert.match(h.sends.at(-1).text.body,/AI assistant/);
+  await h.webhook('Hello',{phone:'15555550222'}); assert.equal(h.session().recipient,'15555550222'); assert.match(h.sends.at(-1).text.body,/Flat Travel/);
 }));
-test('explicit stop and consent refusal require no model and never resume automatically', async () => harness(async h => {
+test('explicit stop requires no model and never resumes automatically', async () => harness(async h => {
   await h.webhook('Hello'); await h.webhook('STOP'); const n=h.sends.length; assert.equal(h.session().status,'stopped'); await h.webhook('YES'); assert.equal(h.sends.length,n); assert.equal(h.models.length,0);
 }));
-test('consent refusal records human ownership and one notification', async () => harness(async h => { await h.webhook('Hello'); await h.webhook('NO'); assert.equal(h.session().status,'human'); assert.equal(h.models.length,0); assert.equal(h.session().handoff_notification,'accepted'); }));
+test('human requests remain available without an onboarding HUMAN prompt', async () => harness(async h => { await h.webhook('Hello'); await h.webhook('HUMAN'); assert.equal(h.session().status,'human'); assert.equal(h.models.length,0); assert.equal(h.session().handoff_notification,'accepted'); }));
 test('sensitive content hands off locally without entering a model', async () => harness(async h => { await h.webhook('I want to share my medical records'); assert.equal(h.session().status,'human'); assert.equal(h.models.length,0); }));
 test('human takeover while extraction runs wins before the AI send', async () => harness(async h => {
-  await h.webhook(FULL); h.beforeModel=()=>takeOverIntake(h.env,h.friendId()); await h.webhook('YES'); assert.equal(h.session().status,'human'); assert.equal(h.sends.length,1);
+  await h.webhook('Hello'); h.beforeModel=()=>takeOverIntake(h.env,h.friendId()); await h.webhook(FULL); assert.equal(h.session().status,'human'); assert.equal(h.sends.length,1);
 }));
 test('staff send uses the real route and prevents subsequent AI replies', async () => harness(async h => {
   await h.webhook('Hello'); const id=h.sql.prepare('SELECT id FROM chats LIMIT 1').get().id;
@@ -167,13 +230,13 @@ test('accepted-send history recovery is local and does not call provider again',
   await h.api(`/api/whatsapp/intake/${h.friendId()}`); assert.equal(h.sends.length,1); assert.equal(h.sql.prepare("SELECT count(*) n FROM messages_log WHERE id LIKE 'wa-intake-%'").get().n,1);
 }));
 test('model failure is one attempt followed by human handoff', async () => harness(async h => {
-  await h.webhook(FULL); h.modelOutcome='http'; await h.webhook('YES'); assert.equal(h.models.length,1); assert.equal(h.session().status,'human'); await h.webhook(FULL); assert.equal(h.models.length,1);
+  h.modelOutcome='http'; await h.webhook(FULL); assert.equal(h.models.length,1); assert.equal(h.session().status,'human'); await h.webhook(FULL); assert.equal(h.models.length,1);
 }));
 test('a queued answer suppresses an obsolete question and is drained by the same event', async () => harness(async h => {
   await h.webhook('Hello'); await h.webhook('YES');
-  h.modelOutput=(body:any)=>JSON.parse(body.input).message==='November 2027' ? answer({timing:{value:'November 2027',evidence:'November 2027'}}) : answer({residency:{value:'overseas',evidence:'visiting from Canada'}});
-  h.beforeModel=()=>h.webhook('visiting from Canada',{flush:false}); const n=h.sends.length;
-  await h.webhook('November 2027'); assert.equal(h.models.length,2); assert.equal(h.sends.length,n+1); assert.match(h.sends.at(-1).text.body,/How long/);
+  h.modelOutput=(body:any)=>JSON.parse(body.input).message==='November 2027' ? answer({timing:{value:'November 2027',evidence:'November 2027'}}) : answer({preference:{value:'package',evidence:'whole trip'}});
+  h.beforeModel=()=>h.webhook('Please help with the whole trip',{flush:false}); const n=h.sends.length;
+  await h.webhook('November 2027'); assert.equal(h.models.length,2); assert.equal(h.sends.length,n+1); assert.match(h.sends.at(-1).text.body,/What travel support/);
 }));
 test('orphaned event locks hand off without replaying a send', async () => harness(async h => {
   await h.webhook('Hello'); const n=h.sends.length;
@@ -192,7 +255,7 @@ test('hotel-only discovery uses published hotel identity and the actual public h
   await h.webhook(text); await h.webhook('YES'); await h.webhook('YES'); assert.equal(h.session().status,'recommended'); assert.match(h.sends.at(-1).text.body,/Published hotel title/); assert.match(h.sends.at(-1).text.body,/accessible-hotels\/public-hotel/);
 }));
 for (const [text,locale] of [['從海外到日本','tc'],['从海外到日本','sc'],['해외에서 일본으로 갑니다','kr']]) test(`script-based locale controls ignore a wrong model language: ${locale}`, async () => harness(async h => {
-  await h.webhook('Hello'); await h.webhook('YES'); h.modelOutput=answer({residency:{value:'overseas',evidence:text}},{locale:'en'}); await h.webhook(text);
+  await h.webhook('Hello'); await h.webhook('YES'); h.modelOutput=answer({},{locale:'en',intent:'other'}); await h.webhook(text);
   const result=await (await h.api(`/api/whatsapp/intake/${h.friendId()}`)).json(); assert.equal(result.session.state.locale,locale);
 }));
 test('stale/out-of-order data and opted-out friends cannot invoke the model', async () => harness(async h => {
@@ -204,7 +267,7 @@ test('model budget is atomic and bounded per conversation', async () => harness(
   await h.webhook('Hello'); await h.webhook('YES'); h.sql.prepare('UPDATE whatsapp_intake_sessions SET model_calls=20').run(); await h.webhook(FULL); assert.equal(h.models.length,0); assert.equal(h.session().status,'human');
 }));
 test('catalogue failures cannot produce fictional alternatives', async () => harness(async h => {
-  await h.webhook(FULL); await h.webhook('YES'); h.catalogue={...catalogue(),dataset:'preview'}; await h.webhook('YES'); assert.equal(h.session().status,'human'); assert.ok(!h.sends.at(-1).text.body.includes('/journeys/'));
+  h.catalogue={...catalogue(),dataset:'preview'}; await h.webhook(FULL); assert.equal(h.session().status,'human'); assert.ok(!h.sends.at(-1).text.body.includes('/journeys/'));
 }));
 test('test-start is protected, idempotent and cannot open an expired service window', async () => harness(async h => {
   h.env.WHATSAPP_INTAKE_MODE='off'; await h.webhook('Existing test'); h.env.WHATSAPP_INTAKE_MODE='test'; const id=h.friendId();
@@ -225,14 +288,14 @@ test('source grounding preserves real dates while refusing guessed amounts and c
   assert.ok(!groundedIntakeFact('budget',{amount:6000,currency:'USD',basis:null,scope:null},'$6,000'));
   assert.ok(sensitiveIntakeText('passport details'));
 });
-test('partial budget follow-ups preserve prior amount and ask only missing units', () => {
-  let s=advanceIntake(newIntake('en',true),{type:'consent',allowed:true});
-  for(const [slot,value] of Object.entries({residency:'overseas',timing:'November 2027',duration:{value:7,unit:'days'},cities:['Tokyo'],party:{adults:2,children:0}})) s=advanceIntake(s,{type:'selection',slot:slot as any,value});
+test('budget currency is clarified without blocking discovery on unstated price units', () => {
+  let s=newIntake('en',true);
+  for(const [slot,value] of Object.entries({preference:'package',support:['none'],timing:'November 2027',duration:{value:7,unit:'days'},cities:['Tokyo'],party:{adults:2,children:0}})) s=advanceIntake(s,{type:'selection',slot:slot as any,value});
   s=advanceIntake(s,{type:'selection',slot:'budget',value:{amount:600000,currency:null,basis:null,scope:null}}); assert.equal(planIntake(s).question,'budget');
-  s=advanceIntake(s,{type:'selection',slot:'budget',value:{amount:null,currency:'JPY',basis:null,scope:null}}); assert.equal(s.slots.budget?.amount,600000); assert.ok(!planIntake(s).message.includes('What currency'));
+  s=advanceIntake(s,{type:'selection',slot:'budget',value:{amount:null,currency:'JPY',basis:null,scope:null}}); assert.equal(s.slots.budget?.amount,600000); assert.equal(s.phase,'recommended');
+  assert.equal(s.slots.budget?.basis,null); assert.equal(s.slots.budget?.scope,null);
 });
-test('domestic requests close locally; public discovery never establishes personal fit', () => {
-  let s=advanceIntake(newIntake('en',true),{type:'consent',allowed:true}); s=advanceIntake(s,{type:'selection',slot:'residency',value:'japan'}); assert.equal(planIntake(s).reason,'domestic_resident'); assert.equal(planIntake(s).action,'stop');
+test('public discovery never establishes personal fit', () => {
   const p=projectJourneys(catalogue(),'en'); assert.equal(p[0].cities.length,2); assert.equal(p[0].discoveryOnly,true); assert.equal(p[0].referencePrice,undefined);
   const hotels=projectHotels({fetchedAt:new Date().toISOString(),tours:[{stays:[['stay','Tokyo',0,2,'tokyo',[{candidateScope:'journey',source:'sanity-linked',hotelId:'H',name:'Public hotel',path:'/en/accessible-hotels/public-hotel'},{candidateScope:'specialist',source:'sanity-linked',hotelId:'SECRET',name:'Hidden',path:'/en/accessible-hotels/hidden'}]]]}]},'Tokyo','en');
   assert.deepEqual(hotels.map(h=>h.id),['H']);

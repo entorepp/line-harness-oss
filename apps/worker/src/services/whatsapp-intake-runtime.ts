@@ -33,7 +33,7 @@ async function handoffNotification(env: Env['Bindings'], row: IntakeSession, sta
   const fields = state.slots;
   const publicCities = new Set(['Tokyo', 'Kyoto', 'Osaka', 'Hiroshima', 'Kanazawa', 'Fuji / Hakone', 'Nagoya', 'Nara', 'Sapporo', 'Fukuoka', 'Okinawa']);
   const safeCities = fields.cities?.map(city => publicCities.has(city) ? city : 'その他の都市（会話で確認）');
-  const labels = { residency: '海外からの訪日相談か', timing: '時期', duration: '日数', cities: '訪問都市', party: '人数', budget: '予算・通貨・単位', support: '支援要件', preference: 'パッケージ／ホテル' };
+  const labels = { timing: '時期', duration: '日数', cities: '訪問都市', party: '人数', budget: '予算・通貨', support: '支援要件', preference: 'パッケージ／ホテル' };
   const remaining = planIntake(state).missing.map(slot => labels[slot]).join(' / ');
   const summary = [safeCities ? `都市: ${safeCities.join(' / ')}` : '', fields.duration ? `日数: ${fields.duration.value ?? '未定'} ${fields.duration.unit}` : '',
     fields.party ? `人数: 成人${fields.party.adults} / 子ども${fields.party.children}` : '', fields.budget ? `予算: ${fields.budget.amount ?? '未定'} ${fields.budget.currency || ''}` : '',
@@ -64,7 +64,7 @@ async function recoverAccepted(env: Env['Bindings'], row: IntakeSession, turn: I
 async function reserveModel(env: Env['Bindings'], row: IntakeSession, token: string, turnId: string) {
   const session = await env.DB.prepare("UPDATE whatsapp_intake_sessions SET model_calls=model_calls+1 WHERE id=? AND lock_token=? AND model_calls<20 AND status IN ('collecting','review','recommended')")
     .bind(row.id, token).run();
-  // Consent can have just been accepted in memory; its persisted state is still consent.
+  // An old waiting session upgrades in memory before its first new saved turn.
   if (!session.meta.changes && row.status === 'consent') {
     const consented = await env.DB.prepare("UPDATE whatsapp_intake_sessions SET model_calls=model_calls+1 WHERE id=? AND lock_token=? AND model_calls<20 AND status='consent'").bind(row.id, token).run();
     if (!consented.meta.changes) return false;
@@ -103,6 +103,7 @@ export async function processIntake(env: Env['Bindings'], sessionId: string, dea
       if (claim.meta.changes !== 1) continue;
       if (turn.incoming_at < row.last_incoming_at) { await env.DB.prepare("UPDATE whatsapp_intake_turns SET status='skipped',error_code='out_of_order' WHERE id=?").bind(turn.id).run(); continue; }
       let state = await readIntakeState(env, row); let consumed = Boolean(row.initial_consumed); let silent = false;
+      const introduction = !consumed && row.status !== 'consent';
       const input = await message(env, turn.message_log_id, row.friend_id);
       const text = input?.content || '';
       const local = localIntakeTurn(state, text);
@@ -111,11 +112,14 @@ export async function processIntake(env: Env['Bindings'], sessionId: string, dea
       else {
         state = local.state; silent = Boolean(local.silent);
         let modelText = local.handled ? '' : text;
-        if (local.consumeInitial && !consumed) {
+        if (!consumed) {
           consumed = true;
           const initial = await message(env, row.initial_message_log_id, row.friend_id);
-          if (initial && initial.message_type === 'text' && initial.content.length <= 2500 && !sensitiveIntakeText(initial.content) && !greeting(initial.content) && !affirmative(initial.content)) modelText = initial.content;
+          // Only an old pre-upgrade YES gate may have deferred this one enquiry.
+          // New enquiries are extracted on their first incoming turn.
+          if (row.status === 'consent' && row.initial_message_log_id !== turn.message_log_id && initial && initial.message_type === 'text' && initial.content.length <= 2500 && !sensitiveIntakeText(initial.content) && !greeting(initial.content) && !affirmative(initial.content)) modelText = [initial.content, modelText].filter(Boolean).join('\n');
         }
+        if (modelText.length > 2500) { state.phase = 'human'; state.reason = 'sensitive_or_long_message'; }
         if (modelText && activeIntake(state.phase) && state.phase !== 'consent') {
           if (!(await reserveModel(env, row, token, turn.id))) { state.phase = 'human'; state.reason = 'model_budget'; }
           else {
@@ -134,12 +138,13 @@ export async function processIntake(env: Env['Bindings'], sessionId: string, dea
       if (state.phase === 'recommended' && !silent) {
         try { catalogue = await loadIntakeCatalogue(state, deadline - 6000); } catch { state.phase = 'human'; state.reason = 'catalogue_unavailable'; }
       }
-      let rendered = renderIntakePlan(state, catalogue);
+      const renderOptions = { introduction, selection: local.selection };
+      let rendered = renderIntakePlan(state, catalogue, renderOptions);
       if (rendered.plan.action === 'recommend') {
         try {
           const titles = await verifyIntakeCandidateTitles(rendered.plan.candidates, state.locale, deadline - 6000);
           catalogue = catalogue.map(p => titles.has(p.id) ? { ...p, title: titles.get(p.id)! } : p);
-          rendered = renderIntakePlan(state, catalogue);
+          rendered = renderIntakePlan(state, catalogue, renderOptions);
         } catch { state.phase = 'human'; state.reason = 'public_route_unavailable'; rendered = renderIntakePlan(state); }
       }
       if (rendered.plan.action === 'handoff' && state.phase !== 'human') { state.phase = 'human'; state.reason = rendered.plan.reason; rendered = renderIntakePlan(state); }
