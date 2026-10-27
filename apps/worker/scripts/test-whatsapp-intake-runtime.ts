@@ -104,6 +104,8 @@ test('test hashes do not enroll another recipient', async () => harness(async h 
 for (const text of [
   'FTR-12345678-1234-4123-8123-123456789abc', 'FT-20261028-ABCDEFGH', 'FTQ-20261028-ABCDEFGH', 'FTH-'+ 'a'.repeat(32),
   'I completed the Accessible Japan travel questionnaire.', 'I submitted my tailor-made enquiry.', 'This is my package tour booking confirmation.',
+  'テーラーメイドの予約をしました。', 'I filled the AJ survey.', 'ＦＴＲ－１２３４５６７８－１２３４－４１２３－８１２３－１２３４５６７８９ａｂｃ',
+  'I came from the Accessible Japan travel survey.',
 ]) test(`registered-source enquiry bypasses hearing: ${text.slice(0,45)}`, async () => harness(async h => {
   await h.webhook(text); assert.equal(h.models.length,0); assert.equal(h.sends.length,0); assert.equal(h.session(),undefined);
 }));

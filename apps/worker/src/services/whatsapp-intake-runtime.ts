@@ -1,9 +1,9 @@
 import { jstNow, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
-import { advanceIntake, type IntakeState } from './whatsapp-intake.js';
+import { advanceIntake, planIntake, type IntakeState } from './whatsapp-intake.js';
 import { extractIntake, sensitiveIntakeText } from './whatsapp-intake-ai.js';
 import { loadIntakeCatalogue, verifyIntakeCandidateTitles } from './whatsapp-intake-catalogue.js';
-import { affirmative, greeting, localIntakeTurn, renderIntakePlan, renderIntakeSummary } from './whatsapp-intake-dialogue.js';
+import { affirmative, greeting, localIntakeTurn, renderIntakePlan } from './whatsapp-intake-dialogue.js';
 import { activeIntake, decryptIntake, encryptIntake, intakeAllowed, readIntakeState, type IntakeSession, type IntakeTurn } from './whatsapp-intake-store.js';
 import { callingContext } from './whatsapp-calling.js';
 import { getMessagingFriendContext, dispatchOutboundMessage } from './outbound-messages.js';
@@ -33,6 +33,8 @@ async function handoffNotification(env: Env['Bindings'], row: IntakeSession, sta
   const fields = state.slots;
   const publicCities = new Set(['Tokyo', 'Kyoto', 'Osaka', 'Hiroshima', 'Kanazawa', 'Fuji / Hakone', 'Nagoya', 'Nara', 'Sapporo', 'Fukuoka', 'Okinawa']);
   const safeCities = fields.cities?.map(city => publicCities.has(city) ? city : 'その他の都市（会話で確認）');
+  const labels = { residency: '海外からの訪日相談か', timing: '時期', duration: '日数', cities: '訪問都市', party: '人数', budget: '予算・通貨・単位', support: '支援要件', preference: 'パッケージ／ホテル' };
+  const remaining = planIntake(state).missing.map(slot => labels[slot]).join(' / ');
   const summary = [safeCities ? `都市: ${safeCities.join(' / ')}` : '', fields.duration ? `日数: ${fields.duration.value ?? '未定'} ${fields.duration.unit}` : '',
     fields.party ? `人数: 成人${fields.party.adults} / 子ども${fields.party.children}` : '', fields.budget ? `予算: ${fields.budget.amount ?? '未定'} ${fields.budget.currency || ''}` : '',
     fields.support ? '支援要件: 既存チャットまたはHarnessの保護されたヒアリング情報で確認' : ''].filter(Boolean).join('\n');
@@ -40,7 +42,7 @@ async function handoffNotification(env: Env['Bindings'], row: IntakeSession, sta
   if (env.SLACK_BOT_TOKEN) try {
     const response = await fetch('https://slack.com/api/chat.postMessage', { method: 'POST', headers: { Authorization: `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ channel: resolveSlackChannelId(routing?.slack_channel_id, routing?.default_slack_channel), unfurl_links: false,
-        text: `WA AI相談の有人引き継ぎ\n${summary}\nhttps://line-crm-web-2ob.pages.dev/chats${chat ? `?chatId=${encodeURIComponent(chat.id)}` : ''}\nヒアリング済み内容は保護された会話に保存済みです。` }), signal: AbortSignal.timeout(4000) });
+        text: `WA AI相談の有人引き継ぎ\n${summary}\n未確認: ${remaining || '追加ヒアリングなし・個別確認へ'}\nhttps://line-crm-web-2ob.pages.dev/chats${chat ? `?chatId=${encodeURIComponent(chat.id)}` : ''}\nヒアリング済み内容は保護された会話に保存済みです。` }), signal: AbortSignal.timeout(4000) });
     const result: any = await response.json(); ok = response.ok && result.ok === true;
   } catch { /* One attempt; outcome may be unknown. */ }
   await env.DB.prepare('UPDATE whatsapp_intake_sessions SET handoff_notification=? WHERE id=?').bind(ok ? 'accepted' : 'failed_or_unknown', row.id).run();

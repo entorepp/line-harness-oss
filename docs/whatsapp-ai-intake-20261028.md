@@ -165,7 +165,7 @@ model budgets, encrypted state, public catalogue failures, hotel-only discovery,
 domestic scope and TC/SC/KR language controls. Existing Worker contract suites,
 typecheck, release contract and dry build must remain passing.
 
-The signed-webhook suite currently passes 44/44, including first-contact AJ form,
+The signed-webhook suite currently passes 48/48, including first-contact AJ form,
 Tailor-Made and package references, existing registered cases without a reference,
 same-message linkage, mid-conversation conversion, qualification ambiguity and
 the test-only simulation boundary. These tests require zero AI questions/model

@@ -86,7 +86,9 @@ export async function reserveIntake(env: Env['Bindings'], input: { friendId: str
   // A literal test command on the hashed owner-approved test recipient simulates
   // an unqualified lead despite any historical test CRM links. Never applies live.
   const testOverride = intakeMode(env) === 'test' && (testCommand || row?.test_unqualified_override === 1);
-  if (!testOverride && await intakeQualification(env, input.friendId) !== 'unqualified') {
+  const qualification = testOverride ? 'unqualified' : await intakeQualification(env, input.friendId);
+  if (qualification !== 'unqualified') {
+    console.info('WhatsApp intake excluded', { friendId: input.friendId, reason: qualification });
     await takeOverIntake(env, input.friendId).catch(() => undefined);
     return { owned: true };
   }
