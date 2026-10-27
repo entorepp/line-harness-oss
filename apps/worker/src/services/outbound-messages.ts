@@ -12,6 +12,7 @@ import {
 import { dispatchWeChatKfText } from './wechat-kf.js';
 import { dispatchWeChatText } from './wechat.js';
 import { assertWhatsappReplyWindow } from './whatsapp-reply-window.js';
+import { takeOverIntake } from './whatsapp-intake-store.js';
 
 export interface MessagingFriendContext {
   id: string;
@@ -447,6 +448,8 @@ export async function dispatchOutboundMessage(opts: {
   env: Env['Bindings'];
   friend: MessagingFriendContext;
   input: OutboundMessageInput;
+  intakeAutomation?: boolean;
+  signal?: AbortSignal;
 }): Promise<DispatchedMessage> {
   const messageType = opts.input.messageType ?? 'text';
 
@@ -471,6 +474,7 @@ export async function dispatchOutboundMessage(opts: {
   }
 
   if (opts.friend.channel_type === 'whatsapp') {
+    if (!opts.intakeAutomation) await takeOverIntake(opts.env, opts.friend.id);
     await assertWhatsappReplyWindow(opts.env.DB, opts.friend.id);
     const content = serializeOutboundContent(opts.input);
     const waToken = opts.friend.channel_access_token;
@@ -487,6 +491,7 @@ export async function dispatchOutboundMessage(opts: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(buildWhatsAppMessagePayload(opts.friend.line_user_id, opts.input)),
+      ...(opts.signal ? { signal: opts.signal } : {}),
     });
 
     const responseText = await res.text().catch(() => '');

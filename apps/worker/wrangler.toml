@@ -8,6 +8,13 @@ workers_dev = true
 # Do NOT hardcode secrets here
 
 [vars]
+
+# Owner-approved AI intake pilot; only the hashed internal test recipient is enabled.
+WHATSAPP_INTAKE_MODE = "test"
+WHATSAPP_INTAKE_MODEL = "gpt-5.4-nano-2026-03-17"
+WHATSAPP_INTAKE_ACCOUNTS = "wa-english-001:1096652186863862"
+WHATSAPP_INTAKE_START_AT = "2026-10-27T15:00:00Z"
+WHATSAPP_INTAKE_TEST_PHONE_HASHES = "a91083895a6366e27ae2a5b9224eb6d626f11fccb85d9d8cedd213748c71bb53"
 # One owner-authorized acknowledgement on a new signed WhatsApp enquiry.
 WHATSAPP_INBOUND_WELCOME_ENABLED = "true"
 WHATSAPP_INBOUND_WELCOME_ACCOUNTS = "wa-english-001:1096652186863862"
