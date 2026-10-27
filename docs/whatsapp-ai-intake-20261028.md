@@ -27,6 +27,23 @@ versioned one-attempt outbox and sticky human ownership address those risks.
   admits only a fresh, directly signed, new conversation after the configured
   start time; existing histories remain human. Language/phone never establish
   overseas residence: an explicit visitor-type answer is required.
+- Completed Accessible Japan questionnaire enquiries, converted Tailor-Made
+  enquiries and package applications bypass AI hearing even on their first WA
+  contact. FT/FTQ/FTR/FTH markers, explicit submitted-source wording, a dedicated
+  case channel or existing exact customer/case identity linkage suppress the AI
+  introduction and questions. Qualification lookup failure/ambiguity also stays
+  human. Generic interest in a package, without an existing request, remains
+  eligible. Existing quote delivery and identity linkage continue normally.
+- The existing dedicated-token TravelWorker identity read is used only as an
+  exclusion gate on otherwise eligible signed new/active intake events. Returned
+  contact/case details are discarded transiently and never enter state or the
+  model. Current-message identity linking completes before an AI task can start,
+  so a newly resolved registered customer is also excluded without a first prompt.
+- On the hashed internal test recipient in test mode only, literal `AI TEST` /
+  `AIテスト` or explicit staff test-start simulates an unqualified lead despite
+  historical test CRM links. A repeated explicit test command may reset a closed
+  test interview, preserving history and model-call budget. Submitted request
+  markers always win; live mode ignores this simulation override.
 - No new scheduler, autonomous loop, provider, Slack credential or AI gateway.
   Processing is a bounded continuation of one received event. Model calls do not
   occur from cron, boot, health checks, staff status reads or ordinary staff sends.
@@ -147,6 +164,12 @@ customer preservation, staff races, opt-out, failures, local receipt recovery,
 model budgets, encrypted state, public catalogue failures, hotel-only discovery,
 domestic scope and TC/SC/KR language controls. Existing Worker contract suites,
 typecheck, release contract and dry build must remain passing.
+
+The signed-webhook suite currently passes 44/44, including first-contact AJ form,
+Tailor-Made and package references, existing registered cases without a reference,
+same-message linkage, mid-conversation conversion, qualification ambiguity and
+the test-only simulation boundary. These tests require zero AI questions/model
+calls on the qualified paths.
 
 Actual customer-data-free model evaluation used 48 bounded extraction requests
 plus one model-list read. Early Nano checks exposed conservative withholding and

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_intake_sessions (
   state_ciphertext TEXT,
   initial_message_log_id TEXT,
   initial_consumed INTEGER NOT NULL DEFAULT 0,
+  test_unqualified_override INTEGER NOT NULL DEFAULT 0,
   lock_token TEXT,
   lock_started_at INTEGER,
   model_calls INTEGER NOT NULL DEFAULT 0,

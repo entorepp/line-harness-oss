@@ -42,11 +42,11 @@ whatsappIntake.post('/api/whatsapp/intake/:friendId/test-start', async c => {
     if (body.reset !== true || body.expectedVersion !== row.version) return c.json({ error: 'versioned_test_reset_required', version: row.version }, 409);
     if (row.lock_token) return c.json({ error: 'test_session_busy' }, 409);
     const ciphertext = await encryptIntake(newIntake('en', true), c.env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, row.id);
-    const saved = await c.env.DB.prepare("UPDATE whatsapp_intake_sessions SET status='consent',state_ciphertext=?,version=version+1,initial_message_log_id=NULL,initial_consumed=0,handoff_notification='none',expires_at=?,updated_at=? WHERE id=? AND version=? AND lock_token IS NULL")
+    const saved = await c.env.DB.prepare("UPDATE whatsapp_intake_sessions SET status='consent',state_ciphertext=?,version=version+1,initial_message_log_id=NULL,initial_consumed=0,test_unqualified_override=1,handoff_notification='none',expires_at=?,updated_at=? WHERE id=? AND version=? AND lock_token IS NULL")
       .bind(ciphertext, Date.now() + 30 * 86400000, Date.now(), row.id, row.version).run();
     if (!saved.meta.changes) return c.json({ error: 'test_session_changed' }, 409);
   } else {
-    const reservation = await reserveIntake(c.env, { friendId, accountId: ctx.account.id, phoneId: ctx.account.channel_id, recipient: ctx.recipient, incomingAt: Date.now(), text: '' });
+    const reservation = await reserveIntake(c.env, { friendId, accountId: ctx.account.id, phoneId: ctx.account.channel_id, recipient: ctx.recipient, incomingAt: Date.now(), text: 'AI TEST' });
     if (!reservation.sessionId) return c.json({ error: 'test_enrollment_ineligible' }, 409);
     row = await getIntakeSession(c.env, friendId);
   }

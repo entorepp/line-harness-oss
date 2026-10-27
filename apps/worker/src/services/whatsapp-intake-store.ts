@@ -1,8 +1,9 @@
 import type { Env } from '../index.js';
 import { newIntake, type IntakeState } from './whatsapp-intake.js';
+import { intakeQualification, submittedEnquirySignal } from './whatsapp-intake-qualification.js';
 
 export type IntakeSession = { id: string; friend_id: string; line_account_id: string; phone_id: string; recipient: string; status: IntakeState['phase']; version: number;
-  state_ciphertext: string | null; initial_message_log_id: string | null; initial_consumed: number; lock_token: string | null; lock_started_at: number | null;
+  state_ciphertext: string | null; initial_message_log_id: string | null; initial_consumed: number; test_unqualified_override: number; lock_token: string | null; lock_started_at: number | null;
   model_calls: number; handoff_notification: string; last_incoming_at: number; expires_at: number; created_at: number; updated_at: number };
 export type IntakeTurn = { id: string; seq: number; session_id: string; trigger_key: string; trigger_type: string; message_log_id: string | null; incoming_at: number;
   status: string; reply_ciphertext: string | null; provider_message_id: string | null; sent_at: string | null };
@@ -65,17 +66,39 @@ export async function reserveIntake(env: Env['Bindings'], input: { friendId: str
   const eligible = await env.DB.prepare('SELECT f.is_following,la.is_active FROM friends f JOIN line_accounts la ON la.id=f.line_account_id WHERE f.id=? AND f.line_account_id=? AND la.channel_id=? AND REPLACE(f.line_user_id,\'+\',\'\')=?')
     .bind(input.friendId, input.accountId, input.phoneId, input.recipient).first<{ is_following: number; is_active: number }>();
   if (eligible?.is_following !== 1 || eligible.is_active !== 1) { await takeOverIntake(env, input.friendId).catch(() => undefined); return { owned: true }; }
-  if (/\bFTQ?-\d{8}-[A-Z0-9]{4,16}\b/i.test(input.text)) { await takeOverIntake(env, input.friendId); return { owned: true }; }
+  if (submittedEnquirySignal(input.text)) { await takeOverIntake(env, input.friendId).catch(() => undefined); return { owned: true }; }
   let row = await getIntakeSession(env, input.friendId);
+  const testCommand = intakeMode(env) === 'test' && /^AI[\s-]?(?:TEST|テスト)[.!。\s]*$/iu.test(input.text.trim());
+  if (row && !activeIntake(row.status)) {
+    if (!testCommand || row.lock_token) return { owned: true };
+    const ciphertext = await encryptIntake(newIntake('en', true), env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, row.id);
+    await env.DB.prepare("UPDATE whatsapp_intake_turns SET status='skipped',error_code='explicit_test_reset' WHERE session_id=? AND status IN ('pending','processing')").bind(row.id).run();
+    const reset = await env.DB.prepare("UPDATE whatsapp_intake_sessions SET status='consent',state_ciphertext=?,version=version+1,initial_message_log_id=NULL,initial_consumed=0,test_unqualified_override=1,handoff_notification='none',expires_at=?,updated_at=? WHERE id=? AND version=? AND lock_token IS NULL")
+      .bind(ciphertext, now + 30 * 86400000, now, row.id, row.version).run();
+    if (!reset.meta.changes) return { owned: true };
+    row = await getIntakeSession(env, input.friendId);
+  }
+  if (!row && intakeMode(env) === 'live') {
+    const history = await env.DB.prepare('SELECT 1 FROM messages_log m JOIN friends f ON f.id=m.friend_id WHERE f.line_account_id=? AND f.line_user_id IN (?,?) LIMIT 1')
+      .bind(input.accountId, input.recipient, `+${input.recipient}`).first();
+    if (history) return { owned: false };
+  }
+  // A literal test command on the hashed owner-approved test recipient simulates
+  // an unqualified lead despite any historical test CRM links. Never applies live.
+  const testOverride = intakeMode(env) === 'test' && (testCommand || row?.test_unqualified_override === 1);
+  if (!testOverride && await intakeQualification(env, input.friendId) !== 'unqualified') {
+    await takeOverIntake(env, input.friendId).catch(() => undefined);
+    return { owned: true };
+  }
   if (!row) {
     if (/^(?:stop|unsubscribe|停止|配信停止|取消訂閱|取消订阅|수신\s*거부)[.!。\s]*$/i.test(input.text.trim())) return { owned: true };
     const id = crypto.randomUUID();
     const ciphertext = await encryptIntake(newIntake('en', true), env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, id);
     await env.DB.prepare(`INSERT OR IGNORE INTO whatsapp_intake_sessions
-      (id,friend_id,line_account_id,phone_id,recipient,status,state_ciphertext,expires_at,created_at,updated_at)
-      SELECT ?,?,?,?,?,'consent',?,?,?,? WHERE EXISTS(SELECT 1 FROM friends WHERE id=? AND is_following=1)
+      (id,friend_id,line_account_id,phone_id,recipient,status,state_ciphertext,expires_at,created_at,updated_at,test_unqualified_override)
+      SELECT ?,?,?,?,?,'consent',?,?,?,?,? WHERE EXISTS(SELECT 1 FROM friends WHERE id=? AND is_following=1)
       AND (?='test' OR NOT EXISTS(SELECT 1 FROM messages_log m JOIN friends f ON f.id=m.friend_id WHERE f.line_account_id=? AND f.line_user_id IN (?,?)))`)
-      .bind(id, input.friendId, input.accountId, input.phoneId, input.recipient, ciphertext, now + 30 * 86400000, now, now,
+      .bind(id, input.friendId, input.accountId, input.phoneId, input.recipient, ciphertext, now + 30 * 86400000, now, now, testOverride ? 1 : 0,
         input.friendId, intakeMode(env), input.accountId, input.recipient, `+${input.recipient}`).run();
     row = await getIntakeSession(env, input.friendId);
   }

@@ -711,7 +711,10 @@ async function persistWaMessage(
   let intake: { owned: boolean; sessionId?: string } = { owned: false };
   if (queueIntake && msg.direction === 'incoming') {
     try { intake = await reserveIntake(env, { friendId: friend.id, accountId: account.id, phoneId: account.channel_id, recipient: counterpartyId.replace(/^\+/, ''), incomingAt: Number(msg.timestamp) * 1000, text: msg.text || '' }); }
-    catch { console.error('WhatsApp intake reservation unavailable'); }
+    catch {
+      if (intakeMode(env) !== 'off') { intake = { owned: true }; await takeOverIntake(env, friend.id).catch(() => undefined); }
+      console.error('WhatsApp intake reservation unavailable');
+    }
   }
   let welcomeId: string | null = null;
   if (!intake.owned && queueWelcome && msg.direction === 'incoming') {
@@ -762,6 +765,13 @@ async function persistWaMessage(
 
   await updateChatForWaMessage(db, friend.id, msg.direction, msg.occurredAt);
   if (welcomeId) queueWelcome!(welcomeId);
+  if (!duplicate && msg.direction === 'incoming' && allowIdentityLink && msg.type === 'text') {
+    const identity = await linkWhatsappIdentity(env, friend.id, msg.messageId, msg.text?.trim() || '');
+    if (identity.status === 'linked' || identity.status === 'review_required' || identity.status === 'unavailable') {
+      await takeOverIntake(env, friend.id).catch(() => undefined);
+      intake.sessionId = undefined;
+    }
+  }
   if (intake.sessionId && queueIntake) {
     // Provider IDs, rather than equal text in the same second, identify intake turns.
     // Two real YES replies may have identical legacy history projections.
@@ -783,10 +793,6 @@ async function persistWaMessage(
                 ? '📍 位置情報を送信'
                 : `[${msg.type}]`
     );
-
-    if (allowIdentityLink && msg.type === 'text') {
-      await linkWhatsappIdentity(env, friend.id, msg.messageId, msg.text?.trim() || '');
-    }
 
     const quoteHandled = await tryDeliverCustomerQuote({
       env,

@@ -29,19 +29,24 @@ async function harness(run: (h: any) => Promise<void>) {
   for (const name of ['027_whatsapp_calls.sql','028_whatsapp_call_details.sql','029_whatsapp_inbound_welcomes.sql','030_browser_security_storage.sql','031_whatsapp_ai_intake.sql']) sql.exec(readFileSync('../../packages/db/migrations/'+name,'utf8'));
   sql.exec(readFileSync('../../packages/db/migrations/031_whatsapp_ai_intake.sql','utf8'));
   sql.exec("INSERT INTO line_accounts(id,channel_id,name,channel_access_token,channel_secret,channel_type,whatsapp_business_account_id) VALUES('wa','12345','Test sender','provider-token','app-secret','whatsapp','1234567890')");
-  const h: any = { sql, sends: [], models: [], notifications: [], jobs: [], outcome: 'accepted', modelOutput: answer(), failHistory: false, catalogue: catalogue(), beforeModel: null, beforeSend: null };
+  const h: any = { sql, sends: [], models: [], notifications: [], jobs: [], outcome: 'accepted', modelOutput: answer(), failHistory: false, catalogue: catalogue(), beforeModel: null, beforeSend: null, identity: {status:'unlinked'}, linkResult: {status:'unlinked'}, identityReads: 0 };
   const db: any = { prepare(query: string) { const stmt = sql.prepare(query); let params: any[] = []; return { bind(...p: any[]) { params = p; return this; }, async first() { return stmt.get(...params) || null; }, async all() { return { success: true, results: stmt.all(...params) }; }, async run() {
     if (h.failHistory && query.includes('INSERT OR IGNORE INTO messages_log') && String(params[0]).startsWith('wa-intake-')) { h.failHistory = false; throw Error('synthetic local history failure'); }
     return { success: true, meta: { changes: Number(stmt.run(...params).changes) } };
   } }; } };
   h.env = { DB: db, API_KEY: 'staff-key', OPENAI_API_KEY: 'model-key', WHATSAPP_INTAKE_ENCRYPTION_KEY: 'synthetic-encryption-secret-32-bytes', WHATSAPP_INTAKE_MODE: 'test', WHATSAPP_INTAKE_MODEL: 'gpt-5.4-nano', WHATSAPP_INTAKE_ACCOUNTS: 'wa:12345',
     WHATSAPP_INTAKE_TEST_PHONE_HASHES: createHash('sha256').update(PHONE).digest('hex'), WHATSAPP_INTAKE_START_AT: new Date(Date.now()-3600000).toISOString(),
-    WHATSAPP_INBOUND_WELCOME_ENABLED: 'true', WHATSAPP_INBOUND_WELCOME_ACCOUNTS: 'wa:12345', WHATSAPP_INBOUND_WELCOME_START_AT: new Date(Date.now()-3600000).toISOString(), SLACK_BOT_TOKEN: 'slack-token' };
+    WHATSAPP_INBOUND_WELCOME_ENABLED: 'true', WHATSAPP_INBOUND_WELCOME_ACCOUNTS: 'wa:12345', WHATSAPP_INBOUND_WELCOME_START_AT: new Date(Date.now()-3600000).toISOString(), SLACK_BOT_TOKEN: 'slack-token', FLATWORKER_API_BASE_URL:'https://travelworker.invalid', FLATWORKER_TRAVEL_QUOTE_TOKEN:'quote-token' };
   const app = new Hono<any>(); app.use('*', authMiddleware); app.route('/',waWebhook); app.route('/',whatsappIntake); app.route('/',chats);
   const execution: any = { waitUntil(p: Promise<unknown>) { h.jobs.push(p); }, passThroughOnException() {} };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: any, init: any = {}) => {
     const url = String(input);
+    if (url.startsWith('https://travelworker.invalid/api/integrations/whatsapp-identity/')) {
+      assert.equal(init.headers['X-Flat-Travel-Quote-Token'],'quote-token');
+      if (url.endsWith('/read')) { h.identityReads++; return Response.json(h.identity); }
+      return Response.json(h.linkResult);
+    }
     if (url === 'https://api.openai.com/v1/responses') {
       const body = JSON.parse(init.body); h.models.push(body); assert.equal(body.store, false); assert.equal(body.tools, undefined); assert.equal(init.headers.Authorization, 'Bearer model-key');
       assert.ok(init.signal instanceof AbortSignal);
@@ -96,6 +101,38 @@ test('unsigned and bridge-only inputs cannot enroll or trigger AI', async () => 
   assert.equal((await h.webhook('Hello',{bridge:true})).status,200); assert.equal(h.session(),undefined); assert.equal(h.models.length,0); assert.equal(h.sends.length,0);
 }));
 test('test hashes do not enroll another recipient', async () => harness(async h => { await h.webhook('Hello',{phone:'15555550222'}); assert.equal(h.session(),undefined); assert.equal(h.models.length,0); }));
+for (const text of [
+  'FTR-12345678-1234-4123-8123-123456789abc', 'FT-20261028-ABCDEFGH', 'FTQ-20261028-ABCDEFGH', 'FTH-'+ 'a'.repeat(32),
+  'I completed the Accessible Japan travel questionnaire.', 'I submitted my tailor-made enquiry.', 'This is my package tour booking confirmation.',
+]) test(`registered-source enquiry bypasses hearing: ${text.slice(0,45)}`, async () => harness(async h => {
+  await h.webhook(text); assert.equal(h.models.length,0); assert.equal(h.sends.length,0); assert.equal(h.session(),undefined);
+}));
+test('registered case/customer linkage bypasses hearing even without a reference in the message', async () => harness(async h => {
+  h.identity={status:'linked',email:'private@example.invalid',customerName:'Private Person',cases:[{caseId:'existing-case',title:'Existing enquiry',url:'https://travelworker.invalid/cases/existing'}]};
+  await h.webhook('Hello'); assert.equal(h.models.length,0); assert.equal(h.sends.length,0); assert.equal(h.identityReads,1);
+}));
+test('uncertain or unavailable qualification fails closed without an AI introduction', async () => harness(async h => {
+  h.identity={status:'review_required'}; await h.webhook('Hello'); assert.equal(h.sends.length,0); h.identity={status:'unavailable'}; await h.webhook('Hello again'); assert.equal(h.models.length,0); assert.equal(h.sends.length,0);
+}));
+test('a generic package interest is still an unqualified enquiry', async () => harness(async h => { await h.webhook('I am interested in a package tour.'); assert.equal(h.session().status,'consent'); assert.match(h.sends[0].text.body,/AI assistant/); }));
+test('a conversion or identity link appearing mid-conversation stops hearing before another question', async () => harness(async h => {
+  await h.webhook('Hello'); const n=h.sends.length; await h.webhook('I submitted my tailor-made enquiry. FT-20261028-ABCDEFGH'); assert.equal(h.session().status,'human'); await h.webhook('YES'); assert.equal(h.sends.length,n); assert.equal(h.models.length,0);
+}));
+test('current-message identity linking completes before any AI task can send', async () => harness(async h => {
+  h.linkResult={status:'linked',cases:[{caseId:'case',title:'Trip',url:'https://travelworker.invalid/cases/case'}]}; await h.webhook('My email is registered@example.invalid'); assert.equal(h.sends.length,0); assert.equal(h.models.length,0); assert.equal(h.session().status,'human');
+}));
+test('a newly registered identity pauses an active interview without a reference', async () => harness(async h => {
+  await h.webhook('Hello'); h.identity={status:'linked',cases:[{caseId:'newly-registered',title:'Trip',url:'https://travelworker.invalid/cases/new'}]};
+  await h.webhook('YES'); assert.equal(h.session().status,'human'); assert.equal(h.models.length,0); assert.equal(h.sends.length,1);
+}));
+test('a dedicated existing case channel bypasses hearing without identity enrichment', async () => harness(async h => {
+  h.sql.prepare("INSERT INTO friends(id,line_user_id,display_name,line_account_id,is_following,slack_channel_id) VALUES ('existing-case-friend',?,'Example','wa',1,'C-existing-case')").run(PHONE);
+  await h.webhook('Hello'); assert.equal(h.identityReads,0); assert.equal(h.models.length,0); assert.equal(h.sends.length,0);
+}));
+test('the approved test command may simulate a latent lead but never bypasses submitted references', async () => harness(async h => {
+  h.identity={status:'linked'}; await h.webhook('AIテスト'); assert.equal(h.session().test_unqualified_override,1); assert.equal(h.sends.length,1); await h.webhook('YES'); assert.equal(h.sends.length,2);
+  await h.webhook('FTR-12345678-1234-4123-8123-123456789abc'); assert.equal(h.session().status,'human'); assert.equal(h.sends.length,2);
+}));
 test('live mode preserves existing conversations and starts only a genuinely new lead', async () => harness(async h => {
   h.env.WHATSAPP_INTAKE_MODE='off'; await h.webhook('Old conversation'); h.env.WHATSAPP_INTAKE_MODE='live'; const before=h.sends.length;
   await h.webhook('New question from existing customer'); assert.equal(h.session(),undefined); assert.equal(h.sends.length,before);
