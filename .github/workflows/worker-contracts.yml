@@ -29,6 +29,7 @@ jobs:
       - run: pnpm --filter worker typecheck
       - run: pnpm --filter worker test:browser-security
       - run: pnpm --filter worker test:whatsapp-operational-templates
+      - run: pnpm --filter worker test:whatsapp-intake-preview
       - run: pnpm --filter worker test:whatsapp-inbound-welcome
       - run: pnpm --filter worker test:whatsapp-calling
       - run: pnpm --filter worker test:whatsapp-send
