@@ -1,4 +1,6 @@
 import { claimInboundWelcome, sendInboundWelcome } from '../services/whatsapp-inbound-welcome.js';
+import { reserveIntake, enqueueIntake, intakeMode, takeOverIntake } from '../services/whatsapp-intake-store.js';
+import { processIntake } from '../services/whatsapp-intake-runtime.js';
 import { notifyIncomingCall } from '../services/whatsapp-call-alert.js';
 import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, toJstString, updateChat } from '@line-crm/db';
@@ -686,6 +688,7 @@ async function persistWaMessage(
   media?: StoredMedia | null,
   allowIdentityLink = false,
   queueWelcome?: (id: string) => void,
+  queueIntake?: (sessionId: string) => void,
 ): Promise<void> {
   const counterpartyId = resolveCounterpartyId(msg);
   if (!counterpartyId) {
@@ -705,8 +708,13 @@ async function persistWaMessage(
     msg.slackChannelId || null,
   );
 
+  let intake: { owned: boolean; sessionId?: string } = { owned: false };
+  if (queueIntake && msg.direction === 'incoming') {
+    try { intake = await reserveIntake(env, { friendId: friend.id, accountId: account.id, phoneId: account.channel_id, recipient: counterpartyId.replace(/^\+/, ''), incomingAt: Number(msg.timestamp) * 1000, text: msg.text || '' }); }
+    catch { console.error('WhatsApp intake reservation unavailable'); }
+  }
   let welcomeId: string | null = null;
-  if (queueWelcome && msg.direction === 'incoming') {
+  if (!intake.owned && queueWelcome && msg.direction === 'incoming') {
     try { welcomeId = await claimInboundWelcome(env, { friendId: friend.id, accountId: account.id, phoneId: account.channel_id,
       recipient: counterpartyId.replace(/^\+/, ''), providerMessageId: msg.messageId, timestamp: Number(msg.timestamp) * 1000, messageType: msg.type, text: msg.text }); }
     catch { console.error('WhatsApp welcome claim unavailable'); }
@@ -738,6 +746,10 @@ async function persistWaMessage(
   }
 
   if (msg.direction === 'outgoing') {
+    if (intakeMode(env) !== 'off') {
+      const own = await db.prepare('SELECT id FROM whatsapp_intake_turns WHERE provider_message_id=? LIMIT 1').bind(msg.messageId).first();
+      if (!own) { try { await takeOverIntake(env, friend.id); } catch { console.error('WhatsApp intake stopped for staff echo'); } }
+    }
     await recordWhatsappDelivery({
       db,
       lineAccountId: account.id,
@@ -750,6 +762,12 @@ async function persistWaMessage(
 
   await updateChatForWaMessage(db, friend.id, msg.direction, msg.occurredAt);
   if (welcomeId) queueWelcome!(welcomeId);
+  if (intake.sessionId && queueIntake) {
+    // Provider IDs, rather than equal text in the same second, identify intake turns.
+    // Two real YES replies may have identical legacy history projections.
+    await enqueueIntake(env, intake.sessionId, msg.messageId, messageLogId, Number(msg.timestamp) * 1000);
+    queueIntake(intake.sessionId);
+  }
 
   if (!duplicate && msg.direction === 'incoming') {
     const eventText = msg.text?.trim() || (
@@ -1111,7 +1129,8 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
         }
 
         await persistWaMessage(c.env, db, msg, account, storedMedia, bridgeAuthorized || Boolean(account.channel_secret),
-          directlySigned ? (id) => c.executionCtx.waitUntil(sendInboundWelcome(c.env, id).catch(() => console.error('WhatsApp welcome receipt unavailable'))) : undefined);
+          directlySigned ? (id) => c.executionCtx.waitUntil(sendInboundWelcome(c.env, id).catch(() => console.error('WhatsApp welcome receipt unavailable'))) : undefined,
+          directlySigned ? (id) => c.executionCtx.waitUntil(processIntake(c.env, id).catch(() => console.error('WhatsApp intake event stopped'))) : undefined);
       }
 
       return c.text('OK', 200);

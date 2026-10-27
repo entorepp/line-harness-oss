@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { takeOverIntake } from '../services/whatsapp-intake-store.js';
 import {
   getFriends,
   getFriendById,
@@ -462,6 +463,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
       if (friend.channel_type === 'whatsapp') {
         await assertWhatsappReplyWindow(db, friend.id, normalizedSchedule.scheduledAt);
       }
+      if (friend.channel_type === 'whatsapp') await takeOverIntake(c.env, friend.id);
       const scheduled = await createScheduledMessage(db, {
         friendId,
         chatId: existingChat?.id ?? null,

@@ -1,6 +1,9 @@
-# WhatsApp intake and product guidance proposal
+# WhatsApp intake and product guidance proposal (historical review baseline)
 
-Status: offline prototype for owner review. This is not a deployed AI assistant.
+Owner approved this design with `go` on 2026-10-27/28 and authorized the internal
+test recipient. The text below retains the reviewed offline baseline. Current
+implementation, controls and activation evidence are maintained in
+`docs/whatsapp-ai-intake-20261028.md`; this historical review request is satisfied.
 
 ## Problem and project alignment
 

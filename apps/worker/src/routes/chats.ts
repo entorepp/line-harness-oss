@@ -34,6 +34,7 @@ import {
 import { recordWhatsappDelivery } from '../services/whatsapp-delivery.js';
 import { assertWhatsappReplyWindow, getWhatsappReplyWindow, WhatsappReplyWindowError } from '../services/whatsapp-reply-window.js';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
+import { takeOverIntake } from '../services/whatsapp-intake-store.js';
 
 const chats = new Hono<Env>();
 const DEFAULT_MESSAGE_PAGE_SIZE = 200;
@@ -432,6 +433,7 @@ chats.post('/api/chats/:id/send', async (c) => {
 
       if (friend.channel_type === 'whatsapp') {
         await assertWhatsappReplyWindow(c.env.DB, friend.id, normalizedSchedule.scheduledAt);
+        await takeOverIntake(c.env, friend.id);
       }
       const scheduled = await createScheduledMessage(c.env.DB, {
         friendId: friend.id,

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { advanceIntake, newIntake, planIntake, type CatalogueItem, type IntakeState, type Locale, type Slots } from '../src/services/whatsapp-intake-preview.js';
+import { advanceIntake, newIntake, planIntake, type CatalogueItem, type IntakeState, type Locale, type Slots } from '../src/services/whatsapp-intake.js';
 
 // Entirely synthetic: these are deliberately not real, published products or prices.
 const NOW = Date.parse('2026-10-27T00:00:00Z');
 const FUTURE = '2026-10-28T00:00:00Z';
 const baseSlots: Slots = {
   timing: 'November 2027, exact dates not decided', duration: { value: 7, unit: 'days' }, cities: ['Tokyo', 'Kyoto'],
-  party: { adults: 2, children: 0 }, budget: { amount: 600000, currency: 'JPY', basis: 'party_total', scope: 'trip' }, support: ['none'], preference: 'package',
+  party: { adults: 2, children: 0 }, budget: { amount: 600000, currency: 'JPY', basis: 'party_total', scope: 'trip' }, support: ['none'], residency: 'overseas', preference: 'package',
 };
 function collecting(locale: Locale = 'en') { return advanceIntake(newIntake(locale, true), { type: 'consent', allowed: true }); }
 function completed(overrides: Partial<Slots> = {}, locale: Locale = 'en') {
@@ -35,7 +35,7 @@ test('consent precedes collecting any travel or support facts', () => {
   assert.equal(plan(s).action, 'consent');
   assert.deepEqual(advanceIntake(s, { type: 'selection', slot: 'support', value: ['power_wheelchair'] }).slots, {});
   assert.equal(plan(advanceIntake(s, { type: 'consent', allowed: false })).reason, 'ai_consent_declined');
-  assert.equal(plan(collecting()).question, 'timing');
+  assert.equal(plan(collecting()).question, 'residency');
 });
 test('existing customers stay human without collecting new facts', () => {
   const s = newIntake('en', false);
@@ -45,7 +45,7 @@ test('existing customers stay human without collecting new facts', () => {
 test('multi-field free text fills known slots once and preserves month-only wording', () => {
   const s = interpreted(collecting(), answer({ timing: { value: 'November 2027', evidence: 'November 2027' }, duration: { value: { value: 7, unit: 'days' }, evidence: '7 days' } }), 'November 2027 for 7 days');
   assert.equal(s.slots.timing, 'November 2027'); assert.deepEqual(s.slots.duration, { value: 7, unit: 'days' });
-  assert.equal(plan(s).question, 'cities'); assert.equal(Object.hasOwn(s.slots, 'startDate'), false);
+  assert.equal(plan(s).question, 'residency'); assert.equal(Object.hasOwn(s.slots, 'startDate'), false);
 });
 test('summary confirmation is required before any candidate is selected', () => {
   const s = completed(); assert.equal(plan(s).action, 'review'); assert.deepEqual(plan(s).candidates, []);
@@ -78,12 +78,12 @@ for (const intent of ['human', 'urgent', 'existing_booking']) test(`${intent} in
 });
 test('one unclear answer retries the pending question; second hands off with known facts', () => {
   const first = interpreted(collecting(), { intent: 'other', confidence: 0.99, facts: {} });
-  assert.equal(plan(first).question, 'timing'); const second = interpreted(first, null); assert.equal(plan(second).reason, 'repeated_uncertainty');
+  assert.equal(plan(first).question, 'residency'); const second = interpreted(first, null); assert.equal(plan(second).reason, 'repeated_uncertainty');
 });
 test('a valid answer resets uncertainty', () => {
   const first = interpreted(collecting(), null);
   const good = advanceIntake(first, { type: 'selection', slot: 'timing', value: 'Not decided' });
-  assert.equal(good.unclearCount, 0); assert.equal(plan(interpreted(good, null)).question, 'duration');
+  assert.equal(good.unclearCount, 0); assert.equal(plan(interpreted(good, null)).question, 'residency');
 });
 for (const confidence of [0.89, NaN, Infinity, -1, 1.1, '0.99']) test(`invalid or provisional low confidence cannot supply facts: ${String(confidence)}`, () => {
   assert.deepEqual(interpreted(collecting(), { intent: 'answer', confidence, facts: { timing: { value: 'November 2027', evidence: 'November 2027' } } }).slots, {});
@@ -114,13 +114,13 @@ for (const locale of ['en', 'tc', 'sc', 'kr'] as const) test(`localized question
 });
 test('unknown timing/duration/budget stay unknown rather than becoming fixed dates or zero price', () => {
   const s = confirmed({ timing: 'Not decided', duration: { value: null, unit: 'days' }, budget: { amount: null, currency: null, basis: null, scope: null } });
-  assert.equal(plan(s).reason, 'no_verified_catalogue_match'); assert.equal(s.slots.duration!.value, null);
+  assert.equal(plan(s).action, 'recommend'); assert.equal(s.slots.duration!.value, null);
 });
 test('only a current matching published candidate survives; absent catalogue hands off', () => {
   const s = confirmed();
   const p = plan(s); assert.equal(p.action, 'recommend'); assert.equal(p.candidates[0].budgetComparison, 'reference_within_budget');
   assert.equal(p.candidates[0].availability, 'unverified'); assert.equal(p.candidates[0].personalFit, 'unverified'); assert.equal(p.candidates[0].booking, 'not_booked');
-  assert.equal(p.previewOnly, true); assert.equal(plan(s, []).reason, 'no_verified_catalogue_match');
+  assert.equal(p.requiresHumanBeforeBooking, true); assert.equal(plan(s, []).reason, 'no_verified_catalogue_match');
 });
 for (const overrides of [
   { publication: { status: 'draft', revision: 'fake', validUntil: FUTURE } },
@@ -166,10 +166,10 @@ test('either preference includes both product types when both are eligible, max 
   const list = plan(s, [p, { ...p, id: 'two' }, { ...p, id: 'three' }, hotel, p]).candidates;
   assert.equal(list.length, 3); assert.ok(list.some(v => v.kind === 'hotel')); assert.equal(new Set(list.map(v => v.id)).size, 3);
 });
-test('engine remains isolated from production routes, databases, providers and credentials', () => {
+test('conversation policy has no database, provider or credential side effects', () => {
   const entry = readFileSync('src/index.ts', 'utf8'); const hook = readFileSync('src/routes/wa-webhook.ts', 'utf8');
   assert.ok(!entry.includes('whatsapp-intake-preview')); assert.ok(!hook.includes('whatsapp-intake-preview'));
-  const code = readFileSync('src/services/whatsapp-intake-preview.ts', 'utf8');
+  const code = readFileSync('src/services/whatsapp-intake.ts', 'utf8');
   assert.ok(!/fetch\s*\(|env\.|\.prepare\(|sendInboundWelcome\(/.test(code));
 });
 test.after(() => { globalThis.fetch = originalFetch; });
