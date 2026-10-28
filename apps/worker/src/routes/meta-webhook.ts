@@ -191,6 +191,7 @@ async function ensureMetaFriend(
     try {
       const profile = await fetchMetaCustomerProfile({
         channelType: account.channel_type,
+        channelId: account.channel_id,
         customerId,
         accessToken: account.channel_access_token,
       });

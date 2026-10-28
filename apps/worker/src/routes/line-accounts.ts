@@ -359,7 +359,7 @@ lineAccounts.post('/api/line-accounts/:id/meta-profiles/sync', async (c) => {
   for (const row of rows.results) {
     try {
       const profile = await fetchMetaCustomerProfile({ channelType: account.channel_type as 'instagram' | 'facebook',
-        customerId: row.line_user_id.split(':').pop()!, accessToken: account.channel_access_token });
+        customerId: row.line_user_id.split(':').pop()!, channelId: account.channel_id, accessToken: account.channel_access_token });
       let metadata: Record<string, unknown> = {};
       try { metadata = JSON.parse(row.metadata || '{}'); } catch { /* Preserve invalid legacy data by skipping. */ continue; }
       const result = await c.env.DB.prepare(
