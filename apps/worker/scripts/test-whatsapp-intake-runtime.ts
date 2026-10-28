@@ -356,3 +356,9 @@ test('choice v2 queued replacement suppresses unsent vision and cannot choose a 
  assert.equal(h.sends.length,1);assert.match(h.sends[0].interactive.body.text,/utm_content=travel_vision/);
  assert.equal(h.session().status,'review');
 }));
+
+test('choice v2 optional wish comments are retained without a model or losing the next closed question',async()=>harness(async h=>{
+ h.env.WHATSAPP_INTAKE_SCENARIO='choice_v2';await h.webhook('Hello');await h.webhook('Food and quiet gardens');
+ assert.equal(h.models.length,0);assert.match(h.sends.at(-1).interactive.body.text,/Where would you like/);
+ const state=await decryptIntake<any>(h.session().state_ciphertext,h.env.WHATSAPP_INTAKE_ENCRYPTION_KEY,h.session().id);assert.equal(state.travel.answers.wish,'Food and quiet gardens');
+}));

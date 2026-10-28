@@ -82,7 +82,7 @@ export function travelTextAnswer(s: IntakeState, text: string): IntakeState | nu
   if(['progress','followup'].includes(q.key)&&/^(?:whole trip|hotel(?:s)? first|recommend)$/i.test(text)){const value=/^hotel/i.test(text)?'hotel':/^recommend/i.test(text)?'recommend':'whole';const i=q.values.indexOf(value);if(i>=0)return selectTravelChoice(s,i);}
   const exact=q.choices.findIndex(x=>x.toLocaleLowerCase()===text.toLocaleLowerCase()); if(exact>=0)return selectTravelChoice(s,exact);
   if(['not decided','undecided','尚未決定','尚未决定','미정'].includes(text.toLowerCase())) { const i=q.values.indexOf('unknown'); if(i>=0)return selectTravelChoice(s,i); }
-  if(s.travel!.free && ['wish','hotelFeature','hotelDates'].includes(q.key)) {
+  if((q.key==='wish' && text.length<=200 && (s.travel!.free==='wish' || !/\d|Tokyo|Kyoto|Osaka|Hiroshima|Kanazawa|Japan in|JPY|USD|EUR|days|nights|adults|children|東京|东京|京都|大阪|日間|天|도쿄|교토|오사카/iu.test(text))) || (s.travel!.free && ['hotelFeature','hotelDates'].includes(q.key))) {
     const n=structuredClone(s); n.travel!.answers[q.key]=text.slice(0,200); delete n.travel!.free; if(q.key==='wish'){n.travel!.tripRevision++; n.travel!.visionShownFor=null;} n.revision++; return reconcileTravelScenario(n);
   }
   return null;
