@@ -11,6 +11,7 @@ workers_dev = true
 
 # Owner-approved AI intake pilot; only the hashed internal test recipient is enabled.
 WHATSAPP_INTAKE_MODE = "test"
+WHATSAPP_INTAKE_SCENARIO = "choice_v2"
 WHATSAPP_INTAKE_MODEL = "gpt-5.4-nano-2026-03-17"
 WHATSAPP_INTAKE_ACCOUNTS = "wa-english-001:1096652186863862"
 WHATSAPP_INTAKE_START_AT = "2026-10-27T15:00:00Z"

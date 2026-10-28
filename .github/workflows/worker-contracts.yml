@@ -30,6 +30,7 @@ jobs:
       - run: pnpm --filter worker test:browser-security
       - run: pnpm --filter worker test:whatsapp-operational-templates
       - run: pnpm --filter worker test:whatsapp-intake-preview
+      - run: pnpm --filter worker test:whatsapp-travel-scenario
       - run: pnpm --filter worker test:whatsapp-intake-runtime
       - run: pnpm --filter worker test:whatsapp-inbound-welcome
       - run: pnpm --filter worker test:whatsapp-calling

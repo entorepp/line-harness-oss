@@ -52,7 +52,7 @@ export function projectHotels(data: any, city: string, locale: Locale): Catalogu
 /** No price/provider fields from public data enter candidates or the model. */
 export async function loadIntakeCatalogue(s: IntakeState, deadline = Date.now() + 8000): Promise<CatalogueItem[]> {
   const data = await publicData(undefined, deadline); const journeys = projectJourneys(data, s.locale);
-  if (s.slots.preference === 'package' || s.slots.cities?.length !== 1) return journeys;
+  if (s.travel || s.slots.preference === 'package' || s.slots.cities?.length !== 1) return journeys;
   const city = s.slots.cities[0]; const source = journeys.find(p => p.cities.includes(city));
   if (!source) return s.slots.preference === 'either' ? journeys : [];
   const detail = await publicData(source.id, deadline); const hotels = projectHotels(detail, city, s.locale);

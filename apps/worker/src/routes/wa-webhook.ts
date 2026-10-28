@@ -43,6 +43,7 @@ interface WaForwardedMessage {
 }
 
 interface NormalizedWaMessage extends WaForwardedMessage {
+  intakeChoiceId?: string;
   direction: WaDirection;
   occurredAt: string;
 }
@@ -775,7 +776,7 @@ async function persistWaMessage(
   if (intake.sessionId && queueIntake) {
     // Provider IDs, rather than equal text in the same second, identify intake turns.
     // Two real YES replies may have identical legacy history projections.
-    await enqueueIntake(env, intake.sessionId, msg.messageId, messageLogId, Number(msg.timestamp) * 1000);
+    await enqueueIntake(env, intake.sessionId, msg.messageId, messageLogId, Number(msg.timestamp) * 1000, 'signed_inbound', msg.intakeChoiceId);
     queueIntake(intake.sessionId);
   }
 
@@ -870,6 +871,7 @@ function extractMetaWebhookMessages(payload: MetaWebhookPayload): NormalizedWaMe
             senderName: resolveContactDisplayName(contact, from),
             type: message.type.trim(),
             text: inferMetaText(message),
+            intakeChoiceId: message.interactive?.button_reply?.id || message.interactive?.list_reply?.id,
             mediaUrl: media?.id,
             messageId: message.id.trim(),
             phoneNumberId,

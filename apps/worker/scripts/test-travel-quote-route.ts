@@ -80,7 +80,7 @@ async function request(payload: Record<string, unknown>, origin = 'https://flat-
 }
 
 const payload = {
-  attribution: {schemaVersion:'flat-travel-attribution-v1',status:'captured',firstTouch:{utm:{source:'meta',medium:'paid_social',campaign:'test'},landingPath:'/en'},lastTouch:{utm:{source:'meta',medium:'paid_social',campaign:'test'},landingPath:'/en'},route:['/en','/en/tailor-made']},
+  attribution: {schemaVersion:'flat-travel-attribution-v1',status:'captured',firstTouch:{utm:{source:'whatsapp',medium:'messaging',campaign:'wa_travel_scenario_v2',content:'whole_trip'},landingPath:'/en'},lastTouch:{utm:{source:'whatsapp',medium:'messaging',campaign:'wa_travel_scenario_v2',content:'whole_trip'},landingPath:'/en'},route:['/en','/en/tailor-made']},
   quoteReference: 'FTQ-20260801-AB12CD34',
   mode: 'journey',
   channel: 'whatsapp',
@@ -147,8 +147,10 @@ const created = await request(payload);
 assert.equal(created.status, 202);
 assert.deepEqual(await created.json(), { success: true, duplicate: false, slackNotified: true, reference: payload.quoteReference, flatworkerDraft: { status: 'created', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true, automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } } });
 assert.equal(rows.length, 1);
-assert.equal(JSON.parse(String(rows[0].metadata)).attribution.lastTouch.utm.source, 'meta');
-assert.equal((flatworkerPosts[0].body.attribution as any).lastTouch.utm.source, 'meta');
+assert.equal(JSON.parse(String(rows[0].metadata)).attribution.lastTouch.utm.source, 'whatsapp');
+assert.equal((flatworkerPosts[0].body.attribution as any).lastTouch.utm.source, 'whatsapp');
+assert.equal((flatworkerPosts[0].body.attribution as any).lastTouch.utm.content, 'whole_trip');
+assert.equal((flatworkerPosts[0].body.attribution as any).lastTouch.utm.campaign, 'wa_travel_scenario_v2');
 assert.equal(rows[0].event_type, 'travel_quote_intent');
 assert.equal(rows[0].channel, 'slack');
 assert.equal(rows[0].status, 'sent');
@@ -231,7 +233,7 @@ assert.deepEqual(flatworkerPosts[0].body.supportNeeds, ['Transfers', 'Bathroom s
 assert.doesNotMatch(rows[0].metadata, /system-test@example\.com/);
 
 const duplicate = await request({...payload, attribution: undefined});
-assert.equal(JSON.parse(String(rows[0].metadata)).attribution.lastTouch.utm.source, "meta");
+assert.equal(JSON.parse(String(rows[0].metadata)).attribution.lastTouch.utm.source, "whatsapp");
 assert.equal(duplicate.status, 200);
 assert.deepEqual(await duplicate.json(), { success: true, duplicate: true, slackNotified: null, reference: payload.quoteReference, flatworkerDraft: { status: 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: true, automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } } });
 assert.equal(rows.length, 1);

@@ -120,11 +120,12 @@ export async function reserveIntake(env: Env['Bindings'], input: { friendId: str
   }
   return { owned: true, ...(activeIntake(row.status) || (row.status === 'human' && row.handoff_notification === 'none') ? { sessionId: row.id } : {}) };
 }
-export async function enqueueIntake(env: Env['Bindings'], sessionId: string, triggerKey: string, messageLogId: string | null, incomingAt: number, triggerType = 'signed_inbound'): Promise<string> {
+export async function enqueueIntake(env: Env['Bindings'], sessionId: string, triggerKey: string, messageLogId: string | null, incomingAt: number, triggerType = 'signed_inbound', choiceId?: string): Promise<string> {
   const id = crypto.randomUUID();
   await env.DB.prepare(`INSERT OR IGNORE INTO whatsapp_intake_turns(id,session_id,trigger_key,trigger_type,message_log_id,incoming_at,created_at)
     SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM whatsapp_intake_sessions WHERE id=? AND status IN ('consent','collecting','review','recommended'))`)
     .bind(id, sessionId, triggerKey, triggerType, messageLogId, incomingAt, Date.now(), sessionId).run();
+  if (triggerType === 'signed_inbound' && choiceId && /^wi:[a-f0-9-]{36}:[0-9]$/.test(choiceId)) await env.DB.prepare("INSERT OR IGNORE INTO whatsapp_intake_choices(turn_id,choice_id) SELECT id,? FROM whatsapp_intake_turns WHERE session_id=? AND trigger_key=? AND status='pending'").bind(choiceId,sessionId,triggerKey).run();
   if (messageLogId) await env.DB.prepare('UPDATE whatsapp_intake_sessions SET initial_message_log_id=COALESCE(initial_message_log_id,?) WHERE id=?').bind(messageLogId, sessionId).run();
   return sessionId;
 }

@@ -1,3 +1,4 @@
+import type { TravelScenario } from './whatsapp-travel-scenario.js';
 /** Pure conversation policy. Provider, persistence and send controls live separately. */
 export const INTAKE_SLOTS = ['preference', 'support', 'cities', 'timing', 'duration', 'party', 'budget'] as const;
 export type Slot = typeof INTAKE_SLOTS[number];
@@ -16,7 +17,7 @@ export type Slots = {
   preference: 'package' | 'hotel' | 'either';
 };
 export type IntakeState = {
-  version: 1; revision: number; locale: Locale;
+  version: 1; revision: number; locale: Locale; travel?: TravelScenario;
   phase: 'consent' | 'collecting' | 'review' | 'recommended' | 'human' | 'stopped' | 'outside_scope';
   slots: Partial<Slots>; unclearCount: number; reason?: string;
 };

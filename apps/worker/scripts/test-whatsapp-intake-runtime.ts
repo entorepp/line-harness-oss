@@ -26,7 +26,7 @@ const catalogue = () => ({ source: 'Sanity published runtime Journey discovery d
 
 async function harness(run: (h: any) => Promise<void>) {
   const sql = new DatabaseSync(':memory:'); sql.exec(readFileSync('../../packages/db/schema.sql','utf8'));
-  for (const name of ['027_whatsapp_calls.sql','028_whatsapp_call_details.sql','029_whatsapp_inbound_welcomes.sql','030_browser_security_storage.sql','031_whatsapp_ai_intake.sql']) sql.exec(readFileSync('../../packages/db/migrations/'+name,'utf8'));
+  for (const name of ['027_whatsapp_calls.sql','028_whatsapp_call_details.sql','029_whatsapp_inbound_welcomes.sql','030_browser_security_storage.sql','031_whatsapp_ai_intake.sql','032_whatsapp_intake_choices.sql']) sql.exec(readFileSync('../../packages/db/migrations/'+name,'utf8'));
   sql.exec(readFileSync('../../packages/db/migrations/031_whatsapp_ai_intake.sql','utf8'));
   sql.exec("INSERT INTO line_accounts(id,channel_id,name,channel_access_token,channel_secret,channel_type,whatsapp_business_account_id) VALUES('wa','12345','Test sender','provider-token','app-secret','whatsapp','1234567890')");
   const h: any = { sql, sends: [], models: [], notifications: [], jobs: [], outcome: 'accepted', modelOutput: answer(), failHistory: false, catalogue: catalogue(), beforeModel: null, beforeSend: null, identity: {status:'unlinked'}, linkResult: {status:'unlinked'}, identityReads: 0 };
@@ -57,7 +57,7 @@ async function harness(run: (h: any) => Promise<void>) {
     }
     if (url.startsWith('https://flat-travel.com/__journey-data-v1')) { assert.equal(init.method, undefined); assert.equal(init.headers.Authorization, undefined); assert.ok(!url.includes(PHONE)); return Response.json(new URL(url).searchParams.has('tour') && h.detail ? h.detail : h.catalogue); }
     if (url.startsWith('https://flat-travel.com/en/journeys/')) return new Response('<html lang="en"><head><title>Published fixture Tokyo and Kyoto | Flat Travel</title></head></html>', { headers: { 'Content-Type': 'text/html' } });
-    if (url.startsWith('https://flat-travel.com/en/accessible-hotels/')) return new Response('<html lang="en"><head><title>Published hotel title | Flat Travel</title></head></html>', { headers: { 'Content-Type': 'text/html' } });
+    if (url.startsWith('https://flat-travel.com/en/accessible-hotels') || url==='https://flat-travel.com/en/tailor-made') return new Response('<html lang="en"><head><title>Published hotel title | Flat Travel</title></head></html>', { headers: { 'Content-Type': 'text/html' } });
     if (url === 'https://slack.com/api/chat.postMessage') { const payload = JSON.parse(init.body); h.notifications.push(payload); return Response.json({ ok: true }); }
     assert.equal(url, 'https://graph.facebook.com/v25.0/12345/messages');
     const body = JSON.parse(init.body); h.sends.push(body); assert.equal(init.headers.Authorization, 'Bearer provider-token');
@@ -69,7 +69,7 @@ async function harness(run: (h: any) => Promise<void>) {
   h.flush = async () => { while (h.jobs.length) await Promise.all(h.jobs.splice(0)); };
   let seq = 0;
   h.webhook = async (text: string, opts: any = {}) => {
-    const payload = { object: 'whatsapp_business_account', entry: [{ id: '1234567890', changes: [{ field: 'messages', value: { metadata: { phone_number_id: '12345' }, messages: [{ from: opts.phone || PHONE, id: opts.id || `wamid.in-${++seq}`, timestamp: String(opts.timestamp ?? Math.floor(Date.now()/1000)), type: 'text', text: { body: text } }] } }] }] };
+    const payload = { object: 'whatsapp_business_account', entry: [{ id: '1234567890', changes: [{ field: 'messages', value: { metadata: { phone_number_id: '12345' }, messages: [{ from: opts.phone || PHONE, id: opts.id || `wamid.in-${++seq}`, timestamp: String(opts.timestamp ?? Math.floor(Date.now()/1000)), type: opts.choice ? 'interactive' : 'text', ...(opts.choice ? {interactive:{type:'list_reply',list_reply:{id:opts.choice,title:text}}} : {text: { body: text }}) }] } }] }] };
     const body = JSON.stringify(payload); const signature = createHmac('sha256','app-secret').update(body).digest('hex');
     const response = await app.fetch(new Request('https://test.invalid/webhook/whatsapp', { method: 'POST', body, headers: { 'Content-Type':'application/json', ...(opts.bridge ? { Authorization: 'Bearer bridge-key' } : opts.unsigned ? {} : { 'X-Hub-Signature-256':'sha256='+signature }) } }), h.env, execution);
     if (opts.flush !== false) await h.flush(); return response;
@@ -307,3 +307,52 @@ test('public discovery never establishes personal fit', () => {
   const hotels=projectHotels({fetchedAt:new Date().toISOString(),tours:[{stays:[['stay','Tokyo',0,2,'tokyo',[{candidateScope:'journey',source:'sanity-linked',hotelId:'H',name:'Public hotel',path:'/en/accessible-hotels/public-hotel'},{candidateScope:'specialist',source:'sanity-linked',hotelId:'SECRET',name:'Hidden',path:'/en/accessible-hotels/hidden'}]]]}]},'Tokyo','en');
   assert.deepEqual(hotels.map(h=>h.id),['H']);
 });
+
+
+test('choice v2 signed native journey is deterministic, vision precedes progression and UTM separates steps', async () => harness(async h => {
+  h.env.WHATSAPP_INTAKE_SCENARIO='choice_v2';
+  await h.webhook('Hello');
+  const choose = async (i:number) => { const sent=h.sends.at(-1).interactive; const options=sent.action.buttons?.map((b:any)=>b.reply)||sent.action.sections[0].rows; assert.ok(options[i]); await h.webhook('untrusted title', {choice:options[i].id}); };
+  assert.match(h.sends[0].interactive.body.text,/most like to enjoy/);
+  for(const index of [0,1,0,1,1,1,1,1,0]) await choose(index);
+  assert.equal(h.models.length,0); assert.equal(h.session().status,'review');
+  assert.match(h.sends.at(-1).interactive.body.text,/utm_content=travel_vision/);
+  const old=h.sends[0].interactive.action.sections[0].rows[0].id;
+  await h.webhook('wrong title',{choice:old});
+  assert.equal(h.models.length,0); assert.equal(h.session().status,'review');
+  await choose(1);
+  assert.equal(h.models.length,0); assert.equal(h.session().status,'recommended');
+  assert.match(h.sends.at(-1).text.body,/utm_content=whole_trip/);
+  assert.equal(h.notifications.filter((n:any)=>n.text.startsWith('WA AI相談')).length,0);
+}));
+test('choice v2 detailed initial enquiry skips answered questions but still shows vision', async () => harness(async h => {
+  h.env.WHATSAPP_INTAKE_SCENARIO='choice_v2';await h.webhook(FULL);
+  assert.equal(h.models.length,1);assert.equal(h.session().status,'review');
+  assert.match(h.sends.at(-1).interactive.body.text,/utm_content=travel_vision/);
+}));
+test('choice v2 unknown send is never retried and does not acknowledge vision', async () => harness(async h => {
+  h.env.WHATSAPP_INTAKE_SCENARIO='choice_v2';h.outcome='unknown';await h.webhook(FULL);
+  assert.equal(h.session().status,'human');assert.equal(h.sends.length,1);
+  const state=await decryptIntake<any>(h.session().state_ciphertext,h.env.WHATSAPP_INTAKE_ENCRYPTION_KEY,h.session().id);
+  assert.equal(state.travel.visionShownFor,null);await h.webhook('Hello');assert.equal(h.sends.length,1);
+}));
+
+test('choice v2 hotel-first keeps requirements and can expand to whole trip', async()=>harness(async h=>{
+ h.env.WHATSAPP_INTAKE_SCENARIO='choice_v2';await h.webhook(FULL);
+ const choose=async(i:number)=>{const p=h.sends.at(-1).interactive;const rows=p.action.buttons?.map((x:any)=>x.reply)||p.action.sections[0].rows;await h.webhook('ignored',{choice:rows[i].id});};
+ await choose(0);await choose(0);await choose(1);await choose(0);await choose(1);
+ assert.match(h.sends.at(-1).interactive.body.text,/utm_content=hotel_first/);
+ assert.match(h.sends.at(-1).interactive.body.text,/shower=showerBoothOnly/);
+ assert.equal(h.models.length,1);await choose(0);
+ assert.match(h.sends.at(-1).text.body,/utm_content=whole_trip/);assert.equal(h.models.length,1);
+}));
+test('choice v2 native replies from another flow cannot change the current prompt',async()=>harness(async h=>{
+ h.env.WHATSAPP_INTAKE_SCENARIO='choice_v2';await h.webhook('Hello');
+ await h.webhook('Manual wheelchair',{choice:'wi:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:2'});
+ assert.equal(h.models.length,0);assert.match(h.sends.at(-1).interactive.body.text,/most like to enjoy/);
+}));
+test('choice v2 queued replacement suppresses unsent vision and cannot choose a path before it',async()=>harness(async h=>{
+ h.env.WHATSAPP_INTAKE_SCENARIO='choice_v2';h.beforeModel=()=>h.webhook('2',{flush:false});await h.webhook(FULL);
+ assert.equal(h.sends.length,1);assert.match(h.sends[0].interactive.body.text,/utm_content=travel_vision/);
+ assert.equal(h.session().status,'review');
+}));
