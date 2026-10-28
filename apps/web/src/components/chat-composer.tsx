@@ -425,7 +425,7 @@ export default function ChatComposer({
   // hold queued every send for 30 seconds and then depended on cron/send-now,
   // which made successful sends look delayed or failed to staff.
   const supportsUndoSend = !isKakao && !isWhatsApp
-  const attachmentsDisabled = isKakao || isWeChat || isMetaDm
+  const attachmentsDisabled = isKakao || isWeChat
   const attachmentAccept = isWhatsApp ? WHATSAPP_ATTACHMENT_ACCEPT : DEFAULT_ATTACHMENT_ACCEPT
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
   const latestScheduleTime = isWhatsApp
@@ -722,9 +722,13 @@ export default function ChatComposer({
       }
     }
 
-    if (whatsappKind === 'video' || whatsappKind === 'audio') {
+    const metaMediaKind = isMetaDm
+      ? attachment.file.type.startsWith('video/') ? 'video'
+        : attachment.file.type.startsWith('audio/') ? 'audio' : null
+      : null
+    if (whatsappKind === 'video' || whatsappKind === 'audio' || metaMediaKind) {
       return {
-        messageType: whatsappKind,
+        messageType: metaMediaKind || whatsappKind!,
         content: JSON.stringify({ url }),
       }
     }
