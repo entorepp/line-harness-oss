@@ -282,7 +282,7 @@ assert.equal(powerWithoutWheelchairWeight.ok, true);
 const manualWithoutWeights = parseTravelQuoteIntent({ ...payload, mobilityDeviceType: 'Manual wheelchair', bodyWeightKg: null, wheelchairWeightKg: null });
 assert.equal(manualWithoutWeights.ok, true);
 const manualWithoutModel = parseTravelQuoteIntent({ ...payload, mobilityDeviceType: 'Manual wheelchair', wheelchairModel: '', bodyWeightKg: null, wheelchairWeightKg: null });
-assert.equal(manualWithoutModel.ok, false);
+assert.equal(manualWithoutModel.ok, true);
 const missingFamilyName = parseTravelQuoteIntent({ ...payload, familyName: '' });
 assert.equal(missingFamilyName.ok, false);
 const legacySingleName = parseTravelQuoteIntent({ ...payload, givenName: '', familyName: '' });
@@ -429,3 +429,16 @@ for (const stage of ['arrival', 'departure']) {
   assert.equal(flatworkerPosts.at(-1)?.body.agreementSnapshot.hotels[0].estimateJpy, 240000);
 }
 console.log('Airport tariff identity and hotel price survive the actual intake relay in both directions');
+
+// Public enquiries can be submitted before the traveller knows the chair identity.
+for (const device of ['Manual wheelchair','Power wheelchair','Mobility scooter']) {
+  const optionalChair = structuredClone(payload);
+  optionalChair.mobilityDeviceType = device;
+  optionalChair.wheelchairBrand = ''; optionalChair.wheelchairModel = '';
+  optionalChair.boardingPreference = 'Not sure yet';
+  optionalChair.bodyWeightKg = 80;
+  const result = parseTravelQuoteIntent(optionalChair);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  if(result.ok){assert.equal(result.value.wheelchairBrand,'');assert.equal(result.value.wheelchairModel,'');}
+}
+console.log('Optional wheelchair identity accepted without placeholders; consent and safety fields preserved');

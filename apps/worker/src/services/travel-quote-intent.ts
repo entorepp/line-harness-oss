@@ -508,7 +508,7 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   if (PROFILE_SCHEMA_VERSIONS.has(profileSchemaVersion || '')) {
     if (!customerName || !mobilityDeviceType || !assistanceMethod || !ASSISTANCE_METHODS.has(assistanceMethod)) return { ok: false, error: 'Required traveller details missing' };
     if (profileSchemaVersion === TRAVEL_PROFILE_SCHEMA_VERSION && !email) return { ok: false, error: 'Traveller email required' };
-    if (WHEELCHAIR_DEVICES.has(mobilityDeviceType) && (!wheelchairBrand || !wheelchairModel || !boardingPreference)) return { ok: false, error: 'Wheelchair details missing' };
+    if (WHEELCHAIR_DEVICES.has(mobilityDeviceType) && !boardingPreference) return { ok: false, error: 'Wheelchair details missing' };
     if (HEAVY_MOBILITY_DEVICES.has(mobilityDeviceType) && bodyWeightKg == null) return { ok: false, error: 'Power mobility body weight missing' };
   }
 
