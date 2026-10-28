@@ -27,7 +27,9 @@ let status=200;
 globalThis.fetch=async(input,init)=>{
  const url=String(input);
  if(init?.method==='POST') { calls.push(JSON.parse(String(init.body))); return Response.json(status===200?{message_id:'sent-id'}:{error:{message:'Rejected'}},{status}); }
- if(url.includes('/customer?'))return Response.json({});
+ if(url.includes('/customer?') || url.includes('/unknown?'))return Response.json({});
+ if(url.includes('/business/conversations?'))return Response.json({data:[{participants:{data:[{id:'business',username:'NOT_THE_CUSTOMER'},{id:'customer',username:'verified_customer'}]}}]});
+ if(url.includes('/card?'))return Response.json({id:'card',attachments:{data:[{generic_template:{title:'Real provider card',media_url:'https://cdn.test/shared'}}]}});
  if(url.includes('/detail?'))return Response.json({id:'detail',message:'Recovered body',attachments:{data:[{image_data:{url:'https://cdn.test/photo'}}]}});
  if(url.startsWith('https://cdn.test/'))return new Response('photo',{headers:{'Content-Type':'image/jpeg'}});
  throw new Error('Unexpected network: '+url);
@@ -49,6 +51,12 @@ try {
  await assert.rejects(()=>dispatchOutboundMessage({env,friend,input:{messageType:'image',content:'https://files.test/image'}}),/24時間/);
  assert.equal(calls.length,count+1);
  await assert.rejects(()=>fetchMetaCustomerProfile({channelType:'instagram',customerId:'customer',accessToken:'token'}),/顧客名/);
+ const fallback=await fetchMetaCustomerProfile({channelType:'instagram',channelId:'business',customerId:'customer',accessToken:'token'});
+ assert.equal(fallback.displayName,'verified_customer');
+ await assert.rejects(()=>fetchMetaCustomerProfile({channelType:'instagram',channelId:'business',customerId:'unknown',accessToken:'token'}),/顧客名/);
+ const card=await fetchMetaMessageDetail({channelType:'instagram',messageId:'card',accessToken:'token'});
+ assert.equal(card?.attachments[0].payload?.title,'Real provider card');
+ assert.equal(card?.attachments[0].payload?.url,'https://cdn.test/shared');
  const detail=await fetchMetaMessageDetail({channelType:'instagram',messageId:'detail',accessToken:'token'});
  assert.equal(detail?.text,'Recovered body');assert.equal(detail?.attachments.length,1);
  const message=normalizeMetaEvent({sender:{id:'customer'},timestamp:Date.now(),message:{mid:'multi',text:'Photo caption',attachments:[{type:'image',payload:{url:'https://cdn.test/one'}},{type:'image',payload:{url:'https://cdn.test/two'}}]}}, {})!;

@@ -89,6 +89,7 @@ export async function fetchMetaChannelProfile(account: Pick<LineAccount, 'channe
 export async function fetchMetaCustomerProfile(opts: {
   channelType: MetaMessagingChannelType;
   customerId: string;
+  channelId?: string;
   accessToken: string;
 }): Promise<{ displayName: string | null; pictureUrl: string | null; username: string | null }> {
   const fields = opts.channelType === 'facebook'
@@ -105,6 +106,26 @@ export async function fetchMetaCustomerProfile(opts: {
     profile_pic?: string;
   };
 
+  // Some customers expose only the conversation participant username.
+  // Match the exact scoped customer ID; never borrow another participant's name.
+  if (opts.channelType === 'instagram' && opts.channelId
+      && (res.ok || body.error?.code === 100)
+      && !body.name && !body.username && !body.first_name && !body.last_name) {
+    const params = new URLSearchParams({ platform: 'instagram', user_id: opts.customerId, fields: 'participants', limit: '10' });
+    const conversations = await fetch(`${metaGraphApiBase(opts.channelType)}/${encodeURIComponent(opts.channelId)}/conversations?${params}`, {
+      headers: { Authorization: `Bearer ${opts.accessToken}` }, signal: AbortSignal.timeout(8000),
+    });
+    if (conversations.ok) {
+      const result = await conversations.json() as { data?: Array<{ participants?: { data?: Array<{ id?: string; username?: string }> } }> };
+      const names = new Set((result.data || []).flatMap(item => (item.participants?.data || [])
+        .filter(person => person.id === opts.customerId && typeof person.username === 'string' && person.username.trim())
+        .map(person => person.username!.trim())));
+      if (names.size === 1) {
+        const username = [...names][0];
+        return { displayName: username, username, pictureUrl: null };
+      }
+    }
+  }
   if (!res.ok) {
     throw metaGraphError(body, 'Failed to fetch Meta customer profile');
   }
@@ -184,11 +205,15 @@ export async function fetchMetaMessageDetail(opts: {
   if (!response.ok) return null;
   const body = await response.json() as {
     id?: string; message?: string;
-    attachments?: { data?: Array<{ mime_type?: string; name?: string; file_url?: string;
+    attachments?: { data?: Array<{ generic_template?: { title?: string; subtitle?: string; media_url?: string; url?: string }; mime_type?: string; name?: string; file_url?: string;
       image_data?: { url?: string }; video_data?: { url?: string } }> };
   };
   if (body.id !== opts.messageId) return null;
-  const attachments = (body.attachments?.data || []).flatMap(item => {
+  const attachments: import('./meta-webhook-utils.js').MetaAttachment[] = (body.attachments?.data || []).flatMap((item): import('./meta-webhook-utils.js').MetaAttachment[] => {
+    if (item.generic_template) {
+      const card = item.generic_template;
+      return [{ type: 'template', payload: { title: card.title, text: card.subtitle, url: card.url || card.media_url } }];
+    }
     const url = item.image_data?.url || item.video_data?.url || item.file_url;
     if (!url) return [];
     try { if (new URL(url).protocol !== 'https:') return []; } catch { return []; }
