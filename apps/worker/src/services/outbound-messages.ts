@@ -449,6 +449,7 @@ export async function dispatchOutboundMessage(opts: {
   friend: MessagingFriendContext;
   input: OutboundMessageInput;
   intakeAutomation?: boolean;
+  intakeInteractive?: object;
   signal?: AbortSignal;
 }): Promise<DispatchedMessage> {
   const messageType = opts.input.messageType ?? 'text';
@@ -498,7 +499,7 @@ export async function dispatchOutboundMessage(opts: {
         Authorization: `Bearer ${waToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildWhatsAppMessagePayload(opts.friend.line_user_id, opts.input)),
+      body: JSON.stringify(opts.intakeAutomation && opts.intakeInteractive ? { messaging_product: 'whatsapp', recipient_type: 'individual', to: opts.friend.line_user_id.replace(/^\+/, ''), type: 'interactive', interactive: opts.intakeInteractive } : buildWhatsAppMessagePayload(opts.friend.line_user_id, opts.input)),
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
 

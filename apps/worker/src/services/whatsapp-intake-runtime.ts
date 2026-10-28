@@ -1,7 +1,8 @@
+import { enableTravelScenario, reconcileTravelScenario, nextTravelPrompt, travelTextAnswer, selectTravelChoice, travelFactsChanged, renderTravelScenario, nativeTravelInteractive, type TravelReply } from './whatsapp-travel-scenario.js';
 import { jstNow, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { advanceIntake, planIntake, type IntakeState } from './whatsapp-intake.js';
-import { extractIntake, sensitiveIntakeText } from './whatsapp-intake-ai.js';
+import { extractIntake, sensitiveIntakeText, redactIntakeText } from './whatsapp-intake-ai.js';
 import { loadIntakeCatalogue, verifyIntakeCandidateTitles } from './whatsapp-intake-catalogue.js';
 import { affirmative, greeting, localIntakeTurn, renderIntakePlan } from './whatsapp-intake-dialogue.js';
 import { activeIntake, decryptIntake, encryptIntake, intakeAllowed, readIntakeState, type IntakeSession, type IntakeTurn } from './whatsapp-intake-store.js';
@@ -56,7 +57,8 @@ async function stopSession(env: Env['Bindings'], row: IntakeSession, token: stri
 }
 async function recoverAccepted(env: Env['Bindings'], row: IntakeSession, turn: IntakeTurn) {
   if (turn.status !== 'accepted' || !turn.provider_message_id || !turn.reply_ciphertext || !turn.sent_at) return;
-  const text = await decryptIntake<string>(turn.reply_ciphertext, env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, turn.id);
+  const packet = await decryptIntake<string | TravelReply>(turn.reply_ciphertext, env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, turn.id);
+  const text = typeof packet === 'string' ? packet : packet.text;
   const logId = `wa-intake-${turn.id}`;
   await env.DB.prepare("INSERT OR IGNORE INTO messages_log(id,friend_id,direction,message_type,content,created_at) VALUES (?,?,'outgoing','text',?,?)").bind(logId, row.friend_id, text, turn.sent_at).run();
   await recordWhatsappDelivery({ db: env.DB, lineAccountId: row.line_account_id, providerMessageId: turn.provider_message_id, messageLogId: logId, status: 'accepted' });
@@ -106,9 +108,27 @@ export async function processIntake(env: Env['Bindings'], sessionId: string, dea
       const introduction = !consumed && row.status !== 'consent';
       const input = await message(env, turn.message_log_id, row.friend_id);
       const text = input?.content || '';
-      const local = localIntakeTurn(state, text);
-      if (input && input.message_type !== 'text') { state.phase = 'human'; state.reason = 'unsupported_message'; }
-      else if (text.length > 2500 || sensitiveIntakeText(text)) { state.phase = 'human'; state.reason = 'sensitive_or_long_message'; }
+      if (env.WHATSAPP_INTAKE_SCENARIO === 'choice_v2') state = enableTravelScenario(state);
+      let choiceIndex: number | undefined; let nativeInput = false;
+      if (state.travel) {
+        const previous = await env.DB.prepare("SELECT id,reply_ciphertext FROM whatsapp_intake_turns WHERE session_id=? AND status='accepted' ORDER BY seq DESC LIMIT 1").bind(row.id).first<{id:string;reply_ciphertext:string}>();
+        const packet = previous?.reply_ciphertext ? await decryptIntake<string | TravelReply>(previous.reply_ciphertext, env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, previous.id) : undefined;
+        if (packet && typeof packet !== 'string' && packet.flow === state.travel.flow && packet.vision === state.travel.tripRevision) state.travel.visionShownFor = packet.vision;
+        reconcileTravelScenario(state);
+        const choice = await env.DB.prepare('SELECT choice_id FROM whatsapp_intake_choices WHERE turn_id=?').bind(turn.id).first<{choice_id:string}>();
+        nativeInput = input?.message_type === 'interactive' || !!choice;
+        const match = choice?.choice_id.match(/^wi:([a-f0-9-]{36}):([0-9])$/);
+        if (match && previous?.id === match[1] && packet && typeof packet !== 'string' && packet.flow === state.travel.flow && packet.revision === state.revision && packet.prompt?.key === nextTravelPrompt(state)?.key && packet.prompt?.values[Number(match[2])] !== undefined) choiceIndex = Number(match[2]);
+      }
+      let local = localIntakeTurn(state, text);
+      if (state.travel && nativeInput) local = {state: choiceIndex === undefined ? state : selectTravelChoice(state, choiceIndex), handled:true};
+      else if (state.travel && !['human','stopped','outside_scope'].includes(local.state.phase) && !greeting(text)) {
+        const friend = await env.DB.prepare('SELECT display_name FROM friends WHERE id=?').bind(row.friend_id).first<{display_name:string}>();
+        const answer = travelTextAnswer(state, redactIntakeText(text,[friend?.display_name || '']));
+        if(answer) local = {state:answer,handled:true};
+      }
+      if (input && input.message_type !== 'text' && !nativeInput) { state.phase = 'human'; state.reason = 'unsupported_message'; }
+      else if (!nativeInput && (text.length > 2500 || sensitiveIntakeText(text))) { state.phase = 'human'; state.reason = 'sensitive_or_long_message'; }
       else {
         state = local.state; silent = Boolean(local.silent);
         let modelText = local.handled ? '' : text;
@@ -127,7 +147,7 @@ export async function processIntake(env: Env['Bindings'], sessionId: string, dea
             try {
               const result = await extractIntake(env, state, modelText, [friend?.display_name || ''], deadline - 7000);
               state.locale = result.locale;
-              state = advanceIntake(state, { type: 'interpreted', text: result.text, result: result.interpretation });
+              state = travelFactsChanged(state, advanceIntake(state, { type: 'interpreted', text: result.text, result: result.interpretation }));
               await env.DB.prepare('UPDATE whatsapp_intake_turns SET model=?,input_tokens=?,output_tokens=?,elapsed_ms=? WHERE id=?')
                 .bind(result.model, result.inputTokens, result.outputTokens, result.elapsedMs, turn.id).run();
             } catch { state.phase = 'human'; state.reason = 'model_unavailable'; }
@@ -135,19 +155,22 @@ export async function processIntake(env: Env['Bindings'], sessionId: string, dea
         }
       }
       let catalogue = [] as Awaited<ReturnType<typeof loadIntakeCatalogue>>;
-      if (state.phase === 'recommended' && !silent) {
+      reconcileTravelScenario(state);
+      if (['recommended','review'].includes(state.phase) && !silent) {
         try { catalogue = await loadIntakeCatalogue(state, deadline - 6000); } catch { state.phase = 'human'; state.reason = 'catalogue_unavailable'; }
       }
       const renderOptions = { introduction, selection: local.selection };
-      let rendered = renderIntakePlan(state, catalogue, renderOptions);
-      if (rendered.plan.action === 'recommend') {
+      const render = (): TravelReply => state.travel && !['human','stopped','outside_scope'].includes(state.phase) ? renderTravelScenario(state,catalogue) : renderIntakePlan(state,catalogue,renderOptions);
+      let rendered = render();
+      if (rendered.plan.candidates.length || rendered.verifyUrls?.length) {
         try {
-          const titles = await verifyIntakeCandidateTitles(rendered.plan.candidates, state.locale, deadline - 6000);
+          const titles = await verifyIntakeCandidateTitles([...rendered.plan.candidates, ...(rendered.verifyUrls || []).map((url,i) => ({id:`route-${i}`,url} as any))].slice(0,3), state.locale, deadline - 6000);
           catalogue = catalogue.map(p => titles.has(p.id) ? { ...p, title: titles.get(p.id)! } : p);
-          rendered = renderIntakePlan(state, catalogue, renderOptions);
+          rendered = render();
         } catch { state.phase = 'human'; state.reason = 'public_route_unavailable'; rendered = renderIntakePlan(state); }
       }
-      if (rendered.plan.action === 'handoff' && state.phase !== 'human') { state.phase = 'human'; state.reason = rendered.plan.reason; rendered = renderIntakePlan(state); }
+      if (state.travel && introduction && rendered.text) rendered.text = `Flat Travel\n\n${rendered.text}`;
+      if (rendered.plan.action === 'handoff' && state.phase !== 'human') { state.phase = 'human'; state.reason = rendered.plan.reason; /* Keep the individual-review link in the handoff message. */ }
       if (!(await saveState(env, row, token, state, consumed, turn.incoming_at))) { await env.DB.prepare("UPDATE whatsapp_intake_turns SET status='skipped',error_code='ownership_changed' WHERE id=? AND status='processing'").bind(turn.id).run(); return; }
       if (!activeIntake(state.phase)) await env.DB.prepare("UPDATE whatsapp_intake_turns SET status='skipped',error_code='conversation_closed' WHERE session_id=? AND id<>? AND status IN ('pending','processing')").bind(row.id, turn.id).run();
       await handoffNotification(env, row, state);
@@ -160,7 +183,8 @@ export async function processIntake(env: Env['Bindings'], sessionId: string, dea
       if (ctx.account.id !== row.line_account_id || ctx.account.channel_id !== row.phone_id || ctx.recipient !== row.recipient ||
         !(await intakeAllowed(env, ctx.account.id, ctx.account.channel_id, ctx.recipient)) || !(await getWhatsappReplyWindow(env.DB, row.friend_id)).canSend) throw new Error('intake_send_ineligible');
       if (rendered.text.length > 3900) throw new Error('intake_reply_oversized');
-      const encryptedReply = await encryptIntake(rendered.text, env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, turn.id);
+      const interactive = state.travel ? nativeTravelInteractive(rendered, turn.id) : undefined;
+      const encryptedReply = await encryptIntake(state.travel ? rendered : rendered.text, env.WHATSAPP_INTAKE_ENCRYPTION_KEY!, turn.id);
       const sending = await env.DB.prepare(`UPDATE whatsapp_intake_turns SET status='sending',reply_ciphertext=? WHERE id=? AND status='processing'
         AND EXISTS(SELECT 1 FROM whatsapp_intake_sessions WHERE id=? AND version=? AND lock_token=? AND status=?)`)
         .bind(encryptedReply, turn.id, row.id, latest.version, token, state.phase).run();
@@ -168,7 +192,7 @@ export async function processIntake(env: Env['Bindings'], sessionId: string, dea
       try {
         const friend = await getMessagingFriendContext(env.DB, row.friend_id);
         if (!friend || friend.channel_type !== 'whatsapp' || friend.line_account_id !== row.line_account_id || friend.channel_id !== row.phone_id || friend.line_user_id.replace(/^\+/, '') !== row.recipient) throw new Error('intake_recipient_changed');
-        const result = await dispatchOutboundMessage({ env, friend, input: { messageType: 'text', content: rendered.text }, intakeAutomation: true, signal: AbortSignal.timeout(Math.max(1, Math.min(6000, deadline - Date.now()))) });
+        const result = await dispatchOutboundMessage({ env, friend, input: { messageType: 'text', content: rendered.text }, intakeAutomation: true, intakeInteractive: interactive, signal: AbortSignal.timeout(Math.max(1, Math.min(6000, deadline - Date.now()))) });
         if (!result.providerMessageId) throw new Error('intake_provider_id_missing');
         const sentAt = jstNow();
         await env.DB.prepare("UPDATE whatsapp_intake_turns SET status='accepted',provider_message_id=?,sent_at=? WHERE id=? AND status='sending'").bind(result.providerMessageId, sentAt, turn.id).run();

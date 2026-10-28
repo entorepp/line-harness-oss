@@ -79,6 +79,7 @@ export type Env = {
     WHATSAPP_INITIAL_CONTACT_MODE?: string;
     OPENAI_API_KEY?: string;
     WHATSAPP_INTAKE_MODE?: string;
+    WHATSAPP_INTAKE_SCENARIO?: string;
     WHATSAPP_INTAKE_MODEL?: string;
     WHATSAPP_INTAKE_ENCRYPTION_KEY?: string;
     WHATSAPP_INTAKE_ACCOUNTS?: string;
