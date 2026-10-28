@@ -16,6 +16,7 @@ import {
 import { fetchWeChatStatus, generateWeChatQr } from '../services/wechat.js';
 import {
   fetchMetaChannelProfile,
+  fetchMetaCustomerProfile,
   isMetaMessagingChannel,
 } from '../services/meta-messaging.js';
 
@@ -344,6 +345,32 @@ lineAccounts.get('/api/line-accounts/:id/kakao-status', async (c) => {
     console.error('GET /api/line-accounts/:id/kakao-status error:', err);
     return c.json({ success: false, error: err instanceof Error ? err.message : 'Internal server error' }, 500);
   }
+});
+
+// Explicit staff retry also repairs contacts created while Meta was unavailable.
+lineAccounts.post('/api/line-accounts/:id/meta-profiles/sync', async (c) => {
+  const account = await getMetaMessagingAccountOrThrow(c.env.DB, c.req.param('id'));
+  const rows = await c.env.DB.prepare(
+    `SELECT id, line_user_id, display_name, metadata FROM friends
+     WHERE line_account_id = ? AND (display_name IS NULL OR display_name = '' OR display_name NOT GLOB '*[^0-9]*') LIMIT 50`,
+  ).bind(account.id).all<{ id: string; line_user_id: string; display_name: string | null; metadata: string | null }>();
+  let updated = 0;
+  let unavailable = 0;
+  for (const row of rows.results) {
+    try {
+      const profile = await fetchMetaCustomerProfile({ channelType: account.channel_type as 'instagram' | 'facebook',
+        customerId: row.line_user_id.split(':').pop()!, accessToken: account.channel_access_token });
+      let metadata: Record<string, unknown> = {};
+      try { metadata = JSON.parse(row.metadata || '{}'); } catch { /* Preserve invalid legacy data by skipping. */ continue; }
+      const result = await c.env.DB.prepare(
+        `UPDATE friends SET display_name = ?, picture_url = COALESCE(?, picture_url), metadata = ?, updated_at = ?
+         WHERE id = ? AND line_account_id = ? AND display_name IS ? AND metadata IS ?`,
+      ).bind(profile.displayName, profile.pictureUrl, JSON.stringify({ ...metadata, username: profile.username }),
+        new Date().toISOString(), row.id, account.id, row.display_name, row.metadata).run();
+      updated += result.meta.changes || 0;
+    } catch { unavailable++; }
+  }
+  return c.json({ success: true, data: { checked: rows.results.length, updated, unavailable } });
 });
 
 lineAccounts.get('/api/line-accounts/:id/meta-status', async (c) => {

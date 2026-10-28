@@ -54,6 +54,7 @@ export type NormalizedMetaMessage = {
   occurredAt: string;
   text: string;
   attachment: MetaAttachment | null;
+  attachments?: MetaAttachment[];
 };
 
 function toJstString(date: Date): string {
@@ -105,6 +106,7 @@ export function normalizeMetaEvent(
     occurredAt: occurredAt(event.timestamp || entry.time),
     text,
     attachment,
+    attachments: event.message?.attachments || [],
   };
 }
 

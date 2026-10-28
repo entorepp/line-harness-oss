@@ -6,7 +6,7 @@ import type { Env } from '../index.js';
 import { dispatchKakaoBizMessage } from './kakao.js';
 import {
   assertMetaReplyWindow,
-  dispatchMetaText,
+  dispatchMetaMessage,
   isMetaMessagingChannel,
 } from './meta-messaging.js';
 import { dispatchWeChatKfText } from './wechat-kf.js';
@@ -454,8 +454,8 @@ export async function dispatchOutboundMessage(opts: {
   const messageType = opts.input.messageType ?? 'text';
 
   if (isMetaMessagingChannel(opts.friend.channel_type)) {
-    if (messageType !== 'text') {
-      throw new Error('Facebook Messenger / Instagram DM は現在テキスト返信のみ対応しています');
+    if (!['text', 'image', 'video', 'audio', 'file'].includes(messageType)) {
+      throw new Error('Meta DMで対応していないメッセージ形式です');
     }
     if (!opts.friend.channel_access_token || !opts.friend.channel_id) {
       throw new Error('Meta messaging credentials are not configured');
@@ -463,14 +463,22 @@ export async function dispatchOutboundMessage(opts: {
 
     await assertMetaReplyWindow(opts.env.DB, opts.friend.id);
     const content = serializeOutboundContent(opts.input);
-    await dispatchMetaText({
+    let attachment: { type: string; payload: { url: string } } | undefined;
+    if (messageType !== 'text') {
+      const parsed = safeJsonParse(content);
+      const url = new URL(String(parsed?.originalContentUrl || parsed?.url || ''));
+      if (url.protocol !== 'https:' || url.username || url.password) throw new Error('添付にはHTTPS URLが必要です');
+      attachment = { type: messageType, payload: { url: url.href } };
+    }
+    const providerMessageId = await dispatchMetaMessage({
       channelType: opts.friend.channel_type,
       channelId: opts.friend.channel_id,
       accessToken: opts.friend.channel_access_token,
       recipientId: resolveMetaRecipient(opts.friend),
-      text: content,
+      text: messageType === 'text' ? content : undefined,
+      attachment,
     });
-    return { messageType, storedContent: content };
+    return { messageType, storedContent: content, providerMessageId };
   }
 
   if (opts.friend.channel_type === 'whatsapp') {
