@@ -38,3 +38,8 @@ test('free-text extraction sees the actual scenario question, never the legacy p
  let s=enableTravelScenario(newIntake('en',true));s=selectTravelChoice(s,0);
  const request=extractionRequest(s,'Kyoto please','fixture');assert.deepEqual(JSON.parse(request.input).pendingQuestions,['cities']);
 });
+
+test('the travel vision reflects an optional wish comment without inventing a matching product',()=>{
+ const s=enableTravelScenario(newIntake('en',true));s.slots={cities:['Tokyo','Kyoto'],timing:'November',duration:{value:7,unit:'days'},party:{adults:2,children:0},budget:{amount:null,currency:null,basis:null,scope:null},support:['none']};s.travel!.answers.wish='Food and quiet gardens';reconcileTravelScenario(s);
+ assert.match(renderTravelScenario(s,[model('en')]).text,/Food and quiet gardens/);
+});
