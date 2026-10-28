@@ -43,4 +43,4 @@ async function main() {
   }
   console.log('PASS: Meta file picker, image/PDF/video/audio upload and undo-held send payloads')
 }
-main().catch(error => { console.error(error); process.exitCode = 1 })
+main().then(() => process.exit(0), error => { console.error(error); process.exit(1) })
