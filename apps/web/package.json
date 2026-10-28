@@ -12,7 +12,8 @@
     "test:whatsapp-reply-window": "esbuild scripts/test-whatsapp-reply-window.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-reply-window.cjs && node .next/tests/whatsapp-reply-window.cjs",
     "test:whatsapp-templates": "esbuild scripts/test-whatsapp-templates.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-templates.cjs && node .next/tests/whatsapp-templates.cjs",
     "test:whatsapp-calling": "esbuild scripts/test-whatsapp-calling.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-calling.cjs && node .next/tests/whatsapp-calling.cjs",
-    "test:whatsapp-initiation": "esbuild scripts/test-whatsapp-initiation.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-initiation.cjs && node .next/tests/whatsapp-initiation.cjs"
+    "test:whatsapp-initiation": "esbuild scripts/test-whatsapp-initiation.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/whatsapp-initiation.cjs && node .next/tests/whatsapp-initiation.cjs",
+    "test:meta-attachments": "esbuild scripts/test-meta-attachments.tsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.next/tests/meta-attachments.cjs && node .next/tests/meta-attachments.cjs"
   },
   "dependencies": {
     "@line-crm/shared": "workspace:*",

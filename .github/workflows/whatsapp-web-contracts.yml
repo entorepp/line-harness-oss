@@ -15,6 +15,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @line-crm/shared build
       - run: pnpm --filter web test:whatsapp-initiation
+      - run: pnpm --filter web test:meta-attachments
       - run: pnpm --filter web test:chat-scheduling
       - run: pnpm --filter web test:whatsapp-calling
       - run: pnpm --filter web test:whatsapp-phone
