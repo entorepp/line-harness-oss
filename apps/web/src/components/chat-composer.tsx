@@ -8,6 +8,7 @@ import WhatsAppTemplateComposer from '@/components/whatsapp-template-composer'
 import { whatsappLatestScheduleTime, whatsappReplyBlock, type WhatsappReplyWindow } from '@/lib/whatsapp-reply-window'
 
 type AttachmentDraft = {
+  id: string
   file: File
   previewUrl: string
   isImage: boolean
@@ -397,7 +398,8 @@ export default function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [messageContent, setMessageContent] = useState('')
-  const [attachment, setAttachment] = useState<AttachmentDraft | null>(null)
+  const [attachments, setAttachments] = useState<AttachmentDraft[]>([])
+  const previewUrls = useRef(new Set<string>())
   const [sending, setSending] = useState(false)
   const [reserveMode, setReserveMode] = useState(false)
   const [scheduledAt, setScheduledAt] = useState('')
@@ -467,9 +469,10 @@ export default function ChatComposer({
 
   useEffect(() => {
     return () => {
-      if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
+      for (const url of previewUrls.current) URL.revokeObjectURL(url)
+      previewUrls.current.clear()
     }
-  }, [attachment])
+  }, [])
 
   useEffect(() => {
     try {
@@ -585,9 +588,19 @@ export default function ChatComposer({
   }, [loadScheduledMessages])
 
   function clearAttachment() {
-    if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
-    setAttachment(null)
+    for (const url of previewUrls.current) URL.revokeObjectURL(url)
+    previewUrls.current.clear()
+    setAttachments([])
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function removeAttachment(id: string) {
+    const item = attachments.find(item => item.id === id)
+    if (item?.previewUrl) {
+      URL.revokeObjectURL(item.previewUrl)
+      previewUrls.current.delete(item.previewUrl)
+    }
+    setAttachments(current => current.filter(item => item.id !== id))
   }
 
   function insertTextAtCursor(value: string) {
@@ -647,6 +660,7 @@ export default function ChatComposer({
   }
 
   function setAttachmentFromFile(file: File) {
+    if (sending) return
     if (attachmentsDisabled) {
       const channelLabel = isWeChat
         ? 'WeChat'
@@ -674,18 +688,14 @@ export default function ChatComposer({
       return
     }
 
-    clearAttachment()
-
     const isImage = file.type.startsWith('image/')
     const previewUrl = isImage ? URL.createObjectURL(file) : ''
-    setAttachment({ file, previewUrl, isImage })
+    if (previewUrl) previewUrls.current.add(previewUrl)
+    const draft = { id: crypto.randomUUID(), file, previewUrl, isImage }
+    setAttachments(current => [...current, draft])
   }
 
-  async function uploadAttachment(): Promise<Record<string, string>> {
-    if (!attachment) {
-      throw new Error('添付ファイルがありません。')
-    }
-
+  async function uploadAttachment(attachment: AttachmentDraft): Promise<Record<string, string>> {
     const formData = new FormData()
     formData.append('file', attachment.file)
 
@@ -750,8 +760,8 @@ export default function ChatComposer({
 
     const payloads: Record<string, string | null | undefined>[] = []
 
-    if (attachment) {
-      payloads.push(await uploadAttachment())
+    for (const attachment of attachments) {
+      payloads.push(await uploadAttachment(attachment))
     }
 
     const normalizedMessage = replaceEmojiShortcodes(messageContent.trim(), allEmojiPresets)
@@ -945,18 +955,13 @@ export default function ChatComposer({
   }
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const fileItem = Array.from(event.clipboardData.items).find((item) => item.kind === 'file')
-    if (fileItem) {
-      const file = fileItem.getAsFile()
-      if (file) {
-        event.preventDefault()
-        if (attachmentsDisabled) {
-          onError?.(`${isWeChat ? 'WeChat' : 'Kakao'} では現在ファイル・画像送信に未対応です。`)
-          return
-        }
-        setAttachmentFromFile(file)
-        return
-      }
+    const files = Array.from(event.clipboardData.items)
+      .filter(item => item.kind === 'file')
+      .map(item => item.getAsFile()).filter((file): file is File => file !== null)
+    if (files.length) {
+      event.preventDefault()
+      files.forEach(setAttachmentFromFile)
+      return
     }
 
     const plainText = event.clipboardData.getData('text/plain')
@@ -1090,30 +1095,35 @@ export default function ChatComposer({
         </div>
       )}
 
-      {attachment && (
-        <div className="relative rounded-3xl border border-gray-200 bg-[#F9FBFC] p-3">
-          {attachment.isImage ? (
-            <img
-              src={attachment.previewUrl}
-              alt="添付画像プレビュー"
-              className="max-h-40 rounded-2xl"
-            />
-          ) : (
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{'\u{1F4CE}'}</span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-gray-900">{attachment.file.name}</p>
-                <p className="text-xs text-gray-500">{formatFileSize(attachment.file.size)}</p>
+      {attachments.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm text-gray-600">添付 {attachments.length}件（順番に送信）</p>
+          <div className="flex max-h-64 flex-wrap gap-2 overflow-y-auto">
+            {attachments.map(attachment => (
+              <div key={attachment.id} className="relative max-w-60 rounded-3xl border border-gray-200 bg-[#F9FBFC] p-3">
+                {attachment.isImage ? (
+                  <img src={attachment.previewUrl} alt={attachment.file.name} className="h-32 w-40 rounded-2xl object-contain" />
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{'\u{1F4CE}'}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">{attachment.file.name}</p>
+                      <p className="text-xs text-gray-500">{formatFileSize(attachment.file.size)}</p>
+                    </div>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(attachment.id)}
+                  disabled={sending}
+                  aria-label={`${attachment.file.name}を削除`}
+                  className="absolute right-3 top-3 rounded-full bg-black/65 px-2 py-1 text-xs text-white"
+                >
+                  削除
+                </button>
               </div>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={clearAttachment}
-            className="absolute right-3 top-3 rounded-full bg-black/65 px-2 py-1 text-xs text-white"
-          >
-            削除
-          </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1122,18 +1132,20 @@ export default function ChatComposer({
           <input
             ref={fileInputRef}
             type="file"
+            multiple
+            disabled={sending}
             accept={attachmentAccept}
             className="hidden"
             onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) setAttachmentFromFile(file)
+              Array.from(event.target.files ?? []).forEach(setAttachmentFromFile)
+              event.target.value = ''
             }}
           />
 
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={attachmentsDisabled}
+            disabled={attachmentsDisabled || sending}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-sm transition-colors hover:bg-[#F1F5F8] disabled:cursor-not-allowed disabled:opacity-50"
             title={attachmentsDisabled ? `${isWeChat ? 'WeChat' : 'Kakao'} では現在添付未対応` : '画像やファイルを追加'}
           >
