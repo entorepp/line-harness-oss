@@ -27,7 +27,7 @@
     "test:browser-security": "esbuild scripts/test-browser-security.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/browser-security.mjs && node .wrangler/tests/browser-security.mjs",
     "test:post-trip-media": "esbuild scripts/test-post-trip-media.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/post-trip-media.mjs && node .wrangler/tests/post-trip-media.mjs",
     "test:slack-incoming-text": "esbuild scripts/test-slack-incoming-text.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/slack-incoming-text.mjs && node .wrangler/tests/slack-incoming-text.mjs",
-    "test:meta-attachments": "esbuild scripts/test-meta-attachments.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/meta-attachments.mjs && node .wrangler/tests/meta-attachments.mjs",
+    "test:meta-attachments": "esbuild scripts/test-meta-attachments.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/meta-attachments.mjs && node .wrangler/tests/meta-attachments.mjs && esbuild scripts/test-meta-dm.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/meta-dm.mjs && node .wrangler/tests/meta-dm.mjs",
     "test:whatsapp-intake-preview": "esbuild scripts/test-whatsapp-intake-preview.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-intake-preview.mjs && node .wrangler/tests/whatsapp-intake-preview.mjs",
     "test:whatsapp-intake-runtime": "esbuild scripts/test-whatsapp-intake-runtime.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-intake-runtime.mjs && node .wrangler/tests/whatsapp-intake-runtime.mjs"
   },

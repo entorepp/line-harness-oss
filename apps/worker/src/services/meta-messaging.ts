@@ -109,6 +109,9 @@ export async function fetchMetaCustomerProfile(opts: {
     throw metaGraphError(body, 'Failed to fetch Meta customer profile');
   }
 
+  if (!body.name && !body.username && !body.first_name && !body.last_name) {
+    throw new Error('Metaから顧客名が返されませんでした。プロフィール取得権限と対象アカウントの接続を確認してください。');
+  }
   const facebookName = [body.first_name, body.last_name].filter(Boolean).join(' ').trim();
   return {
     displayName: body.name || facebookName || body.username || null,
@@ -137,16 +140,17 @@ export async function assertMetaReplyWindow(db: D1Database, friendId: string): P
   }
 }
 
-export async function dispatchMetaText(opts: {
+export async function dispatchMetaMessage(opts: {
   channelType: MetaMessagingChannelType;
   channelId: string;
   accessToken: string;
   recipientId: string;
-  text: string;
+  text?: string;
+  attachment?: { type: string; payload: { url: string } };
 }): Promise<string | null> {
   const body: Record<string, unknown> = {
     recipient: { id: opts.recipientId },
-    message: { text: opts.text },
+    message: opts.attachment ? { attachment: opts.attachment } : { text: opts.text },
   };
   if (opts.channelType === 'facebook') {
     body.messaging_type = 'RESPONSE';
@@ -165,4 +169,32 @@ export async function dispatchMetaText(opts: {
     throw metaGraphError(responseBody, `${opts.channelType} message send failed`);
   }
   return responseBody.message_id || null;
+}
+
+export const dispatchMetaText = dispatchMetaMessage;
+
+// A webhook can omit the body of a shared card. Read the exact signed event's
+// message once; never invent text or walk another conversation's history.
+export async function fetchMetaMessageDetail(opts: {
+  channelType: MetaMessagingChannelType; messageId: string; accessToken: string;
+}): Promise<{ text: string; attachments: import('./meta-webhook-utils.js').MetaAttachment[] } | null> {
+  const response = await fetch(`${metaGraphApiBase(opts.channelType)}/${encodeURIComponent(opts.messageId)}?fields=id,message,attachments`, {
+    headers: { Authorization: `Bearer ${opts.accessToken}` }, signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) return null;
+  const body = await response.json() as {
+    id?: string; message?: string;
+    attachments?: { data?: Array<{ mime_type?: string; name?: string; file_url?: string;
+      image_data?: { url?: string }; video_data?: { url?: string } }> };
+  };
+  if (body.id !== opts.messageId) return null;
+  const attachments = (body.attachments?.data || []).flatMap(item => {
+    const url = item.image_data?.url || item.video_data?.url || item.file_url;
+    if (!url) return [];
+    try { if (new URL(url).protocol !== 'https:') return []; } catch { return []; }
+    const type = item.image_data ? 'image' : item.video_data ? 'video' : item.mime_type?.startsWith('audio/') ? 'audio' : 'file';
+    return [{ type, payload: { url, title: item.name } }];
+  });
+  const text = typeof body.message === 'string' ? body.message.trim() : '';
+  return text || attachments.length ? { text, attachments } : null;
 }

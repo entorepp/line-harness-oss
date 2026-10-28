@@ -5,6 +5,7 @@ import { fireEvent } from '../services/event-bus.js';
 import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 import {
   fetchMetaCustomerProfile,
+  fetchMetaMessageDetail,
   type MetaMessagingChannelType,
 } from '../services/meta-messaging.js';
 import {
@@ -336,7 +337,7 @@ async function echoAlreadyLogged(
   return Math.abs(new Date(messageAt).getTime() - new Date(recent.created_at).getTime()) <= 2 * 60 * 1000;
 }
 
-async function persistMetaMessage(
+export async function persistMetaMessage(
   env: Env['Bindings'],
   account: MetaAccount,
   message: NormalizedMetaMessage,
@@ -345,38 +346,38 @@ async function persistMetaMessage(
 
   try {
     const friend = await ensureMetaFriend(env.DB, account, message.customerId);
-    const stored: StoredMetaMessage = message.attachment
-      ? await persistAttachment(env, message.attachment)
-      : {
-          messageType: 'text',
-          content: message.text,
-          eventText: message.text,
-        } satisfies StoredMetaMessage;
-
-    if (message.text && stored.notificationType === 'attachment') {
-      stored.content = `${message.text}\n${stored.content}`;
-      stored.eventText = stored.content;
+    if (!message.text && message.attachment?.type === 'template') {
+      try {
+        const detail = await fetchMetaMessageDetail({ channelType: account.channel_type,
+          messageId: message.messageId, accessToken: account.channel_access_token });
+        if (detail) {
+          message.text = detail.text;
+          if (detail.attachments.length) message.attachments = detail.attachments;
+        }
+      } catch { /* Preserve the original card when the provider cannot return it. */ }
     }
-
-    const duplicateEcho = message.direction === 'outgoing'
-      && stored.messageType === 'text'
-      && await echoAlreadyLogged(env.DB, friend.id, stored.content, message.occurredAt);
-    if (!duplicateEcho) {
-      await env.DB
-        .prepare(
+    // Keep text and every attachment; a caption must never replace or be
+    // replaced by the first attachment in a provider event.
+    const parts: StoredMetaMessage[] = [];
+    if (message.text) parts.push({ messageType: 'text', content: message.text, eventText: message.text });
+    for (const attachment of message.attachments || (message.attachment ? [message.attachment] : [])) {
+      parts.push(await persistAttachment(env, attachment));
+    }
+    const inserts: D1PreparedStatement[] = [];
+    for (const part of parts) {
+      const duplicateEcho = message.direction === 'outgoing'
+        && part.messageType === 'text'
+        && await echoAlreadyLogged(env.DB, friend.id, part.content, message.occurredAt);
+      if (!duplicateEcho) {
+        inserts.push(env.DB.prepare(
           `INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at)
            VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          friend.id,
-          message.direction,
-          stored.messageType,
-          stored.content,
-          message.occurredAt,
-        )
-        .run();
+        ).bind(crypto.randomUUID(), friend.id, message.direction, part.messageType, part.content, message.occurredAt));
+      }
     }
+    if (inserts.length) await env.DB.batch(inserts);
+    const stored = parts[0];
+    if (!stored) return;
 
     await updateMetaChat(env.DB, friend.id, message.direction, message.occurredAt);
 
