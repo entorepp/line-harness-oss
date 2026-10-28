@@ -207,6 +207,11 @@ assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].cancellationTyp
 assert.deepEqual(flatworkerPosts[0].body.agreementSnapshot.hotels[0].rooms, [{ requestedRoomType: 'accessible', adultsPerRoom: 2, roomCount: 1, roomName: 'Accessible Twin', bedType: 'Twin', inventoryCount: 1, estimateJpy: 240000, availabilityStatus: 'priced_for_selected_dates', physicalAccessibilityConfirmed: false }]);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].rateSource, 'dida_live');
 assert.deepEqual(flatworkerPosts[0].body.agreementSnapshot.hotels[0].costEvidence,{supplierCostJpy:192000,markupPercent:25,checkedAt:'2026-08-01T10:00:00.000Z',source:'dida_observed_jpy_v1'});
+for(const patch of [{supplierCostJpy:1},{supplierCostJpy:Infinity},{markupPercent:40},{checkedAt:'invalid'},{source:'untrusted'}]){
+ const invalid=structuredClone(flatworkerPosts[0].body);Object.assign(invalid.agreementSnapshot.hotels[0].costEvidence,patch);
+ const parsed=parseTravelQuoteIntent(invalid);assert(parsed.ok);if(parsed.ok)assert.equal(parsed.value.agreementSnapshot.hotels[0].costEvidence,null);
+}
+
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].didaSaleAvailable, true);
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].liveCheckedAt, '2026-08-01T10:00:00.000Z');
 assert.equal(flatworkerPosts[0].body.agreementSnapshot.hotels[0].sanityId, 'FT-H-TOKYO');
