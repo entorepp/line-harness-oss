@@ -52,6 +52,7 @@ export type AgreementHotel = {
   availabilityStatus: string;
   accessibilityStatus: string;
   priceStatus: string;
+  costEvidence?: {supplierCostJpy:number;markupPercent:25;checkedAt:string;source:"dida_observed_jpy_v1"} | null;
   rateSource: string;
   didaSaleAvailable: boolean;
   liveCheckedAt: string | null;
@@ -307,6 +308,12 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       availabilityStatus: text(item.availabilityStatus, 80) || 'requires_supplier_confirmation',
       accessibilityStatus: text(item.accessibilityStatus, 80) || 'requires_human_confirmation',
       priceStatus: text(item.priceStatus, 60) || 'not_quoted',
+      costEvidence: (() => {
+        const e=objectValue(item.costEvidence);if(typeof e.checkedAt!=='string')return null;
+        const age=Date.now()-Date.parse(e.checkedAt);
+        if(e.source!=='dida_observed_jpy_v1'||typeof e.supplierCostJpy!=='number'||!Number.isFinite(e.supplierCostJpy)||e.supplierCostJpy<=0||e.supplierCostJpy>100_000_000||e.markupPercent!==25||Math.round(e.supplierCostJpy*1.25)!==item.estimateJpy||!Number.isFinite(age)||age< -300000)return null;
+        return {supplierCostJpy:e.supplierCostJpy,markupPercent:25 as const,checkedAt:new Date(e.checkedAt).toISOString(),source:'dida_observed_jpy_v1' as const};
+      })(),
       rateSource: text(item.rateSource, 60) || '',
       didaSaleAvailable: item.didaSaleAvailable === true,
       liveCheckedAt: (() => {

@@ -1,0 +1,3 @@
+# Hotel observed cost relay
+
+Preserve validated historical costEvidence through the existing travel-quote normalizer: supplierCostJpy, fixed25percent markup, checkedAt and dida_observed_jpy_v1 source. Verify finite positive bounded cost, exact rounded selling total and nonfuture valid timestamp. Missing/malformed evidence becomes null; no cost is inferred. No stock, price confirmation, booking or send flag changes. Existing ingress/origin, private FW route, credentials and messaging behavior are unchanged. Actual route test asserts the stale evidence reaches the mock FW destination; no live case writes or customer messages.
