@@ -1,3 +1,4 @@
+import { extractionRequest } from '../src/services/whatsapp-intake-ai.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { newIntake, type Locale, type CatalogueItem } from '../src/services/whatsapp-intake.js';
@@ -31,4 +32,9 @@ test('UTM is fixed, private query fields fail closed and product path is retaine
 test('large changes and relaxed pace do not silently claim a published model is a fit',()=>{
  const s=enableTravelScenario(newIntake('en',true));s.slots={cities:['Tokyo'],timing:'November',duration:{value:15,unit:'days'},party:{adults:2,children:0},budget:{amount:null,currency:null,basis:null,scope:null},support:['none']};s.travel!.answers.progress='whole';s.travel!.visionShownFor=s.travel!.tripRevision;reconcileTravelScenario(s);
  assert.equal(renderTravelScenario(s,[model('en')]).plan.reason,'tailor_made_route');
+});
+
+test('free-text extraction sees the actual scenario question, never the legacy product-first question',()=>{
+ let s=enableTravelScenario(newIntake('en',true));s=selectTravelChoice(s,0);
+ const request=extractionRequest(s,'Kyoto please','fixture');assert.deepEqual(JSON.parse(request.input).pendingQuestions,['cities']);
 });
