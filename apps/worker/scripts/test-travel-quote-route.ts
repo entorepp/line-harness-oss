@@ -450,3 +450,17 @@ for (const device of ['Manual wheelchair','Power wheelchair','Mobility scooter']
   if(result.ok){assert.equal(result.value.wheelchairBrand,'');assert.equal(result.value.wheelchairModel,'');}
 }
 console.log('Optional wheelchair identity accepted without placeholders; consent and safety fields preserved');
+
+// Individually rounded room tariffs retain observed costs and their own meals.
+const mixedCosts:any=structuredClone(payload);
+const mixedHotel=mixedCosts.agreementSnapshot.hotels[0];
+mixedHotel.estimateJpy=100002;
+mixedHotel.costEvidence={supplierCostJpy:80000.8,markupPercent:25,checkedAt:new Date().toISOString(),source:'dida_observed_jpy_v1',roomCosts:[{supplierCostJpy:40000.4,sellingPriceJpy:50001},{supplierCostJpy:40000.4,sellingPriceJpy:50001}]};
+mixedHotel.rooms=[{...mixedHotel.rooms[0],estimateJpy:50001,mealPlan:'Breakfast included'},{...mixedHotel.rooms[0],estimateJpy:50001,mealPlan:'Room only'}];
+const mixedParsed=parseTravelQuoteIntent(mixedCosts);assert(mixedParsed.ok);
+if(mixedParsed.ok){assert.deepEqual(mixedParsed.value.agreementSnapshot.hotels[0].costEvidence,mixedHotel.costEvidence);assert.deepEqual(mixedParsed.value.agreementSnapshot.hotels[0].rooms.map(r=>r.mealPlan),['Breakfast included','Room only']);}
+for(const patch of [{supplierCostJpy:true},{supplierCostJpy:1},{sellingPriceJpy:1}]){
+ const invalid=structuredClone(mixedCosts);Object.assign(invalid.agreementSnapshot.hotels[0].costEvidence.roomCosts[0],patch);
+ const parsed=parseTravelQuoteIntent(invalid);assert(parsed.ok);if(parsed.ok)assert.equal(parsed.value.agreementSnapshot.hotels[0].costEvidence,null);
+}
+console.log('PASS: observed mixed-room cost, individual rounding and meal preservation; malformed cost evidence rejected');

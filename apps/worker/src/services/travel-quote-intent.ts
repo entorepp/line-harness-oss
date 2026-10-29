@@ -35,6 +35,7 @@ export type AgreementHotel = {
     roomCount: number;
     roomName: string;
     bedType: string;
+    mealPlan?: string | null;
     inventoryCount: number | null;
     estimateJpy: number | null;
     availabilityStatus: string;
@@ -52,7 +53,7 @@ export type AgreementHotel = {
   availabilityStatus: string;
   accessibilityStatus: string;
   priceStatus: string;
-  costEvidence?: {supplierCostJpy:number;markupPercent:25;checkedAt:string;source:"dida_observed_jpy_v1"} | null;
+  costEvidence?: {supplierCostJpy:number;markupPercent:25;checkedAt:string;source:"dida_observed_jpy_v1";roomCosts?:Array<{supplierCostJpy:number;sellingPriceJpy:number}>} | null;
   rateSource: string;
   didaSaleAvailable: boolean;
   liveCheckedAt: string | null;
@@ -290,6 +291,7 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
           roomCount: room.roomCount == null ? 1 : integer(room.roomCount, 1, 30) || 1,
           roomName: text(room.roomName, 240) || 'To confirm',
           bedType: text(room.bedType, 160) || 'To confirm',
+          ...(text(room.mealPlan, 80)?{mealPlan:text(room.mealPlan,80)}:{}),
           inventoryCount: room.inventoryCount == null ? null : integer(room.inventoryCount, 0, 10_000),
           estimateJpy: room.estimateJpy == null ? null : integer(room.estimateJpy, 0, 100_000_000),
           availabilityStatus: text(room.availabilityStatus, 80) || 'requires_supplier_confirmation',
@@ -311,8 +313,15 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       costEvidence: (() => {
         const e=objectValue(item.costEvidence);if(typeof e.checkedAt!=='string')return null;
         const age=Date.now()-Date.parse(e.checkedAt);
-        if(e.source!=='dida_observed_jpy_v1'||typeof e.supplierCostJpy!=='number'||!Number.isFinite(e.supplierCostJpy)||e.supplierCostJpy<=0||e.supplierCostJpy>100_000_000||e.markupPercent!==25||Math.round(e.supplierCostJpy*1.25)!==item.estimateJpy||!Number.isFinite(age)||age< -300000)return null;
-        return {supplierCostJpy:e.supplierCostJpy,markupPercent:25 as const,checkedAt:new Date(e.checkedAt).toISOString(),source:'dida_observed_jpy_v1' as const};
+        if(e.source!=='dida_observed_jpy_v1'||typeof e.supplierCostJpy!=='number'||!Number.isFinite(e.supplierCostJpy)||e.supplierCostJpy<=0||e.supplierCostJpy>100_000_000||e.markupPercent!==25||!Number.isFinite(age)||age< -300000)return null;
+        let roomCosts:Array<{supplierCostJpy:number;sellingPriceJpy:number}>|undefined;
+        if(e.roomCosts!==undefined){
+          if(!Array.isArray(e.roomCosts)||e.roomCosts.length<1||e.roomCosts.length>4)return null;
+          roomCosts=[];
+          for(const raw of e.roomCosts){const r=objectValue(raw);if(typeof r.supplierCostJpy!=='number'||!Number.isFinite(r.supplierCostJpy)||r.supplierCostJpy<=0||r.supplierCostJpy>100_000_000||typeof r.sellingPriceJpy!=='number'||!Number.isSafeInteger(r.sellingPriceJpy)||Math.round(r.supplierCostJpy*1.25)!==r.sellingPriceJpy)return null;roomCosts.push({supplierCostJpy:r.supplierCostJpy,sellingPriceJpy:r.sellingPriceJpy});}
+          if(Math.abs(roomCosts.reduce((n,r)=>n+r.supplierCostJpy,0)-e.supplierCostJpy)>0.000001||roomCosts.reduce((n,r)=>n+r.sellingPriceJpy,0)!==item.estimateJpy)return null;
+        }else if(Math.round(e.supplierCostJpy*1.25)!==item.estimateJpy)return null;
+        return {supplierCostJpy:e.supplierCostJpy,markupPercent:25 as const,checkedAt:new Date(e.checkedAt).toISOString(),source:'dida_observed_jpy_v1' as const,...(roomCosts?{roomCosts}:{})};
       })(),
       rateSource: text(item.rateSource, 60) || '',
       didaSaleAvailable: item.didaSaleAvailable === true,
