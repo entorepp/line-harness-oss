@@ -205,6 +205,8 @@ export type FlatworkerDraftSummary = {
   caseId: string;
   caseUrl?: string;
   profileStored?: boolean;
+  updatedAt?: string;
+  internalNotificationPending?: boolean;
   automationReadiness?: {
     status: 'ready_for_staff_review' | 'needs_data';
     blockingIssueCount: number;

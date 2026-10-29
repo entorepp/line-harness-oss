@@ -3,12 +3,12 @@ import type { TravelQuoteIntent, FlatworkerDraftSummary } from './travel-quote-i
 type FlatworkerTravelQuoteEnvironment = {
   FLATWORKER_API_BASE_URL?: string;
   FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
+  TRAVEL_QUOTE_DEFER_INTERNAL_REVIEW?: string;
 };
 
-// TravelWorker performs bounded quote normalization, lead linkage, PDF
-// rendering and Slack review posting before replying. Production measurements
-// are currently above ten seconds, so keep the public request alive long
-// enough for that single synchronous handoff to complete.
+// Receipt waits for durable case/profile/lead persistence. When explicitly
+// enabled, internal PDF/photo checks and Slack review run from the recoverable
+// opaque-reference job instead of delaying the customer acknowledgement.
 export const FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS = 45_000;
 
 const SAFE_UPSTREAM_MESSAGES = new Set([
@@ -44,6 +44,7 @@ export async function syncTravelQuoteToFlatworker(
         'Content-Type': 'application/json',
         'x-flat-travel-quote-token': token,
         'x-travelworker-request-id': crypto.randomUUID(),
+        ...(env.TRAVEL_QUOTE_DEFER_INTERNAL_REVIEW==='true'?{'x-flat-travel-defer-internal-review':'true'}:{}),
       },
       body: JSON.stringify(intent),
       signal: AbortSignal.timeout(FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS),
@@ -75,6 +76,8 @@ export async function syncTravelQuoteToFlatworker(
       caseId: String(body.caseId || caseId),
       ...(typeof body.caseUrl === 'string' && body.caseUrl ? { caseUrl: body.caseUrl } : {}),
       profileStored: body.profileStored === true,
+      ...(typeof body.updatedAt==='string'?{updatedAt:body.updatedAt}:{}),
+      ...(body.internalNotificationPending===true?{internalNotificationPending:true}:{}),
       automationReadiness: {
         status: readinessStatus,
         blockingIssueCount: Math.max(0, Math.min(50, Number(readiness.blockingIssueCount) || 0)),

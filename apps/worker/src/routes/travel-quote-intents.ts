@@ -10,6 +10,7 @@ import {
 } from '../services/travel-quote-intent.js';
 import { postToSlack, resolveSlackChannelId } from '../services/slack.js';
 import { syncTravelQuoteToFlatworker } from '../services/flatworker-travel-quote.js';
+import {deferredReviewEnabled,enqueueTravelQuoteReview} from '../services/travel-quote-review-jobs.js';
 
 const travelQuoteIntents = new Hono<Env>();
 const recentRequests = new Map<string, number[]>();
@@ -66,6 +67,10 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
     ).bind(copy.title, copy.body, metadata, metadata, notificationId).run();
   }
   let slackNotified: boolean | null = null;
+  if(flatworkerReady&&deferredReviewEnabled(c.env)&&flatworkerDraft.internalNotificationPending){
+    await enqueueTravelQuoteReview(c.env,intent,flatworkerDraft,notificationId);
+    return c.json({success:true,duplicate,slackNotified:null,reference:intent.quoteReference,flatworkerDraft,internalReviewQueued:true},duplicate?200:202);
+  }
   if (!duplicate) {
     // Include the submitted name only in staff Slack, not the persisted receipt.
     const slackCopy = travelQuoteNotificationCopy(intent, flatworkerDraft, true);

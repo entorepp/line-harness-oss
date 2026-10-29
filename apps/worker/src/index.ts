@@ -6,6 +6,7 @@ import { processStepDeliveries } from './services/step-delivery.js';
 import { processScheduledBroadcasts } from './services/broadcast.js';
 import { processReminderDeliveries } from './services/reminder-delivery.js';
 import { processScheduledMessages } from './services/scheduled-messages.js';
+import { processTravelQuoteReviews } from './services/travel-quote-review-jobs.js';
 import { checkAccountHealth } from './services/ban-monitor.js';
 import { processAccessibleJapanQuoteJobs } from './services/accessible-japan-quote-jobs.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -75,6 +76,7 @@ export type Env = {
     TRAVEL_QUOTE_SLACK_CHANNEL_ID?: string;
     FLATWORKER_API_BASE_URL?: string;
     FLATWORKER_TRAVEL_QUOTE_TOKEN?: string;
+    TRAVEL_QUOTE_DEFER_INTERNAL_REVIEW?: string;
     QUOTE_CHAT_DELIVERY_ENABLED?: string;
     WHATSAPP_INITIAL_CONTACT_MODE?: string;
     OPENAI_API_KEY?: string;
@@ -316,6 +318,7 @@ async function scheduled(
   jobs.push(expireCallingSdp(env.DB));
   jobs.push(checkAccountHealth(env.DB));
   jobs.push(processAccessibleJapanQuoteJobs(env, { limit: 3 }));
+  jobs.push(processTravelQuoteReviews(env));
 
   await Promise.allSettled(jobs);
 }
