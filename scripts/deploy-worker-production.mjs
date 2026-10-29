@@ -37,6 +37,15 @@ async function result(path) {
   assert.equal(data.success, true, `Cloudflare rejected ${path}`);
   return data.result;
 }
+// Never enable deferred review against a backend that cannot consume saved-case jobs.
+const candidateConfig=readFileSync(resolve(root,'apps/worker/wrangler.toml'),'utf8');
+if(/^TRAVEL_QUOTE_DEFER_INTERNAL_REVIEW\s*=\s*"true"/m.test(candidateConfig)){
+  const backend='https://travelworker-api.flat-travel.workers.dev';
+  assert.match(candidateConfig,/FLATWORKER_API_BASE_URL\s*=\s*"https:\/\/travelworker-api\.flat-travel\.workers\.dev"/);
+  const health=await fetch(backend+'/health',{signal:AbortSignal.timeout(25_000)});
+  assert.equal(health.status,200,'Deferred-review backend health unavailable');
+  assert.equal((await health.json()).websiteQuoteDeferredReviewSupported,true,'Deploy verified backend support before enabling asynchronous review');
+}
 const beforeVersion = activeVersion(await result('/deployments'));
 const beforeSettings = await result('/settings');
 const liveSource = beforeSettings.bindings.find((binding) => binding.name === contract.sourceBinding)?.text;
@@ -51,7 +60,7 @@ run('pnpm', ['--filter', 'worker', 'typecheck']);
 for (const test of [
   'test:meta-attachments', 'test:browser-security', 'test:post-trip-media',
   'test:whatsapp-travel-scenario', 'test:whatsapp-intake-runtime', 'test:whatsapp-intake-preview', 'test:whatsapp-inbound-welcome', 'test:whatsapp-calling', 'test:whatsapp-operational-templates', 'test:whatsapp-send', 'test:whatsapp-delivery-status', 'test:whatsapp-reply-window', 'test:whatsapp-identity', 'test:accessible-japan-quote-trigger',
-  'test:form-response-email', 'test:form-response-email-route', 'test:travel-quote-route',
+  'test:form-response-email', 'test:form-response-email-route', 'test:travel-quote-route', 'test:travel-quote-background',
   'test:form-file-access', 'test:form-file-upload', 'test:slack-form-files', 'test:slack-incoming-text', 'test:whatsapp-initiation',
   'test:lead-route-topology', 'test:quote-reference', 'test:survey-validation',
 ]) run('pnpm', ['--filter', 'worker', test]);
@@ -84,6 +93,7 @@ if (mode === '--check') {
 // Publish the checked artifact with no rebundle or automatic retry.
 run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/031_whatsapp_ai_intake.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
 run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/032_whatsapp_intake_choices.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
+run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/033_travel_quote_review_jobs.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
 run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/030_browser_security_storage.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
 run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/027_whatsapp_calls.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
 run(wrangler, ['d1', 'execute', 'line-crm', '--remote', '--file', resolve(root, 'packages/db/migrations/028_whatsapp_call_details.sql'), '--config', resolve(workerRoot, 'wrangler.toml')], root);
