@@ -44,7 +44,9 @@ if(/^TRAVEL_QUOTE_DEFER_INTERNAL_REVIEW\s*=\s*"true"/m.test(candidateConfig)){
   assert.match(candidateConfig,/FLATWORKER_API_BASE_URL\s*=\s*"https:\/\/travelworker-api\.flat-travel\.workers\.dev"/);
   const health=await fetch(backend+'/health',{signal:AbortSignal.timeout(25_000)});
   assert.equal(health.status,200,'Deferred-review backend health unavailable');
-  assert.equal((await health.json()).websiteQuoteDeferredReviewSupported,true,'Deploy verified backend support before enabling asynchronous review');
+  const capabilities=await health.json();
+  assert.equal(capabilities.websiteQuoteDeferredReviewSupported,true,'Deploy verified backend support before enabling asynchronous review');
+  assert.equal(capabilities.websiteHotelSupplementSupported,true,'Deploy the verified receipt-bound hotel supplement backend before this relay');
 }
 const beforeVersion = activeVersion(await result('/deployments'));
 const beforeSettings = await result('/settings');
