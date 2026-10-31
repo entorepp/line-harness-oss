@@ -4,8 +4,8 @@ import { normalizeLeadAttribution } from '../src/services/lead-attribution.js';
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import { travelQuoteIntents } from '../src/routes/travel-quote-intents.js';
-import { FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS } from '../src/services/flatworker-travel-quote.js';
-import { parseTravelQuoteIntent, travelQuoteNotificationCopy } from '../src/services/travel-quote-intent.js';
+import { FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS, syncTravelQuoteToFlatworker } from '../src/services/flatworker-travel-quote.js';
+import { parseTravelQuoteIntent, travelQuoteNotificationCopy, travelQuoteReceiptMetadata as travelQuoteReceiptMetadataForTest } from '../src/services/travel-quote-intent.js';
 
 assert.equal(FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS, 45_000);
 
@@ -464,3 +464,23 @@ for(const patch of [{supplierCostJpy:true},{supplierCostJpy:1},{sellingPriceJpy:
  const parsed=parseTravelQuoteIntent(invalid);assert(parsed.ok);if(parsed.ok)assert.equal(parsed.value.agreementSnapshot.hotels[0].costEvidence,null);
 }
 console.log('PASS: observed mixed-room cost, individual rounding and meal preservation; malformed cost evidence rejected');
+
+// Receipt stage and its opaque capability survive the actual authenticated relay.
+for(const stage of ['initial','supplement'] as const){
+ const input={...payload,mode:'private',source:'flat-travel-hotel-request',hotelRequestStage:stage,hotelSupplementToken:'a1'.repeat(32)};
+ const parsed=parseTravelQuoteIntent(input);assert(parsed.ok);
+ if(parsed.ok){assert.equal(parsed.value.hotelRequestStage,stage);assert.equal(parsed.value.hotelSupplementToken,input.hotelSupplementToken);const persisted=JSON.stringify(travelQuoteReceiptMetadataForTest(parsed.value,{status:'created',caseId:'fixture-case',profileStored:true}));assert(!persisted.includes(input.hotelSupplementToken));}
+}
+for(const patch of [{hotelSupplementToken:'short'},{hotelRequestStage:'unknown'},{source:'model-tour-search'}])assert.equal(parseTravelQuoteIntent({...payload,mode:'private',source:'flat-travel-hotel-request',hotelRequestStage:'initial',hotelSupplementToken:'a1'.repeat(32),...patch}).ok,false);
+console.log('PASS: hotel receipt stage/capability validation and PII-free receipt metadata');
+const relayFetch=globalThis.fetch;
+try{
+ for(const stage of ['initial','supplement'] as const){
+  const parsed=parseTravelQuoteIntent({...payload,mode:'private',source:'flat-travel-hotel-request',hotelRequestStage:stage,hotelSupplementToken:'a1'.repeat(32)});assert(parsed.ok);if(!parsed.ok)continue;
+  let forwarded:any;let compatible=true;
+  globalThis.fetch=async(url,init)=>{assert.equal(String(url),'https://travelworker.example/api/integrations/travel-quote-intents');forwarded=JSON.parse(String(init?.body));assert.equal(new Headers(init?.headers).get('x-flat-travel-quote-token'),'travel-quote-token');return Response.json({status:'updated',caseId:'fixture-case',profileStored:true,...(compatible?{hotelRequestStage:stage}:{})});};
+  const result=await syncTravelQuoteToFlatworker(parsed.value,env);assert.equal(result.hotelRequestStage,stage);assert.equal(forwarded.hotelRequestStage,stage);assert.equal(forwarded.hotelSupplementToken,'a1'.repeat(32));
+  compatible=false;const old=await syncTravelQuoteToFlatworker(parsed.value,env);assert.equal(old.status,'failed');assert.equal(old.errorCode,'hotel_supplement_backend_unsupported');
+ }
+}finally{globalThis.fetch=relayFetch;}
+console.log('PASS: real relay preserves receipt stage and capability; old backend receipts fail closed');

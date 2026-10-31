@@ -170,6 +170,8 @@ export type TravelQuoteIntent = {
   mode: 'journey' | 'private' | 'agent';
   channel: 'whatsapp' | 'instagram' | 'messenger' | 'email';
   source: string;
+  hotelRequestStage?: 'initial' | 'supplement';
+  hotelSupplementToken?: string;
   tourId: string | null;
   title: string | null;
   startDate: string | null;
@@ -207,6 +209,7 @@ export type FlatworkerDraftSummary = {
   profileStored?: boolean;
   updatedAt?: string;
   internalNotificationPending?: boolean;
+  hotelRequestStage?: 'initial' | 'supplement';
   automationReadiness?: {
     status: 'ready_for_staff_review' | 'needs_data';
     blockingIssueCount: number;
@@ -599,6 +602,8 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       }
     }
   }
+  const hotelRequestStage=body.hotelRequestStage,hotelSupplementToken=body.hotelSupplementToken;
+  if(hotelRequestStage!==undefined||hotelSupplementToken!==undefined){if(!['initial','supplement'].includes(String(hotelRequestStage))||typeof hotelSupplementToken!=='string'||! /^[a-f0-9]{64}$/.test(hotelSupplementToken)||body.source!=='flat-travel-hotel-request'||mode!=='private')return {ok:false,error:'Invalid hotel receipt capability'};}
   return {
     ok: true,
     value: {
@@ -607,6 +612,7 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       mode: mode as TravelQuoteIntent['mode'],
       channel: channel as TravelQuoteIntent['channel'],
       source: text(body.source, 120) || 'flat-travel-website',
+      ...(hotelRequestStage?{hotelRequestStage:hotelRequestStage as 'initial'|'supplement',hotelSupplementToken:hotelSupplementToken as string}:{}),
       tourId: text(body.tourId, 120),
       title: text(body.title, 180),
       startDate,

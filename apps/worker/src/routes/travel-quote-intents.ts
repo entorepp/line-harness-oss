@@ -52,6 +52,7 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
   const flatworkerDraft = await syncTravelQuoteToFlatworker(intent, c.env);
   const flatworkerReady = new Set(['created', 'updated', 'existing']).has(flatworkerDraft.status)
     && (!intent.profileProvided || flatworkerDraft.profileStored === true);
+  if(!flatworkerReady&&flatworkerDraft.upstreamStatus===409)return c.json({success:false,reference:intent.quoteReference,error:'Hotel request update conflicts with the saved receipt'},409);
   const copy = travelQuoteNotificationCopy(intent, flatworkerDraft);
   const metadata = JSON.stringify(travelQuoteReceiptMetadata(intent, flatworkerDraft));
   const notificationId = `${flatworkerReady ? 'travel-quote' : 'travel-quote-intake-failed'}:${intent.quoteReference}:${intent.channel}`;

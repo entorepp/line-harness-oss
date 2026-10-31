@@ -62,6 +62,7 @@ export async function syncTravelQuoteToFlatworker(
       };
     }
     const body = await response.json() as Record<string, unknown>;
+    if(intent.hotelRequestStage&&body.hotelRequestStage!==intent.hotelRequestStage)return {status:'failed',caseId,upstreamStatus:502,errorCode:'hotel_supplement_backend_unsupported'};
     const status = new Set(['created', 'updated', 'existing']).has(String(body.status))
       ? String(body.status) as FlatworkerDraftSummary['status']
       : 'updated';
@@ -76,6 +77,7 @@ export async function syncTravelQuoteToFlatworker(
       caseId: String(body.caseId || caseId),
       ...(typeof body.caseUrl === 'string' && body.caseUrl ? { caseUrl: body.caseUrl } : {}),
       profileStored: body.profileStored === true,
+      ...(intent.hotelRequestStage?{hotelRequestStage:intent.hotelRequestStage}:{}),
       ...(typeof body.updatedAt==='string'?{updatedAt:body.updatedAt}:{}),
       ...(body.internalNotificationPending===true?{internalNotificationPending:true}:{}),
       automationReadiness: {
