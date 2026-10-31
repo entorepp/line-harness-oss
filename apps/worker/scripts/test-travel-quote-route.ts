@@ -477,10 +477,10 @@ const relayFetch=globalThis.fetch;
 try{
  for(const stage of ['initial','supplement'] as const){
   const parsed=parseTravelQuoteIntent({...payload,mode:'private',source:'flat-travel-hotel-request',hotelRequestStage:stage,hotelSupplementToken:'a1'.repeat(32)});assert(parsed.ok);if(!parsed.ok)continue;
-  let forwarded:any;let compatible=true;
-  globalThis.fetch=async(url,init)=>{assert.equal(String(url),'https://travelworker.example/api/integrations/travel-quote-intents');forwarded=JSON.parse(String(init?.body));assert.equal(new Headers(init?.headers).get('x-flat-travel-quote-token'),'travel-quote-token');return Response.json({status:'updated',caseId:'fixture-case',profileStored:true,...(compatible?{hotelRequestStage:stage}:{})});};
+  let forwarded:any;let defect='';
+  globalThis.fetch=async(url,init)=>{assert.equal(String(url),'https://travelworker.example/api/integrations/travel-quote-intents');forwarded=JSON.parse(String(init?.body));assert.equal(new Headers(init?.headers).get('x-flat-travel-quote-token'),'travel-quote-token');return Response.json({...(defect==='missing-status'?{}:{status:defect==='wrong-status'?'unexpected':'updated'}),...(defect==='missing-case'?{}:{caseId:defect==='wrong-case'?'another-case':'flat-travel-'+parsed.value.quoteReference.toLowerCase()}),profileStored:true,...(defect==='missing-stage'?{}:{hotelRequestStage:stage})});};
   const result=await syncTravelQuoteToFlatworker(parsed.value,env);assert.equal(result.hotelRequestStage,stage);assert.equal(forwarded.hotelRequestStage,stage);assert.equal(forwarded.hotelSupplementToken,'a1'.repeat(32));
-  compatible=false;const old=await syncTravelQuoteToFlatworker(parsed.value,env);assert.equal(old.status,'failed');assert.equal(old.errorCode,'hotel_supplement_backend_unsupported');
+  for(const kind of ['missing-stage','missing-status','wrong-status','missing-case','wrong-case']){defect=kind;const old=await syncTravelQuoteToFlatworker(parsed.value,env);assert.equal(old.status,'failed',kind);assert.equal(old.errorCode,'hotel_supplement_backend_unsupported');}
  }
 }finally{globalThis.fetch=relayFetch;}
 console.log('PASS: real relay preserves receipt stage and capability; old backend receipts fail closed');
