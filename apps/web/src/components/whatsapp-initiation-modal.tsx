@@ -127,7 +127,6 @@ export default function WhatsAppInitiationModal({
         if (first) setTemplateKey(`${first.name}:${first.language}`)
         if (!response.data.configured) setError(response.data.reason || 'WABA IDが未設定です')
         else if (!response.data.templates.some((template) => template.supportedForInitiation)) setError('初回連絡に利用できる承認済みテンプレートがありません。')
-        else if (response.data.releaseMode === 'off') setError('初回連絡はレビュー待ちのため、現在は送信できません。')
       })
       .catch((loadError) => {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'テンプレートを取得できませんでした')
@@ -277,10 +276,16 @@ export default function WhatsAppInitiationModal({
             </div>
           )}
 
+          {releaseMode === 'off' && (
+            <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              初回連絡はシステム側で無効になっています。入力を変更しても送信できません。管理側で社内番号への送受信テストを確認し、有効化する必要があります。
+            </div>
+          )}
+
           <div className="flex flex-col-reverse gap-2 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end">
             <button type="button" onClick={onClose} disabled={submitting} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">キャンセル</button>
             <button type="submit" disabled={submitting || unknownOutcome || configured !== true || releaseMode === null || releaseMode === 'off' || !selectedTemplate || !consentConfirmed || !numberConfirmed} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
-              {submitting ? 'Metaへ送信中...' : unknownOutcome ? '結果確認が必要です' : '承認済みテンプレートを送信'}
+              {submitting ? 'Metaへ送信中...' : unknownOutcome ? '結果確認が必要です' : releaseMode === 'off' ? '初回連絡は現在無効です' : '承認済みテンプレートを送信'}
             </button>
           </div>
         </form>
