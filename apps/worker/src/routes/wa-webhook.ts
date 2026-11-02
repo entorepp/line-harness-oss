@@ -15,7 +15,7 @@ import {
 } from '../services/whatsapp-delivery.js';
 
 import { recordCallingWebhook } from '../services/whatsapp-calling.js';
-import { parseFriendMetadata, whatsappExternalId, whatsappIdentity, type WhatsappIdentity } from '../services/whatsapp-recipient.js';
+import { parseFriendMetadata, whatsappExternalId, normalizeWhatsappIdentity, type WhatsappIdentity } from '../services/whatsapp-recipient.js';
 
 const waWebhook = new Hono<Env>();
 const GRAPH_API = 'https://graph.facebook.com/v25.0';
@@ -237,21 +237,21 @@ function isCoexistenceEventPayload(payload: unknown): payload is CoexistenceEven
 }
 
 function resolveMetaIdentity(message: MetaMessage, contacts: MetaContact[] = [], outgoing = false): { identity: WhatsappIdentity; contact?: MetaContact } {
-  const explicit = whatsappIdentity({ phone: outgoing ? message.to : message.from,
+  const explicit = normalizeWhatsappIdentity({ phone: outgoing ? message.to : message.from,
     userId: outgoing ? message.to_user_id : message.from_user_id,
     parentUserId: outgoing ? message.to_parent_user_id : message.from_parent_user_id });
   const matches = contacts.filter((item) => {
-    const candidate = whatsappIdentity({ phone: item.wa_id, userId: item.user_id, parentUserId: item.parent_user_id });
+    const candidate = normalizeWhatsappIdentity({ phone: item.wa_id, userId: item.user_id, parentUserId: item.parent_user_id });
     return (explicit.phone && candidate.phone === explicit.phone) || (explicit.userId && candidate.userId === explicit.userId)
       || (explicit.parentUserId && candidate.parentUserId === explicit.parentUserId);
   });
   const contact = matches.length === 1 ? matches[0] : contacts.length === 1 ? contacts[0] : undefined;
   // Never attach a different contact's BSUID to an explicit sender.
-  const candidate = whatsappIdentity({ phone: contact?.wa_id, userId: contact?.user_id, parentUserId: contact?.parent_user_id });
+  const candidate = normalizeWhatsappIdentity({ phone: contact?.wa_id, userId: contact?.user_id, parentUserId: contact?.parent_user_id });
   const conflict = (explicit.phone && candidate.phone && explicit.phone !== candidate.phone)
     || (explicit.userId && candidate.userId && explicit.userId !== candidate.userId)
     || (explicit.parentUserId && candidate.parentUserId && explicit.parentUserId !== candidate.parentUserId);
-  return { identity: conflict ? explicit : whatsappIdentity({ phone: explicit.phone || candidate.phone,
+  return { identity: conflict ? explicit : normalizeWhatsappIdentity({ phone: explicit.phone || candidate.phone,
     userId: explicit.userId || candidate.userId, parentUserId: explicit.parentUserId || candidate.parentUserId,
     username: contact?.profile?.username }), contact: conflict ? undefined : contact };
 }
