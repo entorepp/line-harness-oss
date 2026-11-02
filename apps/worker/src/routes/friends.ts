@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { takeOverIntake } from '../services/whatsapp-intake-store.js';
+import { whatsappRecipientFields } from '../services/whatsapp-recipient.js';
+import { WhatsappSendError } from '../services/whatsapp-send-error.js';
 import {
   getFriends,
   getFriendById,
@@ -461,6 +463,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
       }
 
       if (friend.channel_type === 'whatsapp') {
+        whatsappRecipientFields(friend);
         await assertWhatsappReplyWindow(db, friend.id, normalizedSchedule.scheduledAt);
       }
       if (friend.channel_type === 'whatsapp') await takeOverIntake(c.env, friend.id);
@@ -540,6 +543,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
     if (err instanceof WhatsappReplyWindowError) {
       return c.json({ success: false, error: err.message, code: err.code, whatsappReplyWindow: err.replyWindow }, 409);
     }
+    if (err instanceof WhatsappSendError) return c.json(err.response(), err.httpStatus);
     console.error('POST /api/friends/:id/messages error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }

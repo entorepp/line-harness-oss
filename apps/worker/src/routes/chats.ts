@@ -35,6 +35,8 @@ import { recordWhatsappDelivery } from '../services/whatsapp-delivery.js';
 import { assertWhatsappReplyWindow, getWhatsappReplyWindow, WhatsappReplyWindowError } from '../services/whatsapp-reply-window.js';
 import { replaceEmojiShortcodes } from '@line-crm/shared';
 import { takeOverIntake } from '../services/whatsapp-intake-store.js';
+import { whatsappRecipientFields } from '../services/whatsapp-recipient.js';
+import { WhatsappSendError } from '../services/whatsapp-send-error.js';
 
 const chats = new Hono<Env>();
 const DEFAULT_MESSAGE_PAGE_SIZE = 200;
@@ -432,6 +434,7 @@ chats.post('/api/chats/:id/send', async (c) => {
       }
 
       if (friend.channel_type === 'whatsapp') {
+        whatsappRecipientFields(friend);
         await assertWhatsappReplyWindow(c.env.DB, friend.id, normalizedSchedule.scheduledAt);
         await takeOverIntake(c.env, friend.id);
       }
@@ -528,6 +531,7 @@ chats.post('/api/chats/:id/send', async (c) => {
     if (err instanceof WhatsappReplyWindowError) {
       return c.json({ success: false, error: err.message, code: err.code, whatsappReplyWindow: err.replyWindow }, 409);
     }
+    if (err instanceof WhatsappSendError) return c.json(err.response(), err.httpStatus);
     console.error('POST /api/chats/:id/send error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }

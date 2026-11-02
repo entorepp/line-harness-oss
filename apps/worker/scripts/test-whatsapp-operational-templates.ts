@@ -149,5 +149,17 @@ try{
  assert.equal(sql.prepare("SELECT content FROM messages_log WHERE friend_id='a' AND direction='incoming' ORDER BY created_at DESC LIMIT 1").get()!.content,'Continue chat');
  assert.equal((await deliverReply(signature)).status,200,'provider replay remains idempotent');
  assert.equal(sql.prepare("SELECT count(*) AS n FROM messages_log WHERE friend_id='a' AND direction='incoming'").get()!.n,2);
- console.log('PASS: live quick reply payload and signed customer reply reopen, real SQL claims, private recipient-bound PDFs, auth, consent, off/test gates, fresh Meta approval, stale preview/recipient, expired-window template send, body/URL variables, concurrent/replayed/unknown sends, receipt recovery and signed delivery callback');
+ // An existing private-number contact may reopen with the same approved utility
+ // template and confirmation/idempotency gates; it never becomes initial contact.
+ sql.exec(`INSERT INTO friends(id,line_user_id,display_name,line_account_id,metadata) VALUES
+  ('private','whatsapp:wa:US.PrivateTest','Private test','wa','{"whatsappRecipient":{"accountId":"wa","userId":"US.PrivateTest"}}');
+  INSERT INTO messages_log(id,friend_id,direction,message_type,content,created_at) VALUES ('private-in','private','incoming','text','test','2020-01-01T00:00:00Z');`);
+ const privatePath='/api/whatsapp/friends/private';
+ const privatePreviewResponse=await request(privatePath+'/template-preview',draft);
+ assert.equal(privatePreviewResponse.status,200);
+ const privatePreview=(await privatePreviewResponse.json() as any).data;
+ assert.equal(privatePreview.recipientPhone,'電話番号非公開（WhatsAppで返信）');
+ assert.equal((await request(privatePath+'/template-messages',body(privatePreview))).status,201);
+ assert.equal(messages.at(-1).recipient,'US.PrivateTest');assert.equal(messages.at(-1).to,undefined);
+ console.log('PASS: phone/BSUID operational templates, signed customer reply reopen, real SQL claims, private recipient-bound PDFs, auth, consent, off/test gates, fresh Meta approval, stale preview/recipient, expired-window template send, body/URL variables, concurrent/replayed/unknown sends, receipt recovery and signed delivery callback');
 }finally{globalThis.fetch=originalFetch;sql.close()}

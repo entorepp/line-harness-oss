@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getLineAccountById, jstNow } from '@line-crm/db';
 import type { Env } from '../index.js';
-import { normalizeE164Phone } from '../services/whatsapp-initiation.js';
+import { whatsappPhone, whatsappRecipientFields } from '../services/whatsapp-recipient.js';
+import { WhatsappSendError } from '../services/whatsapp-send-error.js';
 import { listOperationalTemplates, prepareOperationalMessage, operationalPayload } from '../services/whatsapp-operational-templates.js';
 import { recordWhatsappDelivery } from '../services/whatsapp-delivery.js';
 
@@ -15,7 +16,8 @@ type DocumentMetadata = { access: string; friendId: string; accountId: string; n
 type SendInput = { templateName: string; templateLanguage: string; values: Record<string, string>; buttonValues?: Record<string, string>; documentKey?: string | null; previewToken?: string; previewExpiresAt?: number; idempotencyKey?: string; optInConfirmed?: boolean; contentConfirmed?: boolean };
 type SendRow = { idempotency_key: string; friend_id: string; line_account_id: string; recipient_phone: string; request_hash: string; template_name: string; template_language: string; preview_json: string; status: 'pending' | 'accepted' | 'failed' | 'unknown'; message_log_id: string; provider_message_id: string | null; error_code: string | null; created_at: string; updated_at: string };
 class InputError extends Error {}
-const failure = (error: unknown) => error instanceof InputError ? error.message : '処理を完了できませんでした。入力と接続状況を確認してください';
+const failure = (error: unknown) => error instanceof InputError || error instanceof WhatsappSendError ? error.message : '処理を完了できませんでした。入力と接続状況を確認してください';
+const recipientLabel = (recipient: string) => whatsappPhone(recipient) ? `+${recipient}` : '電話番号非公開（WhatsAppで返信）';
 const hash = async (value: string | ArrayBuffer) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', typeof value === 'string' ? new TextEncoder().encode(value) : value))].map((x) => x.toString(16).padStart(2, '0')).join('');
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -29,16 +31,15 @@ async function allowed(env: Env['Bindings'], phone: string) {
   return mode(env) === 'live' || (mode(env) === 'test' && (env.WHATSAPP_INITIAL_CONTACT_TEST_PHONE_HASHES || '').split(',').map((s) => s.trim().toLowerCase()).includes(await hash(phone)));
 }
 async function context(db: D1Database, id: string) {
-  const friend = await db.prepare('SELECT id, line_user_id, display_name, line_account_id, is_following FROM friends WHERE id = ?').bind(id)
-    .first<{ id: string; line_user_id: string; display_name: string; line_account_id: string; is_following: number }>();
+  const friend = await db.prepare('SELECT id, line_user_id, display_name, line_account_id, is_following, metadata FROM friends WHERE id = ?').bind(id)
+    .first<{ id: string; line_user_id: string; display_name: string; line_account_id: string; is_following: number; metadata: string | null }>();
   if (!friend?.line_account_id || !friend.is_following) throw new InputError('有効なお客様が見つかりません');
   const account = await getLineAccountById(db, friend.line_account_id);
   if (!account?.is_active || account.channel_type !== 'whatsapp' || !account.whatsapp_business_account_id) throw new InputError('有効なWhatsAppアカウントではありません');
   const inbound = await db.prepare("SELECT id FROM messages_log WHERE friend_id = ? AND direction = 'incoming' LIMIT 1").bind(friend.id).first();
   if (!inbound) throw new InputError('この機能はお客様から受信済みのチャットで使用できます');
-  let phone: string;
-  try { phone = normalizeE164Phone(friend.line_user_id.startsWith('+') ? friend.line_user_id : `+${friend.line_user_id}`); }
-  catch { throw new InputError('登録済み電話番号を確認してください'); }
+  const recipient = whatsappRecipientFields(friend);
+  const phone = 'to' in recipient ? recipient.to : recipient.recipient;
   return { friend, account, phone };
 }
 async function documentFor(env: Env['Bindings'], ctx: Awaited<ReturnType<typeof context>>, key: string) {
@@ -56,7 +57,7 @@ async function prepare(env: Env['Bindings'], id: string, body: SendInput) {
   catch (error) { throw new InputError(error instanceof Error ? error.message : '入力を確認してください'); }
   if (template.documentRequired !== Boolean(body.documentKey)) throw new InputError(template.documentRequired ? 'PDFを添付してください' : 'この文面にはPDFを添付できません');
   const document = body.documentKey ? await documentFor(env, ctx, body.documentKey) : null;
-  const preview = { friendId: ctx.friend.id, recipientName: ctx.friend.display_name, recipientPhone: `+${ctx.phone}`, accountName: ctx.account.name,
+  const preview = { friendId: ctx.friend.id, recipientName: ctx.friend.display_name, recipientPhone: recipientLabel(ctx.phone), accountName: ctx.account.name,
     templateName: template.name, templateLanguage: template.language, category: template.category, text: message.text, links: message.links, quickReplies: template.quickReplies.map(({ label }) => label),
     document: document ? { key: document.key, name: document.name, size: document.size, sha256: document.sha256 } : null };
   return { ctx, template, message, document, preview };
@@ -83,8 +84,8 @@ whatsappTemplates.use('/api/whatsapp/friends/*', bodyLimit({ maxSize: MAX_FILE +
 whatsappTemplates.get('/api/whatsapp/friends/:id/templates', async (c) => {
   try {
     const ctx = await context(c.env.DB, c.req.param('id'));
-    return c.json({ success: true, data: { friendId: ctx.friend.id, recipientName: ctx.friend.display_name, recipientPhone: `+${ctx.phone}`, releaseMode: mode(c.env), canSend: await allowed(c.env, ctx.phone), templates: await listOperationalTemplates(ctx.account) } });
-  } catch (error) { return c.json({ success: false, error: failure(error) }, error instanceof InputError ? 400 : 502); }
+    return c.json({ success: true, data: { friendId: ctx.friend.id, recipientName: ctx.friend.display_name, recipientPhone: recipientLabel(ctx.phone), releaseMode: mode(c.env), canSend: await allowed(c.env, ctx.phone), templates: await listOperationalTemplates(ctx.account) } });
+  } catch (error) { return c.json({ success: false, error: failure(error) }, error instanceof WhatsappSendError ? error.httpStatus : error instanceof InputError ? 400 : 502); }
 });
 whatsappTemplates.post('/api/whatsapp/friends/:id/documents', async (c) => {
   try {
@@ -98,7 +99,7 @@ whatsappTemplates.post('/api/whatsapp/friends/:id/documents', async (c) => {
     const metadata: DocumentMetadata = { access: ACCESS, friendId: ctx.friend.id, accountId: ctx.account.id, name, size: file.size, sha256: await hash(bytes), expiresAt: Date.now() + RETENTION * 1000 };
     await c.env.UPLOADS.put(key, bytes, { metadata, expirationTtl: RETENTION });
     return c.json({ success: true, data: { key, name, size: file.size } }, 201);
-  } catch (error) { return c.json({ success: false, error: failure(error) }, error instanceof InputError ? 400 : 502); }
+  } catch (error) { return c.json({ success: false, error: failure(error) }, error instanceof WhatsappSendError ? error.httpStatus : error instanceof InputError ? 400 : 502); }
 });
 whatsappTemplates.get('/api/whatsapp/friends/:id/documents/:key', async (c) => {
   try {
@@ -112,7 +113,7 @@ whatsappTemplates.post('/api/whatsapp/friends/:id/template-preview', async (c) =
     const prepared = await prepare(c.env, c.req.param('id'), await c.req.json<SendInput>());
     const expiresAt = Date.now() + 15 * 60_000;
     return c.json({ success: true, data: { ...prepared.preview, previewExpiresAt: expiresAt, previewToken: await previewToken(c.env, prepared, expiresAt), canSend: await allowed(c.env, prepared.ctx.phone) } });
-  } catch (error) { return c.json({ success: false, error: failure(error), outcome: 'not_started' }, error instanceof InputError ? 400 : 502); }
+  } catch (error) { return c.json({ success: false, error: failure(error), outcome: 'not_started' }, error instanceof WhatsappSendError ? error.httpStatus : error instanceof InputError ? 400 : 502); }
 });
 whatsappTemplates.get('/api/whatsapp/friends/:id/template-messages/:key', async (c) => {
   const row = await rowByKey(c.env.DB, c.req.param('key'));
@@ -175,7 +176,7 @@ whatsappTemplates.post('/api/whatsapp/friends/:id/template-messages', async (c) 
         .bind(messageStarted ? 'unknown' : 'failed', messageStarted ? 'UNKNOWN_OUTCOME' : 'MEDIA_UPLOAD_FAILED', jstNow(), claimed.idempotency_key).run();
       return c.json({ success: false, error: '送信結果の確認が必要です。自動再送はしません。「送信結果を確認」を押してください', outcome: 'check_receipt' }, 502);
     }
-    return c.json({ success: false, error: failure(error), outcome: 'not_started' }, error instanceof InputError ? 400 : 502);
+    return c.json({ success: false, error: failure(error), outcome: 'not_started' }, error instanceof WhatsappSendError ? error.httpStatus : error instanceof InputError ? 400 : 502);
   }
 });
 export { whatsappTemplates };

@@ -171,7 +171,8 @@ try {
   providerStatus = 400;
   assert.equal((await sendNow(failure.id)).status, 500);
   assert.equal(row(failure.id).status, 'failed');
-  assert.match(row(failure.id).last_error, /Mock provider rejection/);
+  assert.match(row(failure.id).last_error, /WhatsAppに送信を拒否/);
+  assert.ok(!row(failure.id).last_error.includes('Mock provider rejection'), 'raw provider details are not stored');
   const failureCalls = providerCalls.length;
   await processScheduledMessages(env);
   await sendNow(failure.id);

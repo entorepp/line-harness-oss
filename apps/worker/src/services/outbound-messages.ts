@@ -13,6 +13,8 @@ import { dispatchWeChatKfText } from './wechat-kf.js';
 import { dispatchWeChatText } from './wechat.js';
 import { assertWhatsappReplyWindow } from './whatsapp-reply-window.js';
 import { takeOverIntake } from './whatsapp-intake-store.js';
+import { whatsappRecipientFields } from './whatsapp-recipient.js';
+import { whatsappProviderError, whatsappUnknownOutcome } from './whatsapp-send-error.js';
 
 export interface MessagingFriendContext {
   id: string;
@@ -406,7 +408,7 @@ function resolveMetaRecipient(friend: MessagingFriendContext): string {
 }
 
 export function buildWhatsAppMessagePayload(
-  to: string,
+  to: string | Pick<MessagingFriendContext, 'line_user_id' | 'line_account_id' | 'metadata'>,
   input: OutboundMessageInput,
 ): Record<string, unknown> {
   const messageType = input.messageType ?? 'text';
@@ -439,7 +441,7 @@ export function buildWhatsAppMessagePayload(
   return {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
-    to,
+    ...whatsappRecipientFields(typeof to === 'string' ? { line_user_id: to } : to),
     ...providerMessage,
   };
 }
@@ -483,6 +485,7 @@ export async function dispatchOutboundMessage(opts: {
   }
 
   if (opts.friend.channel_type === 'whatsapp') {
+    const recipient = whatsappRecipientFields(opts.friend);
     if (!opts.intakeAutomation) await takeOverIntake(opts.env, opts.friend.id);
     await assertWhatsappReplyWindow(opts.env.DB, opts.friend.id);
     const content = serializeOutboundContent(opts.input);
@@ -493,20 +496,30 @@ export async function dispatchOutboundMessage(opts: {
     }
 
     const GRAPH_API = 'https://graph.facebook.com/v25.0';
-    const res = await fetch(`${GRAPH_API}/${waPhoneNumberId}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${waToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(opts.intakeAutomation && opts.intakeInteractive ? { messaging_product: 'whatsapp', recipient_type: 'individual', to: opts.friend.line_user_id.replace(/^\+/, ''), type: 'interactive', interactive: opts.intakeInteractive } : buildWhatsAppMessagePayload(opts.friend.line_user_id, opts.input)),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    });
-
-    const responseText = await res.text().catch(() => '');
+    const payload = opts.intakeAutomation && opts.intakeInteractive
+      ? { messaging_product: 'whatsapp', recipient_type: 'individual', ...recipient, type: 'interactive', interactive: opts.intakeInteractive }
+      : buildWhatsAppMessagePayload(opts.friend, opts.input);
+    const requestBody = JSON.stringify(payload);
+    let res: Response;
+    let responseText: string;
+    try {
+      res = await fetch(`${GRAPH_API}/${waPhoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${waToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      });
+      responseText = await res.text();
+    } catch {
+      throw whatsappUnknownOutcome();
+    }
     if (!res.ok) {
-      const text = responseText;
-      throw new Error(`WhatsApp send failed: ${text}`);
+      const error = whatsappProviderError(res.status, responseText);
+      console.error('WhatsApp provider rejected send', { httpStatus: res.status, providerCode: error.providerCode, providerSubcode: error.providerSubcode });
+      throw error;
     }
 
     let providerMessageId: string | null = null;
@@ -517,7 +530,7 @@ export async function dispatchOutboundMessage(opts: {
       providerMessageId = null;
     }
     if (!providerMessageId) {
-      console.error('WhatsApp accepted a send without a provider message ID');
+      throw whatsappUnknownOutcome();
     }
 
     return {
