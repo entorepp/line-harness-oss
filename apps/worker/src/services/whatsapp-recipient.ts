@@ -7,7 +7,7 @@ export function whatsappPhone(value: unknown): string | undefined {
 export function whatsappUserId(value: unknown): string | undefined {
   return typeof value === 'string' && /^[A-Z]{2}\.(?:ENT\.)?[A-Za-z0-9]{1,128}$/.test(value.trim()) ? value.trim() : undefined;
 }
-export function whatsappIdentity(value: WhatsappIdentity): WhatsappIdentity {
+export function normalizeWhatsappIdentity(value: WhatsappIdentity): WhatsappIdentity {
   return { phone: whatsappPhone(value.phone), userId: whatsappUserId(value.userId),
     parentUserId: whatsappUserId(value.parentUserId),
     username: typeof value.username === 'string' && value.username.length <= 35 ? value.username : undefined };
