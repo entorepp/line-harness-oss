@@ -31,10 +31,16 @@ async function fill(r: ReactTestRenderer) {
 }
 const submit = (r: ReactTestRenderer) => r.root.findByProps({type:'submit'})
 async function main() { try {
- let r = await make(); await fill(r)
+ let r = await make()
+ assert.match(text(r.root.findByProps({role:'status'})),/システム側で無効/)
+ await fill(r)
+ assert.match(text(r.root.findByProps({role:'status'})),/社内番号への送受信テスト/,'editing must preserve the release blocker')
+ assert.equal(text(submit(r)),'初回連絡は現在無効です')
  assert.equal(submit(r).props.disabled,true,'off gate remains disabled even after consent')
+ await act(async()=>r.root.findByType('form').props.onSubmit({preventDefault(){}}))
  assert.equal(sends,0); await act(async()=>r.unmount())
  mode='live'; r=await make()
+ assert.equal(r.root.findAllByProps({role:'status'}).length,0,'live mode has no stale release blocker')
  assert.equal(r.root.findByProps({type:'datetime-local'}).props.value,'','never invent consent time')
  assert.equal(submit(r).props.disabled,true)
  await fill(r); assert.equal(submit(r).props.disabled,false)
@@ -54,7 +60,7 @@ async function main() { try {
  await act(async()=>r.root.findByType('form').props.onSubmit({preventDefault(){}}))
  assert.equal(sends,count)
  await act(async()=>r.unmount())
- console.log('PASS: off gate, explicit consent, frozen request, accepted payload, unknown outcome lock')
+ console.log('PASS: persistent off-mode reason, off gate, explicit consent, frozen request, accepted payload, unknown outcome lock')
 } finally { globalThis.fetch=original }
 
 }
