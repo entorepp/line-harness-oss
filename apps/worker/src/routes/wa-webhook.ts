@@ -15,6 +15,7 @@ import {
 } from '../services/whatsapp-delivery.js';
 
 import { recordCallingWebhook } from '../services/whatsapp-calling.js';
+import { parseFriendMetadata, whatsappExternalId, whatsappIdentity, type WhatsappIdentity } from '../services/whatsapp-recipient.js';
 
 const waWebhook = new Hono<Env>();
 const GRAPH_API = 'https://graph.facebook.com/v25.0';
@@ -43,6 +44,7 @@ interface WaForwardedMessage {
 }
 
 interface NormalizedWaMessage extends WaForwardedMessage {
+  identity?: WhatsappIdentity;
   intakeChoiceId?: string;
   direction: WaDirection;
   occurredAt: string;
@@ -69,6 +71,8 @@ interface MetaContact {
     username?: string;
   };
   wa_id?: string;
+  user_id?: string;
+  parent_user_id?: string;
 }
 
 interface MetaWebhookValue {
@@ -103,6 +107,10 @@ interface NormalizedWaDeliveryStatus {
 interface MetaMessage {
   from?: string;
   to?: string;
+  from_user_id?: string;
+  from_parent_user_id?: string;
+  to_user_id?: string;
+  to_parent_user_id?: string;
   id?: string;
   type?: string;
   timestamp?: string;
@@ -228,14 +236,24 @@ function isCoexistenceEventPayload(payload: unknown): payload is CoexistenceEven
   );
 }
 
-function resolveContactIdentifier(contact?: MetaContact | null): string {
-  const waId = contact?.wa_id?.trim();
-  if (waId) return waId;
-
-  const username = contact?.profile?.username?.trim();
-  if (username) return username;
-
-  return '';
+function resolveMetaIdentity(message: MetaMessage, contacts: MetaContact[] = [], outgoing = false): { identity: WhatsappIdentity; contact?: MetaContact } {
+  const explicit = whatsappIdentity({ phone: outgoing ? message.to : message.from,
+    userId: outgoing ? message.to_user_id : message.from_user_id,
+    parentUserId: outgoing ? message.to_parent_user_id : message.from_parent_user_id });
+  const matches = contacts.filter((item) => {
+    const candidate = whatsappIdentity({ phone: item.wa_id, userId: item.user_id, parentUserId: item.parent_user_id });
+    return (explicit.phone && candidate.phone === explicit.phone) || (explicit.userId && candidate.userId === explicit.userId)
+      || (explicit.parentUserId && candidate.parentUserId === explicit.parentUserId);
+  });
+  const contact = matches.length === 1 ? matches[0] : contacts.length === 1 ? contacts[0] : undefined;
+  // Never attach a different contact's BSUID to an explicit sender.
+  const candidate = whatsappIdentity({ phone: contact?.wa_id, userId: contact?.user_id, parentUserId: contact?.parent_user_id });
+  const conflict = (explicit.phone && candidate.phone && explicit.phone !== candidate.phone)
+    || (explicit.userId && candidate.userId && explicit.userId !== candidate.userId)
+    || (explicit.parentUserId && candidate.parentUserId && explicit.parentUserId !== candidate.parentUserId);
+  return { identity: conflict ? explicit : whatsappIdentity({ phone: explicit.phone || candidate.phone,
+    userId: explicit.userId || candidate.userId, parentUserId: explicit.parentUserId || candidate.parentUserId,
+    username: contact?.profile?.username }), contact: conflict ? undefined : contact };
 }
 
 function resolveContactDisplayName(contact: MetaContact | null | undefined, fallback: string): string {
@@ -599,22 +617,41 @@ async function ensureWaFriend(
   externalId: string,
   displayName: string,
   slackChannelId?: string | null,
+  identity?: WhatsappIdentity,
+  occurredAt?: string,
 ): Promise<{ id: string; slack_channel_id: string | null }> {
   const now = jstNow();
-  const friend = await db
-    .prepare(`SELECT id, slack_channel_id FROM friends WHERE line_user_id = ? AND line_account_id = ? LIMIT 1`)
-    .bind(externalId, account.id)
-    .first<{ id: string; slack_channel_id: string | null }>();
+  // The legacy column is globally unique. Scope new private IDs to the account;
+  // keep existing phone-based keys and all history references unchanged.
+  const storageId = identity && !identity.phone ? `whatsapp:${account.id}:${externalId}` : externalId;
+  const ids = [externalId, identity?.phone || '', identity?.userId || '', identity?.parentUserId || ''];
+  const stored = "CASE WHEN json_valid(metadata) THEN CASE WHEN json_type(metadata) = 'object' THEN metadata ELSE '{}' END ELSE '{}' END";
+  const candidates = await db.prepare(`SELECT id, slack_channel_id, metadata FROM friends
+    WHERE line_account_id = ? AND (line_user_id = ? OR REPLACE(line_user_id,'+','') IN (?,?,?,?)
+      OR (json_extract(${stored}, '$.whatsappRecipient.accountId') = ? AND (
+        json_extract(${stored}, '$.whatsappRecipient.userId') IN (?,?,?,?)
+        OR json_extract(${stored}, '$.whatsappRecipient.parentUserId') IN (?,?,?,?)
+        OR json_extract(${stored}, '$.whatsappRecipient.phone') IN (?,?,?,?)))) LIMIT 2`)
+    .bind(account.id, storageId, ...ids, account.id, ...ids, ...ids, ...ids)
+    .all<{ id: string; slack_channel_id: string | null; metadata: string | null }>();
+  if (candidates.results.length > 1) throw new Error('WhatsApp identity conflict; no contacts were merged');
+  const friend = candidates.results[0];
+  const metadata = parseFriendMetadata(friend?.metadata);
+  if (identity && (!metadata.whatsappRecipient?.verifiedAt || Date.parse(occurredAt || now) >= Date.parse(metadata.whatsappRecipient.verifiedAt))) {
+    metadata.whatsappRecipient = { ...((metadata.whatsappRecipient?.accountId === account.id) ? metadata.whatsappRecipient : {}),
+      ...Object.fromEntries(Object.entries(identity).filter(([, value]) => value !== undefined)),
+      accountId: account.id, verifiedAt: occurredAt || now };
+  }
 
   const nextSlackChannelId = slackChannelId ?? account.default_slack_channel ?? null;
   if (!friend) {
     const id = crypto.randomUUID();
     await db
       .prepare(
-        `INSERT INTO friends (id, line_user_id, display_name, is_following, line_account_id, slack_channel_id, created_at, updated_at)
-         VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
+        `INSERT INTO friends (id, line_user_id, display_name, is_following, line_account_id, slack_channel_id, metadata, created_at, updated_at)
+         VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)`,
       )
-      .bind(id, externalId, displayName, account.id, nextSlackChannelId, now, now)
+      .bind(id, storageId, displayName, account.id, nextSlackChannelId, JSON.stringify(metadata), now, now)
       .run();
     return { id, slack_channel_id: nextSlackChannelId };
   }
@@ -625,10 +662,15 @@ async function ensureWaFriend(
           SET display_name = ?,
               line_account_id = ?,
               slack_channel_id = COALESCE(?, slack_channel_id),
+              metadata = CASE WHEN ? IS NULL THEN metadata
+                WHEN json_extract(${stored}, '$.whatsappRecipient.verifiedAt') IS NULL
+                  OR julianday(?) >= julianday(json_extract(${stored}, '$.whatsappRecipient.verifiedAt'))
+                THEN json_set(${stored}, '$.whatsappRecipient', json(?)) ELSE metadata END,
               updated_at = ?
         WHERE id = ?`,
     )
-    .bind(displayName, account.id, nextSlackChannelId, now, friend.id)
+    .bind(displayName, account.id, nextSlackChannelId, identity ? 1 : null, occurredAt || now,
+      JSON.stringify(metadata.whatsappRecipient || {}), now, friend.id)
     .run();
 
   return {
@@ -707,6 +749,8 @@ async function persistWaMessage(
     counterpartyId,
     msg.senderName?.trim() || counterpartyId,
     msg.slackChannelId || null,
+    msg.identity,
+    msg.occurredAt,
   );
 
   let intake: { owned: boolean; sessionId?: string } = { owned: false };
@@ -859,15 +903,13 @@ function extractMetaWebhookMessages(payload: MetaWebhookPayload): NormalizedWaMe
           // A permission reply is not an ordinary customer message or a new reply window.
           if (message.interactive?.type === 'call_permission_reply') continue;
           const media = getMetaMediaObject(message);
-          const contact =
-            value.contacts?.find((item) => item.wa_id === message.from) ??
-            value.contacts?.find((item) => resolveContactIdentifier(item) === message.from) ??
-            value.contacts?.[0];
-          const from = message.from?.trim() || resolveContactIdentifier(contact);
+          const { identity, contact } = resolveMetaIdentity(message, value.contacts);
+          const from = whatsappExternalId(identity);
           if (!from || !message.id?.trim() || !message.type?.trim()) continue;
 
           normalized.push({
             from,
+            identity,
             senderName: resolveContactDisplayName(contact, from),
             type: message.type.trim(),
             text: inferMetaText(message),
@@ -888,17 +930,15 @@ function extractMetaWebhookMessages(payload: MetaWebhookPayload): NormalizedWaMe
       if (change.field === 'smb_message_echoes' && value?.message_echoes?.length) {
         for (const message of value.message_echoes) {
           const media = getMetaMediaObject(message);
-          const contact =
-            value.contacts?.find((item) => item.wa_id === message.to) ??
-            value.contacts?.find((item) => resolveContactIdentifier(item) === message.to) ??
-            value.contacts?.[0];
-          const to = message.to?.trim() || resolveContactIdentifier(contact);
+          const { identity, contact } = resolveMetaIdentity(message, value.contacts, true);
+          const to = whatsappExternalId(identity);
           const from = message.from?.trim() || value.metadata?.display_phone_number?.trim() || 'business';
           if (!to || !message.id?.trim() || !message.type?.trim()) continue;
 
           normalized.push({
             from,
             to,
+            identity,
             senderName: resolveContactDisplayName(contact, to),
             type: message.type.trim(),
             text: inferMetaText(message),

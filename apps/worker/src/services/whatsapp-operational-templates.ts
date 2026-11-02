@@ -1,4 +1,5 @@
 import type { LineAccount } from '@line-crm/db';
+import { whatsappRecipientFields } from './whatsapp-recipient.js';
 import { fetchWhatsAppTemplateDefinitions, normalizeWhatsAppTemplate, type RawWhatsAppTemplate } from './whatsapp-initiation.js';
 
 export const OPERATIONAL_TEMPLATES = [
@@ -131,6 +132,6 @@ export function operationalPayload(phone: string, template: OperationalTemplate,
   }
   for (const [index, text] of Object.entries(message.buttonValues)) components.push({ type: 'button', sub_type: 'url', index, parameters: [{ type: 'text', text }] });
   for (const button of template.quickReplies) components.push({ type: 'button', sub_type: 'quick_reply', index: String(button.index), parameters: [{ type: 'payload', payload: button.payload }] });
-  return { messaging_product: 'whatsapp', recipient_type: 'individual', to: phone, type: 'template',
+  return { messaging_product: 'whatsapp', recipient_type: 'individual', ...whatsappRecipientFields({ line_user_id: phone }), type: 'template',
     template: { name: template.name, language: { code: template.language }, components } };
 }
