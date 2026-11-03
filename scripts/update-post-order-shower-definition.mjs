@@ -35,20 +35,20 @@ assert.equal(before.is_active, 1)
 const oldFields = JSON.parse(before.fields)
 const proposed = JSON.parse(execFileSync(process.execPath, ['scripts/register-post-order-survey-form.mjs'], { encoding: 'utf8' })).payload.fields
 let nextFields = [...oldFields]
-for (const name of ['q55', 'q56', 'q57']) {
+for (const name of ['q58', 'q59', 'q60']) {
   const desired = proposed.find(field => field.name === name)
   assert.ok(desired && desired.required === false)
   const existing = oldFields.find(field => field.name === name)
   if (existing) assert.deepEqual(existing, desired)
   else nextFields.splice(nextFields.findIndex(field => field.name === 'additional_interests'), 0, desired)
 }
-assert.equal(nextFields.length, 60)
-assert.equal(new Set(nextFields.map(field => field.name)).size, 60)
+assert.equal(nextFields.length, 63)
+assert.equal(new Set(nextFields.map(field => field.name)).size, 63)
 const changed = JSON.stringify(nextFields) !== before.fields
 console.log(JSON.stringify({ mode: process.argv.includes('--apply') ? 'apply' : 'dry-run', formId,
   locale: before.locale, beforeFieldCount: oldFields.length, afterFieldCount: nextFields.length,
   updatedAt: before.updated_at, submitCount: before.submit_count, fieldsBeforeSha256: hash(before.fields),
-  fieldsAfterSha256: hash(JSON.stringify(nextFields)), changes: changed ? ['q55 shower request', 'q56 hotel equipment acceptance', 'q57 JPY 40000 per hotel rental consent'] : [] }))
+  fieldsAfterSha256: hash(JSON.stringify(nextFields)), changes: changed ? ['q58 preferred chair type', 'q59 wheels preference', 'q60 per-hotel fallback and rental choice'] : [] }))
 if (process.argv.includes('--apply') && changed) {
   const submissionsBefore = await submissionDigests()
   const now = new Date().toISOString()
