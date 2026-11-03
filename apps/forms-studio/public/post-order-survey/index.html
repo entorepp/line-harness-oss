@@ -428,7 +428,20 @@ const S=[
           ["Smoking","禁煙・喫煙","select",[["Non-smoking","禁煙"],["Smoking","喫煙"],["Either is fine","どちらでも可"]]]]}
  ]},
 {n:7,e:"Care equipment for us to arrange",j:"福祉用具の手配",
-  extra:[{qn:54,after:31,t:"radio",noqn:1,showIf:["hoist",["Already arranged","Please arrange"]],
+  extra:[
+   {qn:55,after:33,t:"radio",id:"showerRequest",noqn:1,r:1,
+    e:"Would you like us to request a shower chair for your hotel room?",j:"ホテルの客室にシャワーチェアをリクエストしますか？",
+    he:"Hotel equipment, availability and suitability will be confirmed separately.",hj:"ホテル備品の有無・在庫・適合性は別途確認します。",
+    o:[["Yes","はい"],["No","いいえ"]]},
+   {qn:56,after:33,t:"radio",id:"showerHotel",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
+    e:"Is the shower chair provided by the hotel acceptable?",j:"ホテル備え付けのシャワーチェアでよろしいですか？",
+    he:"If you require a specific shower chair, rental costs an additional JPY 40,000 per hotel.",hj:"特定のシャワーチェアをご希望の場合は、1ホテルあたり追加40,000円でレンタルできます。",
+    o:[["Yes","はい"],["No","いいえ"]]},
+   {qn:57,after:33,t:"radio",noqn:1,r:1,showIf:["showerHotel",["No"]],showIfAll:[["showerRequest",["Yes"]]],
+    e:"Would you like to rent a specific shower chair for an additional JPY 40,000 per hotel?",j:"1ホテルあたり追加40,000円で、指定のシャワーチェアのレンタルを希望しますか？",
+    he:"Yes: you accept the additional JPY 40,000 per hotel. No: please discuss alternatives with us. We will confirm the model and availability separately.",hj:"「はい」は1ホテルあたり追加40,000円への同意です。「いいえ」の場合は代替方法をご相談します。機種・在庫は別途確認します。",
+    o:[["Yes","はい"],["No","いいえ"]]},
+   {qn:54,after:31,t:"radio",noqn:1,showIf:["hoist",["Already arranged","Please arrange"]],
    e:"Would you like an explanation of how to use the hoist when it is delivered?",j:"リフト搬入・設置時に使い方の説明を希望されますか",
    he:"Tell us your preference. We will confirm the delivery arrangements and explanation with the provider separately.",
    hj:"ご希望をお知らせください。搬入方法と説明の対応可否は事業者へ確認のうえ、別途ご案内します。",
@@ -470,10 +483,7 @@ const S=[
     {v:"Powered wheelchair (WHILL)",e:"Powered wheelchair (WHILL)",j:"電動車椅子（WHILL）",img:"wcWhill",
      pe:"Up to 7 days 50,000 JPY / up to 15 days 70,000 JPY / up to 25 days 100,000 JPY (incl. tax) — collect at the airport or at your hotel",
      pj:"7日以内 50,000円／15日以内 70,000円／25日以内 100,000円（税込）　空港受取・ホテル受取が選べます"},
-    {v:"Shower chair",e:"Shower chair",j:"シャワーチェア",img:"showerChair",
-     pe:"40,000 JPY per area (incl. tax) — delivered to your hotel",
-     pj:"1エリア 40,000円（税込）　ホテル受取"},
-    {v:"Voltage transformer",e:"Voltage transformer",j:"変圧器",img:"transformer",
+    {keyIndex:3,v:"Voltage transformer",e:"Voltage transformer",j:"変圧器",img:"transformer",
      pe:"40,000 JPY per area (incl. tax) — delivered to your hotel",
      pj:"1エリア 40,000円（税込）　ホテル受取"}
    ],
@@ -627,6 +637,7 @@ function question(f,qn,inst,scoped){
   const SFX=scoped?"__p"+inst:"";     // くり返し内は条件IDをブロックごとに分ける
   const card=el("div","q");
   if(f.showIf) card.dataset.showif=JSON.stringify([f.showIf[0]+SFX,f.showIf[1]]);
+  if(f.showIfAll) card.dataset.showifall=JSON.stringify(f.showIfAll.map(([id,vals])=>[id+SFX,vals]));
   const qt=el("p","qt");
   if(!f.noqn) qt.appendChild(el("span","qn","Q"+qn));
   const multi=(f.t==="check")?'<span class="multi">'+T("choose any that apply","複数選択可")+'</span>':"";
@@ -682,7 +693,7 @@ function question(f,qn,inst,scoped){
       const l=el("label","card");
       const inp=document.createElement("input");
       inp.type=f.t==="cards"?"radio":"checkbox";
-      inp.name=QKEY; inp.value=it.v; inp.dataset.k=QKEY+"_"+i;
+      inp.name=QKEY; inp.value=it.v; inp.dataset.k=QKEY+"_"+(it.keyIndex??i);
       if(f.id) inp.dataset.ctrl=f.id+SFX;
       l.appendChild(inp);
       const body=el("div","cardbody");
@@ -1073,7 +1084,7 @@ function applyConditions(){
       return;
     }
     const cur=KEYS.get(id);
-    card.hidden=!(cur&&vals.includes(cur));
+    card.hidden=!(cur&&vals.includes(cur)) || (card.dataset.showifall && !JSON.parse(card.dataset.showifall).every(([key,values])=>values.includes(KEYS.get(key))));
   });
 }
 function refresh(){
@@ -1305,6 +1316,6 @@ window.FlatFormDraft.ready.then(restoreServerDraft);
 window.addEventListener("flat-form-draft-recovered",restoreServerDraft);
 </script>
 
-<script src="/post-order-survey.js?v=20261010-3" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
+<script src="/post-order-survey.js?v=20261103-1" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
 </body>
 </html>
