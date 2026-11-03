@@ -11,11 +11,11 @@ const gear = model.sections.find(section => section.n === 7)
 const sling = gear.f.find(field => field.id === 'sling')
 assert.deepEqual(Array.from(sling.o, option => option[0]), ['Yes, bringing my own', 'No, please arrange one', 'Other'], 'Previously saved choices must keep their identity')
 assert.deepEqual(Array.from(sling.o, option => option[2]), ['No, I will bring my own', 'Yes, please arrange a rental sling', 'Not sure / please discuss with me'])
-assert.equal(gear.extra[0].qn, 54)
-assert.equal(gear.extra[0].r, undefined, 'A new preference must not prevent an existing draft from being submitted')
+assert.equal(gear.extra.find(field => field.qn === 54).qn, 54)
+assert.equal(gear.extra.find(field => field.qn === 54).r, undefined, 'A new preference must not prevent an existing draft from being submitted')
 const payload = JSON.parse(execFileSync(process.execPath, ['scripts/register-post-order-survey-form.mjs'], { encoding: 'utf8' })).payload
-assert.equal(new Set(payload.fields.map(field => field.name)).size, 57)
-assert.equal(payload.fields.length, 57)
+assert.equal(new Set(payload.fields.map(field => field.name)).size, 60)
+assert.equal(payload.fields.length, 60)
 assert.equal(payload.fields.find(field => field.name === 'q42').label.includes('Arrival flight'), true)
 assert.equal(payload.fields.find(field => field.name === 'q54').label.includes('リフト搬入'), true)
 
@@ -39,4 +39,4 @@ for (const choice of ['Explanation requested','Explanation not requested','Pleas
   assert.equal(context.serializeAnswers().q54,'')
   assert.equal(context.serializeAnswers().q32,'')
 }
-console.log('POST_ORDER_EQUIPMENT_OK existing option identities preserved; 57 unique fields; optional hoist preference; all 3 choices serialize; hidden answers excluded; flight mapping preserved')
+console.log('POST_ORDER_EQUIPMENT_OK existing option identities preserved; 60 unique fields; optional hoist preference; all 3 choices serialize; hidden answers excluded; flight mapping preserved')

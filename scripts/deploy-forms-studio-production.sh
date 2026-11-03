@@ -34,6 +34,7 @@ node scripts/verify-post-order-survey.mjs
 node scripts/test-post-order-survey-names.mjs
 node scripts/test-post-order-survey-inputs.mjs
 node scripts/test-post-order-survey-equipment.mjs
+node scripts/test-post-order-survey-shower.mjs
 node scripts/test-post-order-survey-upload.mjs
 node scripts/test-issued-survey-route.mjs
 node scripts/test-server-draft.mjs
