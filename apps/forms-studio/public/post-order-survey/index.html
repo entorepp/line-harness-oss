@@ -80,6 +80,9 @@ h2:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .q{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:18px 20px;margin:0;
   display:flex;flex-direction:column;gap:9px}
 .q[hidden]{display:none}
+.subwrap.shower-preferences{gap:0;background:var(--card);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+.shower-preferences>.q{border:0;border-radius:0}
+.shower-preferences>.q+.q{padding-top:0}
 .qt{margin:0;font-weight:500;display:flex;gap:11px;align-items:baseline;text-wrap:pretty}
 .qn{flex:none;color:var(--accent);font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums;
   letter-spacing:.03em;padding-top:2px}
@@ -442,11 +445,11 @@ const S=[
     he:"Yes: you accept the additional JPY 40,000 per hotel. No: please discuss alternatives with us. We will confirm the model and availability separately.",hj:"「はい」は1ホテルあたり追加40,000円への同意です。「いいえ」の場合は代替方法をご相談します。機種・在庫は別途確認します。",
     o:[["Yes","はい"],["No","いいえ"]]},
    // q56/q57 remain hidden for historical answer labels; new meanings use new keys.
-   {qn:58,after:33,t:"radio",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
+   {qn:58,group:"shower-preferences",after:33,t:"radio",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
     e:"What type of shower chair would you prefer?",j:"どのタイプのシャワーチェアをご希望ですか？",
     he:"Shower chairs vary by hotel, and the available types may be limited. Please tell us your preferred features first.",hj:"シャワーチェアのタイプはホテルによって異なり、選べる種類も限られています。まずご希望の形をお知らせください。",
     o:[["With backrest and armrests","背もたれあり・肘掛けあり"],["With backrest, without armrests","背もたれあり・肘掛けなし"],["Without backrest, with armrests","背もたれなし・肘掛けあり"],["Without backrest or armrests","背もたれなし・肘掛けなし"]]},
-   {qn:59,after:33,t:"radio",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
+   {qn:59,group:"shower-preferences",after:33,t:"radio",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
     e:"Would you prefer a shower chair with wheels?",j:"キャスター付きのシャワーチェアをご希望ですか？",
     o:[["With wheels","キャスター付きがよい"],["Without wheels","キャスターなしがよい"],["No preference","どちらでもよい"]]},
    {qn:60,after:33,t:"radio",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
@@ -1185,8 +1188,21 @@ function render(){
       s.f.forEach((f,i)=>{
         const qn=base+i+1;
         const c=question(f,qn,0); c.dataset.sec=s.n; body.appendChild(c);
+        const extraGroups=new Map();
         (s.extra||[]).filter(extra=>extra.after===qn).forEach(extra=>{
-          const additional=question(extra,extra.qn,0); additional.dataset.sec=s.n; body.appendChild(additional);
+          const additional=question(extra,extra.qn,0); additional.dataset.sec=s.n;
+          let target=body;
+          if(extra.group){
+            if(!extraGroups.has(extra.group)){
+              const group=el("div","subwrap "+extra.group);
+              group.dataset.showif=JSON.stringify(extra.showIf);
+              group.setAttribute("role","group");
+              group.setAttribute("aria-label",T("Shower chair preferences","シャワーチェアのご希望"));
+              extraGroups.set(extra.group,group); body.appendChild(group);
+            }
+            target=extraGroups.get(extra.group);
+          }
+          target.appendChild(additional);
         });
       });
       if(s.sub){
