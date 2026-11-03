@@ -433,14 +433,27 @@ const S=[
     e:"Would you like us to request a shower chair for your hotel room?",j:"ホテルの客室にシャワーチェアをリクエストしますか？",
     he:"Hotel equipment, availability and suitability will be confirmed separately.",hj:"ホテル備品の有無・在庫・適合性は別途確認します。",
     o:[["Yes","はい"],["No","いいえ"]]},
-   {qn:56,after:33,t:"radio",id:"showerHotel",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
+   {qn:56,after:33,t:"radio",id:"showerHotel",noqn:1,showIf:["legacyShowerQuestions",["Yes"]],
     e:"Is the shower chair provided by the hotel acceptable?",j:"ホテル備え付けのシャワーチェアでよろしいですか？",
     he:"If you require a specific shower chair, rental costs an additional JPY 40,000 per hotel.",hj:"特定のシャワーチェアをご希望の場合は、1ホテルあたり追加40,000円でレンタルできます。",
     o:[["Yes","はい"],["No","いいえ"]]},
-   {qn:57,after:33,t:"radio",noqn:1,r:1,showIf:["showerHotel",["No"]],showIfAll:[["showerRequest",["Yes"]]],
+   {qn:57,after:33,t:"radio",noqn:1,showIf:["legacyShowerQuestions",["Yes"]],
     e:"Would you like to rent a specific shower chair for an additional JPY 40,000 per hotel?",j:"1ホテルあたり追加40,000円で、指定のシャワーチェアのレンタルを希望しますか？",
     he:"Yes: you accept the additional JPY 40,000 per hotel. No: please discuss alternatives with us. We will confirm the model and availability separately.",hj:"「はい」は1ホテルあたり追加40,000円への同意です。「いいえ」の場合は代替方法をご相談します。機種・在庫は別途確認します。",
     o:[["Yes","はい"],["No","いいえ"]]},
+   // q56/q57 remain hidden for historical answer labels; new meanings use new keys.
+   {qn:58,after:33,t:"radio",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
+    e:"What type of shower chair would you prefer?",j:"どのタイプのシャワーチェアをご希望ですか？",
+    he:"Shower chairs vary by hotel, and the available types may be limited. Please tell us your preferred features first.",hj:"シャワーチェアのタイプはホテルによって異なり、選べる種類も限られています。まずご希望の形をお知らせください。",
+    o:[["With backrest and armrests","背もたれあり・肘掛けあり"],["With backrest, without armrests","背もたれあり・肘掛けなし"],["Without backrest, with armrests","背もたれなし・肘掛けあり"],["Without backrest or armrests","背もたれなし・肘掛けなし"]]},
+   {qn:59,after:33,t:"radio",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
+    e:"Would you prefer a shower chair with wheels?",j:"キャスター付きのシャワーチェアをご希望ですか？",
+    o:[["With wheels","キャスター付きがよい"],["Without wheels","キャスターなしがよい"],["No preference","どちらでもよい"]]},
+   {qn:60,after:33,t:"radio",noqn:1,r:1,showIf:["showerRequest",["Yes"]],
+    e:"If a hotel cannot provide your preferred type, what would you like us to do?",j:"ホテルでご希望のタイプを用意できない場合、どうされますか？",
+    he:"We will check with each hotel. If its shower chair does not match your preferences, you can accept another hotel-provided type or request a rental that matches your needs for an additional JPY 40,000 for each hotel where rental is needed. Rental type and availability will be confirmed separately.",
+    hj:"各ホテルへ確認します。ご希望に合う備品がない場合は、別タイプのホテル備品を利用するか、レンタルが必要なホテルごとに追加40,000円で、ご希望に合うものの手配をリクエストできます。レンタルのタイプ・在庫は別途確認します。",
+    o:[["Another hotel-provided type is acceptable","別タイプのホテル備品でもよい"],["Request a rental matching my preferences at JPY 40,000 extra per hotel where needed","希望に合わないホテルごとに、追加40,000円でレンタル手配をリクエストする"],["Please discuss alternatives with me before arranging anything","手配前に代替方法を相談したい"]]},
    {qn:54,after:31,t:"radio",noqn:1,showIf:["hoist",["Already arranged","Please arrange"]],
    e:"Would you like an explanation of how to use the hoist when it is delivered?",j:"リフト搬入・設置時に使い方の説明を希望されますか",
    he:"Tell us your preference. We will confirm the delivery arrangements and explanation with the provider separately.",
@@ -1316,6 +1329,6 @@ window.FlatFormDraft.ready.then(restoreServerDraft);
 window.addEventListener("flat-form-draft-recovered",restoreServerDraft);
 </script>
 
-<script src="/post-order-survey.js?v=20261103-1" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
+<script src="/post-order-survey.js?v=20261103-2" data-form-id="72fa9940-164a-4efb-9ad8-e819bfeb8c91"></script>
 </body>
 </html>
