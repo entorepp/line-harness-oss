@@ -7,6 +7,16 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   // Skip auth for OpenAPI docs — public documentation
   const path = new URL(c.req.url).pathname;
   const method = c.req.method.toUpperCase();
+  if (path.startsWith('/api/integrations/fw-whatsapp/')) {
+    const expected = c.env.FLATWORKER_TRAVEL_QUOTE_TOKEN || '';
+    const supplied = c.req.header('Authorization')?.replace(/^Bearer /, '') || '';
+    if (expected.length < 32 || supplied.length !== expected.length) return c.json({error:'Unauthorized'},401);
+    let difference=0; for (let i=0;i<expected.length;i++) difference |= expected.charCodeAt(i)^supplied.charCodeAt(i);
+    if (difference) return c.json({error:'Unauthorized'},401);
+    c.header('Cache-Control','private, no-store');
+    return next();
+  }
+
   if (
     path === '/webhook' ||
     path === '/webhook/whatsapp' ||

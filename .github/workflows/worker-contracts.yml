@@ -35,6 +35,7 @@ jobs:
       - run: pnpm --filter worker test:whatsapp-inbound-welcome
       - run: pnpm --filter worker test:whatsapp-calling
       - run: pnpm --filter worker test:whatsapp-send
+      - run: pnpm --filter worker test:fw-whatsapp
       - run: pnpm --filter worker test:whatsapp-bsuid
       - run: pnpm --filter worker test:whatsapp-delivery-status
       - run: pnpm --filter worker test:whatsapp-reply-window

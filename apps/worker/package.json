@@ -32,7 +32,8 @@
     "test:whatsapp-intake-preview": "esbuild scripts/test-whatsapp-intake-preview.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-intake-preview.mjs && node .wrangler/tests/whatsapp-intake-preview.mjs",
     "test:whatsapp-intake-runtime": "esbuild scripts/test-whatsapp-intake-runtime.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-intake-runtime.mjs && node .wrangler/tests/whatsapp-intake-runtime.mjs",
     "test:whatsapp-travel-scenario": "esbuild scripts/test-whatsapp-travel-scenario.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-travel-scenario.mjs && node .wrangler/tests/whatsapp-travel-scenario.mjs",
-    "test:travel-quote-background": "esbuild scripts/test-travel-quote-background.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/travel-quote-background.mjs && node .wrangler/tests/travel-quote-background.mjs"
+    "test:travel-quote-background": "esbuild scripts/test-travel-quote-background.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/travel-quote-background.mjs && node .wrangler/tests/travel-quote-background.mjs",
+    "test:fw-whatsapp": "esbuild scripts/test-fw-whatsapp.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/fw-whatsapp.mjs && node .wrangler/tests/fw-whatsapp.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",
