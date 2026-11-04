@@ -43,9 +43,11 @@ fwWhatsapp.use(`${BASE}/*`, bodyLimit({ maxSize: 14 * 1024 * 1024, onError: c =>
 fwWhatsapp.get(`${BASE}/contacts`, async c => {
   const query = (c.req.query('q') || '').trim();
   if (query.length < 2 || query.length > 100) return c.json({contacts: []});
+  const digits = query.replace(/[+\s().-]/g,'');
+  const phoneQuery = /^\d{2,15}$/.test(digits) ? digits : query;
   const rows = await c.env.DB.prepare(`SELECT f.id FROM friends f JOIN line_accounts a ON a.id=f.line_account_id
     WHERE a.channel_type='whatsapp' AND a.is_active=1 AND f.is_following=1
-    AND (instr(lower(f.display_name),lower(?))>0 OR instr(f.line_user_id,?)>0) ORDER BY f.id LIMIT 21`).bind(query,query).all<{id:string}>();
+    AND (instr(lower(f.display_name),lower(?))>0 OR instr(f.line_user_id,?)>0) ORDER BY f.id LIMIT 21`).bind(query,phoneQuery).all<{id:string}>();
   const contacts = [];
   for (const row of rows.results.slice(0,20)) {
     try { contacts.push((await contact(c.env,row.id)).view); } catch { /* Never invent a missing provider recipient. */ }

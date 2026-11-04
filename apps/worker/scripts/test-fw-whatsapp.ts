@@ -34,6 +34,7 @@ try {
  assert.equal((await call('/contacts?q=Alex',undefined,'staff-key')).status,401,'general staff key cannot use dedicated boundary');
  assert.equal((await call('/contacts?q=Alex',undefined,'')).status,401);
  const search=await (await call('/contacts?q=Alex')).json() as any;assert.equal(search.contacts.length,1);
+ const byPhone=await(await call('/contacts?q='+encodeURIComponent('+1 (555) 555-0101'))).json() as any;assert.equal(byPhone.contacts[0].id,'friend','formatted international number searches the stored exact number');
  const contact=search.contacts[0];assert.equal(contact.window.canSend,false);
  assert.equal((await call('/contacts/legacy')).status,409,'username cannot become send recipient');
  const privateContact=await(await call('/contacts/private')).json() as any;assert.equal(privateContact.address,'US.Private1');
