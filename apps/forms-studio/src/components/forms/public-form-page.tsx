@@ -353,7 +353,7 @@ function getMissingReason(
         : '終了日は開始日以降を選択してください'
     }
     if (issue === 'incomplete') {
-      if (field.name === 'city_stays') return normalizedLocale === 'en' ? 'Choose a city and enter dates, nights or “Not decided” for each row' : '各行の都市と滞在予定（日付・泊数・未定）を入力してください'
+      if (field.name === 'city_stays' || (field.name === 'city_schedule' && !field.calendarModal)) return normalizedLocale === 'en' ? 'Choose a city and enter dates, nights or “Not decided” for each row' : '各行の都市と滞在予定（日付・泊数・未定）を入力してください'
       return normalizedLocale === 'en'
         ? 'Enter a city, start date and end date for each row'
         : '各行の都市・開始日・終了日をすべて入力してください'
@@ -1261,7 +1261,7 @@ export default function PublicFormPage() {
       : localizedTexts.approximateStartDatePlaceholder
 
     if (field.type === 'city_dates') {
-      const flexibleCityStay = form?.id === '514279b7-3426-43bc-9226-9fcd13113ee7' && field.name === 'city_stays'
+      const flexibleCityStay = ['514279b7-3426-43bc-9226-9fcd13113ee7', ACCESSIBLE_JAPAN_FORM_ID].includes(form?.id || '') && ['city_stays', 'city_schedule'].includes(field.name) && !field.calendarModal
       const entries: CityDateEntry[] = Array.isArray(value)
         ? value.map((item) => {
           if (!item || typeof item !== 'object' || Array.isArray(item)) {
@@ -1961,7 +1961,7 @@ export default function PublicFormPage() {
                       {fieldHelper && (
                         <p className="mt-1 text-sm leading-6 text-slate-500">{fieldHelper}</p>
                       )}
-                      {form.id === '514279b7-3426-43bc-9226-9fcd13113ee7' && field.name === 'shower_type' && (
+                      {['514279b7-3426-43bc-9226-9fcd13113ee7', ACCESSIBLE_JAPAN_FORM_ID].includes(form.id) && field.name === 'shower_type' && (
                         <figure className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                           {/* Native image keeps this static illustration available in the exported form. */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
