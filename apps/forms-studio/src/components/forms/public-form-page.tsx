@@ -353,7 +353,7 @@ function getMissingReason(
         : '終了日は開始日以降を選択してください'
     }
     if (issue === 'incomplete') {
-      if (field.name === 'city_stays') return '各行の都市と滞在予定（日付・泊数・未定）を入力してください'
+      if (field.name === 'city_stays') return normalizedLocale === 'en' ? 'Choose a city and enter dates, nights or “Not decided” for each row' : '各行の都市と滞在予定（日付・泊数・未定）を入力してください'
       return normalizedLocale === 'en'
         ? 'Enter a city, start date and end date for each row'
         : '各行の都市・開始日・終了日をすべて入力してください'
@@ -1344,7 +1344,7 @@ export default function PublicFormPage() {
                           type="text"
                           value={entry.city === OTHER_SENTINEL ? '' : entry.city}
                           onChange={(event) => updateEntry(rowIndex, 'city', event.target.value || OTHER_SENTINEL)}
-                          placeholder={flexibleCityStay ? '都市名を入力' : 'Type the city name'}
+                          placeholder={'Type the city name'}
                           aria-label={`Other city ${rowIndex + 1}`}
                           aria-invalid={isMissing}
                           className={fieldControlClass(isMissing)}
@@ -1364,13 +1364,13 @@ export default function PublicFormPage() {
                   )}
                 {flexibleCityStay ? (
                   <label className="text-xs font-semibold text-slate-500">
-                    <span className="mb-1.5 block">滞在予定（日程・泊数）</span>
+                    <span className="mb-1.5 block">Planned stay (dates or nights)</span>
                     <input
                       type="text"
                       value={entry.dates}
                       onChange={(event) => updateEntry(rowIndex, 'dates', event.target.value)}
-                      placeholder="例：2026-11-26〜29／3泊／未定"
-                      aria-label={`都市${rowIndex + 1}の滞在予定（日程・泊数）`}
+                      placeholder="e.g. 2026-11-26 to 29 / 3 nights / Not decided"
+                      aria-label={`Planned stay for city ${rowIndex + 1}`}
                       aria-invalid={isMissing}
                       className={fieldControlClass(isMissing)}
                     />
@@ -1967,7 +1967,7 @@ export default function PublicFormPage() {
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src="/images/bathroom-types-comparison.webp"
-                            alt="左：広い浴室の浴槽内シャワー。浴槽の縁をまたいで使います。右：浴槽がなく、床がフラットなロールインシャワー。どちらも同じ広さの浴室を描いた説明用イラストです。"
+                            alt="Left: a spacious bathroom with a shower over a bathtub, requiring a step over the tub rim. Right: an equally spacious bathroom with a step-free roll-in shower and no bathtub. Illustrations only."
                             className="h-auto w-full"
                             width={1536}
                             height={1024}
@@ -1975,10 +1975,10 @@ export default function PublicFormPage() {
                             decoding="async"
                           />
                           <div className="grid grid-cols-2 gap-3 px-3 pb-4 text-center text-sm leading-5">
-                            <div><p className="font-semibold text-slate-900">浴槽内シャワー</p><p className="mt-1 text-slate-600">浴槽をまたいで使う<br />広い浴室もあります</p></div>
-                            <div><p className="font-semibold text-slate-900">ロールインシャワー</p><p className="mt-1 text-slate-600">浴槽をまたがず<br />段差なく入る</p></div>
+                            <div><p className="font-semibold text-slate-900">Shower over bathtub</p><p className="mt-1 text-slate-600">Step over the tub rim<br />Spacious bathrooms are possible</p></div>
+                            <div><p className="font-semibold text-slate-900">Roll-in shower</p><p className="mt-1 text-slate-600">Step-free entry<br />No bathtub to climb over</p></div>
                           </div>
-                          <figcaption className="border-t border-slate-100 px-3 py-2 text-xs leading-5 text-slate-500">タイプの説明用イラストです。実際の広さ・設備はホテルごとに確認します。</figcaption>
+                          <figcaption className="border-t border-slate-100 px-3 py-2 text-xs leading-5 text-slate-500">Illustrations only. We will check the actual space and facilities at each hotel.</figcaption>
                         </figure>
                       )}
                       <div className="mt-4">
