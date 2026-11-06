@@ -353,6 +353,7 @@ function getMissingReason(
         : '終了日は開始日以降を選択してください'
     }
     if (issue === 'incomplete') {
+      if (field.name === 'city_stays') return '各行の都市と滞在予定（日付・泊数・未定）を入力してください'
       return normalizedLocale === 'en'
         ? 'Enter a city, start date and end date for each row'
         : '各行の都市・開始日・終了日をすべて入力してください'
@@ -1260,6 +1261,7 @@ export default function PublicFormPage() {
       : localizedTexts.approximateStartDatePlaceholder
 
     if (field.type === 'city_dates') {
+      const flexibleCityStay = form?.id === '514279b7-3426-43bc-9226-9fcd13113ee7' && field.name === 'city_stays'
       const entries: CityDateEntry[] = Array.isArray(value)
         ? value.map((item) => {
           if (!item || typeof item !== 'object' || Array.isArray(item)) {
@@ -1342,7 +1344,7 @@ export default function PublicFormPage() {
                           type="text"
                           value={entry.city === OTHER_SENTINEL ? '' : entry.city}
                           onChange={(event) => updateEntry(rowIndex, 'city', event.target.value || OTHER_SENTINEL)}
-                          placeholder="Type the city name"
+                          placeholder={flexibleCityStay ? '都市名を入力' : 'Type the city name'}
                           aria-label={`Other city ${rowIndex + 1}`}
                           aria-invalid={isMissing}
                           className={fieldControlClass(isMissing)}
@@ -1360,7 +1362,20 @@ export default function PublicFormPage() {
                       className={fieldControlClass(isMissing)}
                     />
                   )}
-                {field.calendarModal ? (
+                {flexibleCityStay ? (
+                  <label className="text-xs font-semibold text-slate-500">
+                    <span className="mb-1.5 block">滞在予定（日程・泊数）</span>
+                    <input
+                      type="text"
+                      value={entry.dates}
+                      onChange={(event) => updateEntry(rowIndex, 'dates', event.target.value)}
+                      placeholder="例：2026-11-26〜29／3泊／未定"
+                      aria-label={`都市${rowIndex + 1}の滞在予定（日程・泊数）`}
+                      aria-invalid={isMissing}
+                      className={fieldControlClass(isMissing)}
+                    />
+                  </label>
+                ) : field.calendarModal ? (
                   <button
                     type="button"
                     onClick={() => setCityDateModal({
@@ -1945,6 +1960,25 @@ export default function PublicFormPage() {
                       </div>
                       {fieldHelper && (
                         <p className="mt-1 text-sm leading-6 text-slate-500">{fieldHelper}</p>
+                      )}
+                      {form.id === '514279b7-3426-43bc-9226-9fcd13113ee7' && field.name === 'shower_type' && (
+                        <figure className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                          {/* Native image keeps this static illustration available in the exported form. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src="/images/bathroom-types-comparison.png"
+                            alt="左：広い浴室の浴槽内シャワー。浴槽の縁をまたいで使います。右：浴槽がなく、床がフラットなロールインシャワー。どちらも同じ広さの浴室を描いた説明用イラストです。"
+                            className="h-auto w-full"
+                            width={1536}
+                            height={1024}
+                            loading="lazy"
+                          />
+                          <div className="grid grid-cols-2 gap-3 px-3 pb-4 text-center text-sm leading-5">
+                            <div><p className="font-semibold text-slate-900">浴槽内シャワー</p><p className="mt-1 text-slate-600">浴槽をまたいで使う<br />広い浴室もあります</p></div>
+                            <div><p className="font-semibold text-slate-900">ロールインシャワー</p><p className="mt-1 text-slate-600">浴槽をまたがず<br />段差なく入る</p></div>
+                          </div>
+                          <figcaption className="border-t border-slate-100 px-3 py-2 text-xs leading-5 text-slate-500">タイプの説明用イラストです。実際の広さ・設備はホテルごとに確認します。</figcaption>
+                        </figure>
                       )}
                       <div className="mt-4">
                         {renderField(field, Boolean(missingReason))}
