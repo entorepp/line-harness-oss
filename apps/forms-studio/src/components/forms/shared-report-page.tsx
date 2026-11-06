@@ -634,12 +634,12 @@ export default function SharedReportPage() {
                         <Detail label="ホテルで魅力を感じた点" value={lead.hotelInterest.join(', ')} />
                         <Detail label="提案での扱い" value={lead.hotelMatchPreference} />
                         <Detail label="Hotel grade" value={lead.hotelGrade} />
-                        {lead.legacyBudget && <Detail label="Legacy total budget" value={lead.legacyBudget} />}
+                        {lead.legacyBudget && <Detail label="Total budget (as provided)" value={lead.legacyBudget} />}
                         <Detail label="Travellers" value={lead.travellers} />
                         <Detail label="Rooms" value={lead.roomCount} />
                         <Detail label="Bed type" value={lead.bedType} />
-                        <Detail label="日程は確定済みか" value={lead.datesDecided} />
-                        <Detail label="都市・確定日程" value={lead.citySchedule.join('\n')} />
+                        <Detail label="日程は確定済みか" value={lead.datesDecided === 'Yes (legacy response)' ? 'See city / stay details' : lead.datesDecided} />
+                        <Detail label="都市・滞在予定" value={lead.citySchedule.join('\n')} />
                         <Detail label="行きたい都市（日程未定）" value={lead.preferredCities.join(', ')} />
                         <Detail label="大まかな時期" value={lead.approximateTiming} />
                         <Detail label="大まかな旅行期間" value={lead.approximateDuration} />
