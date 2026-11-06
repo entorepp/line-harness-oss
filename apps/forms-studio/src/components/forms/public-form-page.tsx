@@ -1966,12 +1966,13 @@ export default function PublicFormPage() {
                           {/* Native image keeps this static illustration available in the exported form. */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src="/images/bathroom-types-comparison.png"
+                            src="/images/bathroom-types-comparison.webp"
                             alt="左：広い浴室の浴槽内シャワー。浴槽の縁をまたいで使います。右：浴槽がなく、床がフラットなロールインシャワー。どちらも同じ広さの浴室を描いた説明用イラストです。"
                             className="h-auto w-full"
                             width={1536}
                             height={1024}
-                            loading="lazy"
+                            loading="eager"
+                            decoding="async"
                           />
                           <div className="grid grid-cols-2 gap-3 px-3 pb-4 text-center text-sm leading-5">
                             <div><p className="font-semibold text-slate-900">浴槽内シャワー</p><p className="mt-1 text-slate-600">浴槽をまたいで使う<br />広い浴室もあります</p></div>
