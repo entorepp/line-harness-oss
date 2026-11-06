@@ -21,8 +21,8 @@ export const payload = {
     f('total_budget', '旅行全体のご予算（参加者全員分・航空券を除く）', 'text', { placeholder: '例：全員で100万円／全員で10,000 USD／未定', helperText: '航空券を除いた、参加者全員分の総額と通貨をご記入ください。' }),
     f('travel_period', 'ご希望の旅行時期', 'text', { placeholder: '例：2027年4月上旬／2027年4月1日〜10日／未定' }),
     f('trip_duration', 'ご希望の旅行日数', 'text', { placeholder: '例：10日間（9泊）／1週間程度／未定' }),
-    f('city_stays', '訪問したい都市と、都市ごとの滞在泊数', 'textarea', { placeholder: '例：東京3泊、京都3泊、大阪2泊\nまだ決まっていない場合：東京・京都、泊数は相談したい', helperText: '希望する都市ごとに泊数をご記入ください。日帰りの場合は「日帰り」、未定の場合は「未定」とご記入ください。' }),
-    f('shower_type', 'ご希望のシャワー・浴室タイプ（任意）', 'radio', { required: false, options: ['浴槽内でシャワーを使うタイプ（shower over bathtub）でも大丈夫', 'ロールインシャワー（roll-in shower：浴槽をまたがず、段差なく入れるシャワー）が必要', '相談して決めたい'], helperText: '浴槽内でシャワーを使うタイプでも大丈夫なら、選べるホテルが広がります。このタイプでも広い浴室はありますが、浴槽をまたぐ必要があります。浴室の広さと、シャワーに段差なく入れるかは別の条件です。ご希望がある場合のみお選びください。広さ・手すり・段差など、実際の設備や利用可否は候補施設ごとに確認します。' }),
+    f('city_stays', '訪問したい都市と、都市ごとの滞在予定', 'city_dates', { cityOptions: ['東京', '京都', '大阪', '広島', '富士山・河口湖', '箱根', '金沢'], cityPlaceholder: '都市を選択', allowOtherOption: true, otherOptionLabel: 'その他の都市', addItemLabel: '都市を追加', maxItems: 12, helperText: '都市を選び、日程（例：2026-11-26〜29）または泊数をご記入ください。未定でも大丈夫です。' }),
+    f('shower_type', 'ご希望のシャワー・浴室タイプ（任意）', 'radio', { required: false, options: ['浴槽内でシャワーを使うタイプ（shower over bathtub）でも大丈夫', 'ロールインシャワー（roll-in shower：浴槽をまたがず、段差なく入れるシャワー）が必要', '相談して決めたい'], helperText: '浴槽内シャワーでも大丈夫なら、選べるホテルが広がります。' }),
     f('notes', 'その他のご希望・ご相談（自由記述）', 'textarea', { required: false, placeholder: '旅行で楽しみたいこと、配慮が必要なこと、ご不安な点など、自由にご記入ください。' }),
   ],
 }
