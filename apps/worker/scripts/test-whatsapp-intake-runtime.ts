@@ -29,11 +29,23 @@ async function harness(run: (h: any) => Promise<void>) {
   for (const name of ['027_whatsapp_calls.sql','028_whatsapp_call_details.sql','029_whatsapp_inbound_welcomes.sql','030_browser_security_storage.sql','031_whatsapp_ai_intake.sql','032_whatsapp_intake_choices.sql']) sql.exec(readFileSync('../../packages/db/migrations/'+name,'utf8'));
   sql.exec(readFileSync('../../packages/db/migrations/031_whatsapp_ai_intake.sql','utf8'));
   sql.exec("INSERT INTO line_accounts(id,channel_id,name,channel_access_token,channel_secret,channel_type,whatsapp_business_account_id) VALUES('wa','12345','Test sender','provider-token','app-secret','whatsapp','1234567890')");
-  const h: any = { sql, sends: [], models: [], notifications: [], jobs: [], outcome: 'accepted', modelOutput: answer(), failHistory: false, catalogue: catalogue(), beforeModel: null, beforeSend: null, identity: {status:'unlinked'}, linkResult: {status:'unlinked'}, identityReads: 0 };
-  const db: any = { prepare(query: string) { const stmt = sql.prepare(query); let params: any[] = []; return { bind(...p: any[]) { params = p; return this; }, async first() { return stmt.get(...params) || null; }, async all() { return { success: true, results: stmt.all(...params) }; }, async run() {
+  const h: any = { sql, sends: [], models: [], notifications: [], newLeadPosts: [], jobs: [], outcome: 'accepted', modelOutput: answer(), failHistory: false, catalogue: catalogue(), beforeModel: null, beforeSend: null, identity: {status:'unlinked'}, linkResult: {status:'unlinked'}, identityReads: 0 };
+  const db: any = { prepare(query: string) { const stmt = sql.prepare(query); let params: any[] = []; return { bind(...p: any[]) { params = p; return this; }, async first() { return stmt.get(...params) || null; }, async all() { return { success: true, results: stmt.all(...params) }; }, run() {
     if (h.failHistory && query.includes('INSERT OR IGNORE INTO messages_log') && String(params[0]).startsWith('wa-intake-')) { h.failHistory = false; throw Error('synthetic local history failure'); }
     return { success: true, meta: { changes: Number(stmt.run(...params).changes) } };
-  } }; } };
+  } }; },
+    async batch(statements: Array<{ run(): unknown }>) {
+      sql.exec('BEGIN');
+      try {
+        const results = statements.map(statement => statement.run());
+        sql.exec('COMMIT');
+        return results;
+      } catch (error) {
+        sql.exec('ROLLBACK');
+        throw error;
+      }
+    },
+  };
   h.env = { DB: db, API_KEY: 'staff-key', OPENAI_API_KEY: 'model-key', WHATSAPP_INTAKE_ENCRYPTION_KEY: 'synthetic-encryption-secret-32-bytes', WHATSAPP_INTAKE_MODE: 'test', WHATSAPP_INTAKE_MODEL: 'gpt-5.4-nano', WHATSAPP_INTAKE_ACCOUNTS: 'wa:12345',
     WHATSAPP_INTAKE_TEST_PHONE_HASHES: createHash('sha256').update(PHONE).digest('hex'), WHATSAPP_INTAKE_START_AT: new Date(Date.now()-3600000).toISOString(),
     WHATSAPP_INBOUND_WELCOME_ENABLED: 'true', WHATSAPP_INBOUND_WELCOME_ACCOUNTS: 'wa:12345', WHATSAPP_INBOUND_WELCOME_START_AT: new Date(Date.now()-3600000).toISOString(), SLACK_BOT_TOKEN: 'slack-token', FLATWORKER_API_BASE_URL:'https://travelworker.invalid', FLATWORKER_TRAVEL_QUOTE_TOKEN:'quote-token' };
@@ -58,7 +70,7 @@ async function harness(run: (h: any) => Promise<void>) {
     if (url.startsWith('https://flat-travel.com/__journey-data-v1')) { assert.equal(init.method, undefined); assert.equal(init.headers.Authorization, undefined); assert.ok(!url.includes(PHONE)); return Response.json(new URL(url).searchParams.has('tour') && h.detail ? h.detail : h.catalogue); }
     if (url.startsWith('https://flat-travel.com/en/journeys/')) return new Response('<html lang="en"><head><title>Published fixture Tokyo and Kyoto | Flat Travel</title></head></html>', { headers: { 'Content-Type': 'text/html' } });
     if (url.startsWith('https://flat-travel.com/en/accessible-hotels') || url==='https://flat-travel.com/en/tailor-made') return new Response('<html lang="en"><head><title>Published hotel title | Flat Travel</title></head></html>', { headers: { 'Content-Type': 'text/html' } });
-    if (url === 'https://slack.com/api/chat.postMessage') { const payload = JSON.parse(init.body); h.notifications.push(payload); return Response.json({ ok: true }); }
+    if (url === 'https://slack.com/api/chat.postMessage') { const payload = JSON.parse(init.body); (payload.channel === 'C0CFMU4KKDK' ? h.newLeadPosts : h.notifications).push(payload); return Response.json({ ok: true }); }
     assert.equal(url, 'https://graph.facebook.com/v25.0/12345/messages');
     const body = JSON.parse(init.body); h.sends.push(body); assert.equal(init.headers.Authorization, 'Bearer provider-token');
     if (h.beforeSend) { const fn = h.beforeSend; h.beforeSend = null; await fn(); }
@@ -92,6 +104,8 @@ test('complete first enquiry -> one extraction -> immediate published proposal -
   await h.webhook('quotation'); assert.equal(h.session().status, 'human'); assert.equal(h.session().handoff_notification, 'accepted');
   const count = h.sends.length; await h.webhook('One more question'); assert.equal(h.sends.length, count); assert.equal(h.models.length, 1);
   assert.equal(h.notifications.filter((n: any) => n.text.startsWith('WA AI相談')).length, 1);
+  assert.equal(h.newLeadPosts.length, 1);
+  assert.match(h.newLeadPosts[0].text, /^新規問い合わせ｜WhatsApp（初回）/);
   const status = await (await h.api(`/api/whatsapp/intake/${h.friendId()}`)).json(); assert.equal(status.session.phase, 'human'); assert.ok(status.turns.some((t: any) => t.provider_message_id));
 }));
 test('a greeting immediately asks about travel support with no onboarding controls', async () => harness(async h => {
