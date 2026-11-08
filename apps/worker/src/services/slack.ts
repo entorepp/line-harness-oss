@@ -252,6 +252,7 @@ interface SlackPostOptions {
   username?: string;
   iconUrl?: string;
   blocks?: unknown[];
+  signal?: AbortSignal;
 }
 
 type SlackApiResponse = {
@@ -293,6 +294,7 @@ function stripSlackImageDecorations(blocks?: unknown[]): unknown[] | undefined {
 async function postSlackBody(
   token: string,
   body: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<SlackApiResponse> {
   const res = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
@@ -301,6 +303,7 @@ async function postSlackBody(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
+    signal,
   });
   return res.json() as Promise<SlackApiResponse>;
 }
@@ -316,7 +319,7 @@ export async function postToSlack(opts: SlackPostOptions): Promise<boolean> {
     if (opts.iconUrl) body.icon_url = opts.iconUrl;
     if (opts.blocks) body.blocks = opts.blocks;
 
-    const data = await postSlackBody(opts.token, body);
+    const data = await postSlackBody(opts.token, body, opts.signal);
     if (!data.ok) {
       const canRetryWithoutImages = data.error === 'invalid_arguments'
         && (Boolean(opts.iconUrl) || Boolean(opts.blocks?.length));
@@ -330,7 +333,7 @@ export async function postToSlack(opts: SlackPostOptions): Promise<boolean> {
         const textOnlyBlocks = stripSlackImageDecorations(opts.blocks);
         if (textOnlyBlocks?.length) fallbackBody.blocks = textOnlyBlocks;
 
-        const retry = await postSlackBody(opts.token, fallbackBody);
+        const retry = await postSlackBody(opts.token, fallbackBody, opts.signal);
         if (retry.ok) {
           console.warn('Slack rejected image arguments; notification delivered without images');
           return true;

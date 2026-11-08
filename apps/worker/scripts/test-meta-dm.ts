@@ -23,10 +23,17 @@ const friend = { id:'friend',line_user_id:'instagram:business:customer',line_acc
 const env = {DB:db, WORKER_URL:'https://worker.test',UPLOADS:{async put(){}}} as any;
 const originalFetch=globalThis.fetch;
 const calls:any[]=[];
+const leadPosts: string[] = [];
 let status=200;
 globalThis.fetch=async(input,init)=>{
  const url=String(input);
+ if (url === 'https://slack.com/api/chat.postMessage') {
+   const post = JSON.parse(String(init?.body));
+   if (post.channel === 'C0CFMU4KKDK') leadPosts.push(post.text);
+   return Response.json({ ok: true });
+ }
  if(init?.method==='POST') { calls.push(JSON.parse(String(init.body))); return Response.json(status===200?{message_id:'sent-id'}:{error:{message:'Rejected'}},{status}); }
+ if(url.includes('/new-customer?') || url.includes('/echo-customer?'))return Response.json({username:'fixture',first_name:'Fixture'});
  if(url.includes('/customer?') || url.includes('/unknown?'))return Response.json({});
  if(url.includes('/business/conversations?'))return Response.json({data:[{participants:{data:[{id:'business',username:'NOT_THE_CUSTOMER'},{id:'customer',username:'verified_customer'}]}}]});
  if(url.includes('/card?'))return Response.json({id:'card',attachments:{data:[{generic_template:{title:'Real provider card',media_url:'https://cdn.test/shared'}}]}});
@@ -65,5 +72,19 @@ try {
  const rows=sql.prepare("SELECT message_type,content FROM messages_log WHERE id != 'in'").all();
  assert.equal(rows.length,3);assert.equal(rows.filter(r=>r.message_type==='image').length,2);assert.ok(rows.some(r=>r.content==='Photo caption'));
  await persistMetaMessage(env,account,message);assert.equal(sql.prepare('SELECT count(*) n FROM messages_log').get()!.n,4);
+ env.SLACK_BOT_TOKEN = 'fixture-slack-token';
+ await persistMetaMessage(env, account, { ...message, messageId: 'existing-conversation' });
+ assert.equal(leadPosts.length, 0);
+ for (const [channelType, label] of [['instagram', 'Instagram'], ['facebook', 'Messenger']] as const) {
+   const first = { ...message, customerId: 'new-customer', messageId: channelType + '-first' };
+   const socialAccount = { ...account, channel_type: channelType };
+   await persistMetaMessage(env, socialAccount, first);
+   await persistMetaMessage(env, socialAccount, first);
+   await persistMetaMessage(env, socialAccount, { ...first, messageId: channelType + '-follow-up' });
+   assert.ok(leadPosts.at(-1)?.startsWith(`新規問い合わせ｜${label}（初回）\n`));
+ }
+ await persistMetaMessage(env, account, { ...message, direction: 'outgoing', customerId: 'echo-customer', messageId: 'echo' });
+ assert.equal(leadPosts.length, 2);
+ assert.ok(leadPosts.every(post => !post.includes('Photo caption')));
  console.log('PASS: Meta media/text dispatch, provider errors, unsafe URLs, reply window, missing profiles, exact-message recovery, caption + multiple media and webhook deduplication');
 }finally{globalThis.fetch=originalFetch;sql.close();}

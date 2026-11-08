@@ -8,6 +8,7 @@ import {
   travelQuoteReceiptMetadata,
   travelQuoteNotificationCopy,
 } from '../services/travel-quote-intent.js';
+import { notifyNewFormLead, websiteLeadKind } from '../services/new-lead-slack.js';
 import { postToSlack, resolveSlackChannelId } from '../services/slack.js';
 import { syncTravelQuoteToFlatworker } from '../services/flatworker-travel-quote.js';
 import {deferredReviewEnabled,enqueueTravelQuoteReview} from '../services/travel-quote-review-jobs.js';
@@ -66,6 +67,14 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
     await c.env.DB.prepare(
       `UPDATE notifications SET title = ?, body = ?, metadata = json_set(?, '$.attribution', json(COALESCE(json_extract(metadata, '$.attribution'), json_extract(?, '$.attribution')))) WHERE id = ?`,
     ).bind(copy.title, copy.body, metadata, metadata, notificationId).run();
+  }
+  const siteOrigin = c.req.header('X-Flat-Travel-Request-Origin') || origin;
+  const leadKind = flatworkerReady && !duplicate
+    && ['https://flat-travel.com', 'https://www.flat-travel.com'].includes(origin)
+    && ['https://flat-travel.com', 'https://www.flat-travel.com'].includes(siteOrigin)
+    ? websiteLeadKind(intent) : null;
+  if (leadKind) {
+    c.executionCtx.waitUntil(notifyNewFormLead(c.env, leadKind, intent.quoteReference));
   }
   let slackNotified: boolean | null = null;
   if(flatworkerReady&&deferredReviewEnabled(c.env)&&flatworkerDraft.internalNotificationPending){

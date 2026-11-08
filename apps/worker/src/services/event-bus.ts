@@ -1,3 +1,4 @@
+import { FLATCARE_ENQUIRY_FORM_ID } from './new-lead-slack.js';
 /**
  * イベントバス — システム内イベントの発火と処理
  *
@@ -72,7 +73,7 @@ export async function fireEvent(
   // Corporate enquiries are public staff intake, not case-bound pre-order surveys.
   // The form ID comes from the persisted server-side form, never the public body.
   const corporateEnquiry = eventType === 'form_submit'
-    && payload.eventData?.formId === 'b20652b4-431c-48f2-876c-8da4c024fd21';
+    && payload.eventData?.formId === FLATCARE_ENQUIRY_FORM_ID;
   await Promise.allSettled([
     ...(corporateEnquiry ? [] : [
       fireOutgoingWebhooks(db, eventType, payload),

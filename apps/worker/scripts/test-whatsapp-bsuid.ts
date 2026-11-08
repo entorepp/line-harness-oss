@@ -21,6 +21,17 @@ const db = { prepare(query: string) {
     async first<T>() { return (stmt.get(...values) || null) as T | null; },
     async all<T>() { return { results: stmt.all(...values) as T[], success: true }; },
     async run() { return { success: true, meta: { changes: Number(stmt.run(...values).changes) } }; } };
+}, async batch(statements: Array<{ run(): Promise<{ meta: { changes: number } }> }>) {
+  sql.exec('BEGIN');
+  try {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    sql.exec('COMMIT');
+    return results;
+  } catch (error) {
+    sql.exec('ROLLBACK');
+    throw error;
+  }
 } };
 const env = { DB: db, API_KEY: 'test-key' } as any;
 const app = new Hono(); app.use('*', authMiddleware as any); app.route('/', chats); app.route('/', friends); app.route('/', waWebhook);
@@ -32,7 +43,13 @@ const friend = (external: string, account = 'wa') => sql.prepare("SELECT * FROM 
 const calls: any[] = []; let providerStatus = 200; let providerError: any = {}; let networkFailure = false; let missingReceipt = false;
 const realFetch = globalThis.fetch; const realError = console.error; const errors: unknown[] = [];
 console.error = (...args: unknown[]) => { errors.push(args); };
+const leadPosts: string[] = [];
 globalThis.fetch = (async (url: any, init?: RequestInit) => {
+  if (String(url) === 'https://slack.com/api/chat.postMessage') {
+    const post = JSON.parse(String(init?.body));
+    if (post.channel === 'C0CFMU4KKDK') leadPosts.push(post.text);
+    return Response.json({ ok: true });
+  }
   assert.match(String(url), /^https:\/\/graph\.facebook\.com\/v25\.0\/(?:test|other)-phone-id\/messages$/);
   assert.equal(init?.method, 'POST'); calls.push(JSON.parse(String(init?.body)));
   if (networkFailure) throw new Error('PRIVATE-NETWORK-DETAIL');
@@ -145,5 +162,18 @@ try {
   const missing = await send(privateFriend.id, { content: 'Missing receipt' });
   assert.equal(missing.status, 502); assert.equal((await missing.json() as any).code, 'WHATSAPP_SEND_OUTCOME_UNKNOWN');
   assert.ok(!JSON.stringify(errors).includes('PRIVATE-'), 'logs contain bounded codes, never raw provider data');
+  env.SLACK_BOT_TOKEN = 'fixture-slack-token';
+  const newSender = { from_user_id: 'US.NewLead1' };
+  await incoming({}, newSender, false);
+  assert.equal(leadPosts.length, 0);
+  await incoming({}, { ...newSender, id: 'first-message' });
+  await incoming({}, { ...newSender, id: 'first-message' });
+  await incoming({}, newSender);
+  await incoming({}, { from_user_id: 'US.Private1' });
+  await incoming({}, { from_user_id: 'US.WebLead1', text: { body: 'FTQ-20261108-PACKAGE1' } });
+  await incoming({}, { from_user_id: 'US.OldLead1', timestamp: '1700000000' });
+  assert.equal(leadPosts.length, 1);
+  assert.match(leadPosts[0], /^新規問い合わせ｜WhatsApp（初回）\n<https:\/\/line-crm-web-2ob.pages.dev\/chats\?chatId=/);
+  assert.doesNotMatch(leadPosts[0], /Customer test|US\.NewLead1/);
   console.log('PASS: signed BSUID intake, private-phone continuity, account isolation, text/PDF, both staff/undo routes, invalid-recipient guards, safe errors and unknown-outcome stop');
 } finally { globalThis.fetch = realFetch; console.error = realError; sql.close(); }
