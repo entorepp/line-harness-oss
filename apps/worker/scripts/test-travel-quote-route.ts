@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { normalizeLeadAttribution } from '../src/services/lead-attribution.js';
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
+import { notifyNewFormLead } from '../src/services/new-lead-slack.js';
 import { travelQuoteIntents } from '../src/routes/travel-quote-intents.js';
 import { FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS, syncTravelQuoteToFlatworker } from '../src/services/flatworker-travel-quote.js';
 import { parseTravelQuoteIntent, travelQuoteNotificationCopy, travelQuoteReceiptMetadata as travelQuoteReceiptMetadataForTest } from '../src/services/travel-quote-intent.js';
@@ -26,7 +27,7 @@ function statement(sql: string) {
         if (rows.some((item) => item.id === id)) return { success: true, meta: { changes: 0 } };
         rows.push({
           id,
-          event_type: 'travel_quote_intent',
+          event_type: sql.includes("'new_lead'") ? 'new_lead' : 'travel_quote_intent',
           title,
           body,
           channel: 'slack',
@@ -66,17 +67,21 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const requestBody = JSON.parse(String(init?.body || '{}'));
     flatworkerPosts.push({ headers: init?.headers, body: requestBody });
     if (requestBody.quoteReference === 'FTQ-20260801-FF12AA34') return new Response(JSON.stringify({ error: 'test failure' }), { status: 503, headers: { 'content-type': 'application/json' } });
-    return new Response(JSON.stringify({ status: flatworkerPosts.length === 1 ? 'created' : 'existing', caseId: 'flat-travel-ftq-20260801-ab12cd34', caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: Boolean(requestBody.customerName), automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify({ status: flatworkerPosts.length === 1 ? 'created' : 'existing', caseId: requestBody.hotelRequestStage ? 'flat-travel-' + requestBody.quoteReference.toLowerCase() : 'flat-travel-ftq-20260801-ab12cd34', ...(requestBody.hotelRequestStage ? { hotelRequestStage: requestBody.hotelRequestStage } : {}), caseUrl: 'https://travelworker-web.pages.dev/cases/flat-travel-ftq-20260801-ab12cd34', profileStored: Boolean(requestBody.customerName), automationReadiness: { status: 'needs_data', blockingIssueCount: 2 } }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   return originalFetch(input, init);
 }) as typeof fetch;
 
-async function request(payload: Record<string, unknown>, origin = 'https://flat-travel-design-preview.flat-travel.workers.dev') {
-  return app.fetch(new Request('https://line-flattravel.flat-travel.workers.dev/api/travel/quote-intents', {
+async function request(payload: Record<string, unknown>, origin = 'https://flat-travel-design-preview.flat-travel.workers.dev', siteOrigin?: string) {
+  const jobs: Promise<unknown>[] = [];
+  const response = await app.fetch(new Request('https://line-flattravel.flat-travel.workers.dev/api/travel/quote-intents', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin, 'cf-connecting-ip': '203.0.113.10' },
+    headers: { 'content-type': 'application/json', origin, 'cf-connecting-ip': siteOrigin ? '203.0.113.11' : '203.0.113.10',
+      ...(siteOrigin ? { 'X-Flat-Travel-Request-Origin': siteOrigin } : {}) },
     body: JSON.stringify(payload),
-  }), env);
+  }), env, { waitUntil(job: Promise<unknown>) { jobs.push(job); }, passThroughOnException() {} });
+  await Promise.all(jobs);
+  return response;
 }
 
 const payload = {
@@ -484,3 +489,29 @@ try{
  }
 }finally{globalThis.fetch=relayFetch;}
 console.log('PASS: real relay preserves receipt stage and capability; old backend receipts fail closed');
+
+
+const productionOrigin = 'https://flat-travel.com';
+const hotelInput = { ...payload, mode: 'private', source: 'flat-travel-hotel-request', hotelSupplementToken: 'a1'.repeat(32) };
+for (const [input, expected, siteOrigin] of [
+  [{ ...payload, quoteReference: 'FTQ-20261108-PACKAGE1' }, 'パッケージ', productionOrigin],
+  [{ ...monthlyPayload, quoteReference: 'FT-20261108-TAILOR01' }, 'テイラーメイド', productionOrigin],
+  [{ ...hotelInput, hotelRequestStage: 'initial', quoteReference: 'FT-20261108-HOTEL001' }, 'ホテル', productionOrigin],
+  [{ ...hotelInput, hotelRequestStage: 'supplement', quoteReference: 'FT-20261108-HOTEL001' }, null, productionOrigin],
+  [{ ...payload, quoteReference: 'FTQ-20261108-PREVIEW1' }, null, 'https://flat-travel-design-preview.flat-travel.workers.dev'],
+  [{ ...payload, source: 'partner-portal', quoteReference: 'FTQ-20261108-PARTNER1' }, null, productionOrigin],
+] as const) {
+  const before = slackPosts.length;
+  const response = await request(input, productionOrigin, siteOrigin);
+  assert.ok([200, 202].includes(response.status), await response.text());
+  const leadPosts = slackPosts.slice(before).filter(post => post.channel === 'C0CFMU4KKDK');
+  assert.deepEqual(leadPosts.map(post => post.text), expected ? [`新規問い合わせ｜${expected}\n受付番号 ${input.quoteReference}`] : []);
+}
+const leadPosts = () => slackPosts.filter(post => post.channel === 'C0CFMU4KKDK');
+assert.equal((await request({ ...payload, quoteReference: 'FTQ-20261108-PACKAGE1' }, productionOrigin, productionOrigin)).status, 200);
+assert.equal((await request({ ...payload, quoteReference: 'FTQ-20260801-FF12AA34' }, productionOrigin, productionOrigin)).status, 503);
+assert.equal(leadPosts().length, 3, 'A retry, a supplement, partner/preview traffic and failed intake do not notify new-lead');
+await Promise.all([notifyNewFormLead(env, 'flatcare', 'fixture-submission'), notifyNewFormLead(env, 'flatcare', 'fixture-submission')]);
+assert.equal(leadPosts().length, 4);
+assert.match(leadPosts().at(-1)!.text, /^新規問い合わせ｜Flatcare\n受付番号 fixture-submission/);
+console.log('PASS: website and Flatcare new-lead routing, de-duplication, and excluded sources');

@@ -33,6 +33,7 @@ import type {
   FormSubmission as DbFormSubmission,
 } from '@line-crm/db';
 import type { Env } from '../index.js';
+import { FLATCARE_ENQUIRY_FORM_ID, notifyNewFormLead } from '../services/new-lead-slack.js';
 import { fireEvent } from '../services/event-bus.js';
 import { POST_ORDER_FORM_ID, isCaseBoundPreOrder, validatePostOrderAnswers } from '../lib/survey-validation.js';
 import {
@@ -1059,6 +1060,9 @@ forms.post('/api/forms/:id/submit', async (c) => {
 
     // Side effects (best-effort, don't fail the request)
     const sideEffects: Promise<unknown>[] = [];
+    if (form.id === FLATCARE_ENQUIRY_FORM_ID && !issue) {
+      sideEffects.push(notifyNewFormLead(c.env, 'flatcare', submission.id));
+    }
 
     if (enableLineFollowup && friendId) {
       // Save response data to friend's metadata

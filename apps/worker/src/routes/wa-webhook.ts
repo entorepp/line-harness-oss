@@ -7,7 +7,8 @@ import { createChat, getChatByFriendId, jstNow, toJstString, updateChat } from '
 import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
 import { linkWhatsappIdentity } from '../services/whatsapp-identity.js';
-import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
+import { deliverFirstSocialLead, firstSocialLeadClaim } from '../services/new-lead-slack.js';
+import { extractSingleQuoteReference, tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 import {
   normalizeWhatsappDeliveryStatus,
   recordWhatsappDelivery,
@@ -732,6 +733,7 @@ async function persistWaMessage(
   allowIdentityLink = false,
   queueWelcome?: (id: string) => void,
   queueIntake?: (sessionId: string) => void,
+  notifyFirstLead = false,
 ): Promise<void> {
   const counterpartyId = resolveCounterpartyId(msg);
   if (!counterpartyId) {
@@ -783,14 +785,24 @@ async function persistWaMessage(
     .first<{ id: string }>();
 
   const messageLogId = duplicate?.id || crypto.randomUUID();
+  const lead = !duplicate && notifyFirstLead && msg.direction === 'incoming'
+    && ['text', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'contacts'].includes(msg.type)
+    && !extractSingleQuoteReference(msg.text || '')
+    ? firstSocialLeadClaim(env, 'whatsapp', friend.id, msg.occurredAt) : null;
+  let firstLead = false;
   if (!duplicate) {
-    await db
+    const insert = db
       .prepare(
         `INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .bind(messageLogId, friend.id, msg.direction, stored.messageType, stored.content, msg.occurredAt)
-      .run();
+      .bind(messageLogId, friend.id, msg.direction, stored.messageType, stored.content, msg.occurredAt);
+    if (lead) {
+      const [result] = await db.batch([lead.statement, insert]);
+      firstLead = Boolean(result?.meta.changes);
+    } else {
+      await insert.run();
+    }
   }
 
   if (msg.direction === 'outgoing') {
@@ -809,6 +821,7 @@ async function persistWaMessage(
   }
 
   await updateChatForWaMessage(db, friend.id, msg.direction, msg.occurredAt);
+  if (lead && firstLead) await deliverFirstSocialLead(env, 'whatsapp', lead.id, friend.id);
   if (welcomeId) queueWelcome!(welcomeId);
   if (!duplicate && msg.direction === 'incoming' && allowIdentityLink && msg.type === 'text') {
     const identity = await linkWhatsappIdentity(env, friend.id, msg.messageId, msg.text?.trim() || '');
@@ -1108,7 +1121,7 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
         messageId: msg.messageId,
       });
 
-      await persistWaMessage(c.env, db, msg, account, null, true);
+      await persistWaMessage(c.env, db, msg, account, null, true, undefined, undefined, Boolean(msg.timestamp));
       return c.text('OK', 200);
     }
 
@@ -1178,7 +1191,8 @@ waWebhook.post('/webhook/whatsapp', async (c) => {
 
         await persistWaMessage(c.env, db, msg, account, storedMedia, bridgeAuthorized || Boolean(account.channel_secret),
           directlySigned ? (id) => c.executionCtx.waitUntil(sendInboundWelcome(c.env, id).catch(() => console.error('WhatsApp welcome receipt unavailable'))) : undefined,
-          directlySigned ? (id) => c.executionCtx.waitUntil(processIntake(c.env, id).catch(() => console.error('WhatsApp intake event stopped'))) : undefined);
+          directlySigned ? (id) => c.executionCtx.waitUntil(processIntake(c.env, id).catch(() => console.error('WhatsApp intake event stopped'))) : undefined,
+          (directlySigned || bridgeAuthorized) && Boolean(msg.timestamp));
       }
 
       return c.text('OK', 200);

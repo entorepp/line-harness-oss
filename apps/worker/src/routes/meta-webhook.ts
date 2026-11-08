@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { createChat, getChatByFriendId, jstNow, updateChat } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { fireEvent } from '../services/event-bus.js';
-import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
+import { deliverFirstSocialLead, firstSocialLeadClaim } from '../services/new-lead-slack.js';
+import { extractSingleQuoteReference, tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 import {
   fetchMetaCustomerProfile,
   fetchMetaMessageDetail,
@@ -376,11 +377,18 @@ export async function persistMetaMessage(
         ).bind(crypto.randomUUID(), friend.id, message.direction, part.messageType, part.content, message.occurredAt));
       }
     }
-    if (inserts.length) await env.DB.batch(inserts);
+    const leadKind = account.channel_type === 'facebook' ? 'messenger' : 'instagram';
+    const lead = inserts.length && message.direction === 'incoming' && !extractSingleQuoteReference(message.text)
+      ? firstSocialLeadClaim(env, leadKind, friend.id, message.occurredAt) : null;
+    if (lead) inserts.unshift(lead.statement);
+    const results = inserts.length ? await env.DB.batch(inserts) : [];
+    const firstLead = lead && results[0]?.meta.changes ? lead : null;
     const stored = parts[0];
     if (!stored) return;
 
     await updateMetaChat(env.DB, friend.id, message.direction, message.occurredAt);
+
+    if (firstLead) await deliverFirstSocialLead(env, leadKind, firstLead.id, friend.id);
 
     if (message.direction === 'incoming') {
       const quoteHandled = await tryDeliverCustomerQuote({
