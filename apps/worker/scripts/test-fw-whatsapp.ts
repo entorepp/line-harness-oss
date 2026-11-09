@@ -110,5 +110,13 @@ try {
  assert.equal(sends,before,'send refuses a template outside the allowlist');
  result=await(await call('/contacts/friend/send',{idempotencyKey:'2'.repeat(64),fingerprint:contact.fingerprint,confirmed:true,optInConfirmed:true,template:{...swapped.template,templateName:'flat_travel_arrival_check_v1'}})).json() as any;
  assert.notEqual(result.status,'accepted');assert.equal(sends,before,'a preview cannot be reused for another template');
+ const g3:any=journey[2].components[1];const realUrl=g3.buttons[0].url;g3.buttons[0].url='https://attacker.invalid/form?issue={{1}}';
+ const moved=await(await call('/contacts/friend/templates?fingerprint='+contact.fingerprint)).json() as any;
+ assert.equal(moved.templates.find((t:any)=>t.name==='flat_travel_post_trip_feedback_v1').unavailableReason,'link_button_changed');
+ before=sends;assert.equal((await prepare({templateName:'flat_travel_post_trip_feedback_v1',link:'issue-abc_123'})).status,409,'a survey button moved at Meta is refused');
+ g3.buttons[0].url=realUrl;
+ (journey[0].components as any[]).push({type:'BUTTONS',buttons:[{type:'URL',text:'Open',url:'https://example.com/'}]});
+ assert.equal((await prepare({templateName:'flat_travel_payment_received_v1'})).status,409,'an unexpected URL button is refused');
+ (journey[0].components as any[]).pop();assert.equal(sends,before);
  console.log('FW WhatsApp: auth, recipient, stale review, window, template consent/approval, receipts, idempotency and unknown-outcome tests and journey template tests passed');
 } finally {globalThis.fetch=realFetch;sql.close();}

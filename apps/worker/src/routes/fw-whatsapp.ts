@@ -15,9 +15,10 @@ export const fwWhatsapp = new Hono<Env>();
 const BASE = '/api/integrations/fw-whatsapp';
 class BridgeError extends Error { constructor(message:string, readonly notStarted:boolean) { super(message); } }
 const hash = async (s: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(x => x.toString(16).padStart(2, '0')).join('');
-/** Templates FW may send: the quotation plus the customer journey notices (2026-11). pdfName is the file name the customer sees. */
+/** Templates FW may send: the quotation plus the customer journey notices (2026-11). pdfName is the file name the customer sees.
+ * link pins the only URL button a template may carry, so a definition edited at Meta cannot send customers elsewhere. */
 const QUOTE_TEMPLATE = 'flat_travel_requested_quote_v2';
-const FW_TEMPLATES: Record<string, { pdfName?: string }> = {
+const FW_TEMPLATES: Record<string, { pdfName?: string; link?: string }> = {
   [QUOTE_TEMPLATE]: { pdfName: 'quotation.pdf' },
   flat_travel_enquiry_received_v1: {}, flat_travel_call_offer_v1: {},
   flat_travel_updated_quote_v1: { pdfName: 'updated-quotation.pdf' }, flat_travel_price_feedback_v1: {},
@@ -26,9 +27,14 @@ const FW_TEMPLATES: Record<string, { pdfName?: string }> = {
   flat_travel_quote_reminder_1_v1: {}, flat_travel_quote_reminder_2_v1: {}, flat_travel_quote_reminder_3_v1: {},
   flat_travel_reply_reminder_v1: {}, flat_travel_payment_received_v1: {}, flat_travel_payment_due_reminder_v1: {},
   flat_travel_arrangements_confirmed_v1: { pdfName: 'booking-confirmations.pdf' }, flat_travel_pre_departure_v1: {},
-  flat_travel_arrival_check_v1: {}, flat_travel_shinkansen_tips_v1: {}, flat_travel_post_trip_feedback_v1: {},
+  flat_travel_arrival_check_v1: {}, flat_travel_shinkansen_tips_v1: {},
+  flat_travel_post_trip_feedback_v1: { link: 'https://liffform-studio.pages.dev/public-form?id=8dc19365-8dd7-49e7-92fb-fdd697572771&lang=en&issue={{1}}' },
 };
 const fwTemplate = (name: unknown) => typeof name === 'string' && Object.prototype.hasOwnProperty.call(FW_TEMPLATES, name) ? name : null;
+const buttonsExpected = (name: string, t: any) => {
+  const buttons = t?.urlButtons || []; const link = FW_TEMPLATES[name].link;
+  return link ? buttons.length === 1 && buttons[0].dynamic && buttons[0].url === link : buttons.length === 0;
+};
 const linkValid = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(s);
 const pdfNameValid = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,90}\.pdf$/.test(s);
 const idValid = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(s);
@@ -93,10 +99,11 @@ fwWhatsapp.get(`${BASE}/contacts/:id/templates`, async c => {
     const catalogue = await templateCall(c.env,ctx.friend.id,'templates');
     const templates = Object.keys(FW_TEMPLATES).map(name => {
       const t = catalogue.templates.find((x:any)=>x.name===name && x.language==='en_US');
-      const link = t?.urlButtons?.find((b:any)=>b.dynamic);
-      return { name, label: t?.label || name, text: t?.bodyText || '', available: Boolean(t?.available),
-        unavailableReason: t?.available ? null : t?.unavailableReason || 'not_registered',
-        documentRequired: Boolean(t?.documentRequired), customerNameRequired: name === QUOTE_TEMPLATE, linkRequired: Boolean(link) };
+      const registered = t && t.status !== 'NOT_REGISTERED'; const buttonsOk = !registered || buttonsExpected(name, t);
+      const available = Boolean(t?.available) && buttonsOk;
+      return { name, label: t?.label || name, text: t?.bodyText || '', available,
+        unavailableReason: available ? null : !buttonsOk ? 'link_button_changed' : t?.unavailableReason || 'not_registered',
+        documentRequired: Boolean(t?.documentRequired), customerNameRequired: name === QUOTE_TEMPLATE, linkRequired: Boolean(FW_TEMPLATES[name].link) };
     });
     return c.json({contact:ctx.view, canSend:Boolean(catalogue.canSend), templates});
   } catch { return c.json({error:'template_catalogue_unavailable'},409); }
@@ -118,8 +125,8 @@ fwWhatsapp.post(`${BASE}/contacts/:id/prepare-template`, async c => {
     // Variables FW cannot fill would fail at Meta; refuse before uploading anything.
     if (selected.parameters.length !== (quote ? 1 : 0)) return c.json({error:'template_definition_unsupported'},409);
     if (selected.documentRequired !== (body.pdf !== undefined)) return c.json({error:selected.documentRequired?'pdf_required':'pdf_not_allowed'},400);
-    const links = selected.urlButtons.filter((b:any)=>b.dynamic);
-    if (links.length > 1) return c.json({error:'template_definition_unsupported'},409);
+    if (!buttonsExpected(name, selected)) return c.json({error:'template_definition_unsupported'},409);
+    const links = selected.urlButtons;
     if ((links.length === 1) !== (body.link !== undefined)) return c.json({error:links.length?'link_required':'link_not_allowed'},400);
     let documentKey: string | null = null;
     if (selected.documentRequired) {
