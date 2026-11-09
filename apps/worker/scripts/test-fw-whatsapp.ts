@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { fwWhatsapp } from '../src/routes/fw-whatsapp.js';
 import { authMiddleware } from '../src/middleware/auth.js';
+import { OPERATIONAL_TEMPLATES } from '../src/services/whatsapp-operational-templates.js';
 
 const sql=new DatabaseSync(':memory:');
 sql.exec(readFileSync('../../packages/db/schema.sql','utf8'));
@@ -20,12 +21,20 @@ const env={DB:db,API_KEY:'staff-key',FLATWORKER_TRAVEL_QUOTE_TOKEN:'x'.repeat(40
 const app=new Hono();app.use('*',authMiddleware as any);app.route('/',fwWhatsapp);
 const prefix='/api/integrations/fw-whatsapp';
 async function call(path:string,body?:any,token=env.FLATWORKER_TRAVEL_QUOTE_TOKEN){return app.fetch(new Request('https://example.test'+prefix+path,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})}),env);}
-const realFetch=globalThis.fetch;let sends=0;let unknown=false;let approved=true;
+const realFetch=globalThis.fetch;let sends=0;let unknown=false;let approved=true;let lastPayload:any=null;
+const status=()=>approved?'APPROVED':'PAUSED';
+const journey=[
+ {name:'flat_travel_payment_received_v1',language:'en_US',status:'APPROVED',category:'UTILITY',components:[{type:'BODY',text:'Thank you! We’ve received your payment.'}]},
+ {name:'flat_travel_arrangements_confirmed_v1',language:'en_US',status:'APPROVED',category:'UTILITY',components:[{type:'HEADER',format:'DOCUMENT'},{type:'BODY',text:'Good news! All your arrangements are now confirmed.'}]},
+ {name:'flat_travel_post_trip_feedback_v1',language:'en_US',status:'APPROVED',category:'UTILITY',components:[{type:'BODY',text:'Welcome home!'},{type:'BUTTONS',buttons:[{type:'URL',text:'Share feedback',url:'https://liffform-studio.pages.dev/public-form?id=8dc19365-8dd7-49e7-92fb-fdd697572771&lang=en&issue={{1}}'}]}]},
+ {name:'flat_travel_quote_reminder_1_v1',language:'en_US',status:'APPROVED',category:'MARKETING',components:[{type:'BODY',text:'Just checking in on the quote we sent.'}]},
+ {name:'flat_travel_payment_link_v1',language:'en_US',status:'APPROVED',category:'UTILITY',components:[{type:'BODY',text:'Hello {{1}}, pay {{2}} at {{3}}.'}]},
+];
 globalThis.fetch=(async(url:any,init?:RequestInit)=>{
  const u=String(url);assert.ok(u.startsWith('https://graph.facebook.com/'));
- if(u.includes('/message_templates'))return Response.json({data:[{name:'flat_travel_requested_quote_v2',language:'en_US',status:approved?'APPROVED':'PAUSED',category:'UTILITY',components:[{type:'HEADER',format:'DOCUMENT'},{type:'BODY',text:'Hello {{1}}, your quotation is attached.'}]}]});
+ if(u.includes('/message_templates'))return Response.json({data:[{name:'flat_travel_requested_quote_v2',language:'en_US',status:status(),category:'UTILITY',components:[{type:'HEADER',format:'DOCUMENT'},{type:'BODY',text:'Hello {{1}}, your quotation is attached.'}]},...journey]});
  if(u.endsWith('/media'))return Response.json({id:'123456'});
- assert.ok(u.endsWith('/messages'));sends++;
+ assert.ok(u.endsWith('/messages'));sends++;lastPayload=JSON.parse(String(init?.body||'null'));
  if(unknown)throw new Error('network');
  return Response.json({messages:[{id:'wamid.'+sends}]});
 }) as typeof fetch;
@@ -63,5 +72,43 @@ try {
  approved=false;
  result=await(await call('/contacts/friend/send',{...templateBody,idempotencyKey:'d'.repeat(64),template:second.template})).json() as any;
  assert.notEqual(result.status,'accepted');assert.equal(sends,3,'withdrawn approval never sends');
- console.log('FW WhatsApp: auth, recipient, stale review, window, template consent/approval, receipts, idempotency and unknown-outcome tests passed');
+ approved=true;
+ // Customer journey templates: allowlist, per-template inputs, approval and category gates.
+ const journeyNames=OPERATIONAL_TEMPLATES.slice(OPERATIONAL_TEMPLATES.findIndex(t=>t.name==='flat_travel_requested_quote_v2')+1).map(t=>t.name);
+ assert.equal(journeyNames.length,18);
+ const catalogue=await(await call('/contacts/friend/templates?fingerprint='+contact.fingerprint)).json() as any;
+ assert.deepEqual(catalogue.templates.map((t:any)=>t.name),['flat_travel_requested_quote_v2',...journeyNames],'picker lists exactly the quotation and the 18 journey templates');
+ const pick=(n:string)=>catalogue.templates.find((t:any)=>t.name===n);
+ assert.equal(pick('flat_travel_requested_quote_v2').customerNameRequired,true);
+ assert.equal(pick('flat_travel_payment_received_v1').available,true);
+ assert.equal(pick('flat_travel_arrangements_confirmed_v1').documentRequired,true);
+ assert.equal(pick('flat_travel_post_trip_feedback_v1').linkRequired,true);
+ assert.equal(pick('flat_travel_enquiry_received_v1').available,false,'not yet registered at Meta');
+ assert.equal(pick('flat_travel_quote_reminder_1_v1').available,false,'recategorised as MARKETING is never sendable');
+ assert.equal((await call('/contacts/friend/templates?fingerprint=stale')).status,409);
+ const prepare=(extra:any)=>call('/contacts/friend/prepare-template',{fingerprint:contact.fingerprint,...extra});
+ assert.equal((await prepare({templateName:'flat_travel_payment_link_v1'})).status,400,'templates outside the FW allowlist are refused');
+ assert.equal((await prepare({templateName:'flat_travel_payment_received_v1',pdf:btoa('%PDF-x')})).status,400,'no PDF on a text-only template');
+ assert.equal((await prepare({templateName:'flat_travel_payment_received_v1',name:'Alex'})).status,400,'no name on a fixed-copy template');
+ assert.equal((await prepare({templateName:'flat_travel_arrangements_confirmed_v1'})).status,400,'PDF template needs the PDF');
+ assert.equal((await prepare({templateName:'flat_travel_post_trip_feedback_v1'})).status,400,'survey template needs the issue id');
+ assert.equal((await prepare({templateName:'flat_travel_post_trip_feedback_v1',link:'../x?y'})).status,400,'issue id cannot change the URL');
+ assert.equal((await prepare({templateName:'flat_travel_quote_reminder_1_v1'})).status,409,'MARKETING template cannot be prepared');
+ assert.equal((await prepare({templateName:'flat_travel_enquiry_received_v1'})).status,409,'unregistered template cannot be prepared');
+ const sendPrepared=async(extra:any,key:string)=>{const r=await prepare(extra);const p=await r.json() as any;assert.equal(r.status,200,JSON.stringify(p));
+  return {prepared:p,result:await(await call('/contacts/friend/send',{idempotencyKey:key.repeat(64),fingerprint:contact.fingerprint,confirmed:true,template:p.template,optInConfirmed:true})).json() as any};};
+ let before=sends;let sent=await sendPrepared({templateName:'flat_travel_payment_received_v1'},'e');
+ assert.equal(sent.result.status,'accepted',JSON.stringify(sent.result));assert.equal(sends,before+1);
+ assert.equal(lastPayload.template.name,'flat_travel_payment_received_v1');assert.deepEqual(lastPayload.template.components,[]);
+ sent=await sendPrepared({templateName:'flat_travel_arrangements_confirmed_v1',pdf:btoa('%PDF-example')},'f');
+ assert.equal(sent.result.status,'accepted');assert.equal(lastPayload.template.components[0].parameters[0].document.filename,'booking-confirmations.pdf');
+ sent=await sendPrepared({templateName:'flat_travel_post_trip_feedback_v1',link:'issue-abc_123'},'0');
+ assert.equal(sent.result.status,'accepted');assert.ok(sent.prepared.text.includes('&issue=issue-abc_123'));
+ assert.deepEqual(lastPayload.template.components,[{type:'button',sub_type:'url',index:'0',parameters:[{type:'text',text:'issue-abc_123'}]}]);
+ const swapped=await(await prepare({templateName:'flat_travel_payment_received_v1'})).json() as any;before=sends;
+ assert.equal((await call('/contacts/friend/send',{idempotencyKey:'1'.repeat(64),fingerprint:contact.fingerprint,confirmed:true,optInConfirmed:true,template:{...swapped.template,templateName:'flat_travel_payment_link_v1'}})).status,409);
+ assert.equal(sends,before,'send refuses a template outside the allowlist');
+ result=await(await call('/contacts/friend/send',{idempotencyKey:'2'.repeat(64),fingerprint:contact.fingerprint,confirmed:true,optInConfirmed:true,template:{...swapped.template,templateName:'flat_travel_arrival_check_v1'}})).json() as any;
+ assert.notEqual(result.status,'accepted');assert.equal(sends,before,'a preview cannot be reused for another template');
+ console.log('FW WhatsApp: auth, recipient, stale review, window, template consent/approval, receipts, idempotency and unknown-outcome tests and journey template tests passed');
 } finally {globalThis.fetch=realFetch;sql.close();}

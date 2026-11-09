@@ -15,6 +15,22 @@ export const fwWhatsapp = new Hono<Env>();
 const BASE = '/api/integrations/fw-whatsapp';
 class BridgeError extends Error { constructor(message:string, readonly notStarted:boolean) { super(message); } }
 const hash = async (s: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(x => x.toString(16).padStart(2, '0')).join('');
+/** Templates FW may send: the quotation plus the customer journey notices (2026-11). pdfName is the file name the customer sees. */
+const QUOTE_TEMPLATE = 'flat_travel_requested_quote_v2';
+const FW_TEMPLATES: Record<string, { pdfName?: string }> = {
+  [QUOTE_TEMPLATE]: { pdfName: 'quotation.pdf' },
+  flat_travel_enquiry_received_v1: {}, flat_travel_call_offer_v1: {},
+  flat_travel_updated_quote_v1: { pdfName: 'updated-quotation.pdf' }, flat_travel_price_feedback_v1: {},
+  flat_travel_priority_question_v1: {}, flat_travel_itinerary_draft_v1: { pdfName: 'itinerary.pdf' },
+  flat_travel_cultural_experience_v1: { pdfName: 'cultural-experiences.pdf' },
+  flat_travel_quote_reminder_1_v1: {}, flat_travel_quote_reminder_2_v1: {}, flat_travel_quote_reminder_3_v1: {},
+  flat_travel_reply_reminder_v1: {}, flat_travel_payment_received_v1: {}, flat_travel_payment_due_reminder_v1: {},
+  flat_travel_arrangements_confirmed_v1: { pdfName: 'booking-confirmations.pdf' }, flat_travel_pre_departure_v1: {},
+  flat_travel_arrival_check_v1: {}, flat_travel_shinkansen_tips_v1: {}, flat_travel_post_trip_feedback_v1: {},
+};
+const fwTemplate = (name: unknown) => typeof name === 'string' && Object.prototype.hasOwnProperty.call(FW_TEMPLATES, name) ? name : null;
+const linkValid = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(s);
+const pdfNameValid = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,90}\.pdf$/.test(s);
 const idValid = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(s);
 async function contact(env: Env['Bindings'], id: string) {
   if (!idValid(id)) throw new Error('invalid_contact');
@@ -69,20 +85,52 @@ fwWhatsapp.get(`${BASE}/contacts/:id/history`, async c => {
     return c.json({contact:ctx.view, events:rows.results.slice(0,100), hasMore:rows.results.length>100});
   } catch { return c.json({error:'contact_unavailable'},409); }
 });
+// The FW picker: only allowlisted templates, with what each one needs. Unapproved ones are listed but unavailable.
+fwWhatsapp.get(`${BASE}/contacts/:id/templates`, async c => {
+  try {
+    const ctx = await contact(c.env,c.req.param('id'));
+    if (c.req.query('fingerprint') !== ctx.view.fingerprint) return c.json({error:'contact_changed'},409);
+    const catalogue = await templateCall(c.env,ctx.friend.id,'templates');
+    const templates = Object.keys(FW_TEMPLATES).map(name => {
+      const t = catalogue.templates.find((x:any)=>x.name===name && x.language==='en_US');
+      const link = t?.urlButtons?.find((b:any)=>b.dynamic);
+      return { name, label: t?.label || name, text: t?.bodyText || '', available: Boolean(t?.available),
+        unavailableReason: t?.available ? null : t?.unavailableReason || 'not_registered',
+        documentRequired: Boolean(t?.documentRequired), customerNameRequired: name === QUOTE_TEMPLATE, linkRequired: Boolean(link) };
+    });
+    return c.json({contact:ctx.view, canSend:Boolean(catalogue.canSend), templates});
+  } catch { return c.json({error:'template_catalogue_unavailable'},409); }
+});
 fwWhatsapp.post(`${BASE}/contacts/:id/prepare-template`, async c => {
   try {
     const ctx = await contact(c.env,c.req.param('id')); const body = await c.req.json<any>();
     if (body.fingerprint !== ctx.view.fingerprint) return c.json({error:'contact_changed'},409);
-    if (typeof body.pdf !== 'string' || body.pdf.length > 14_000_000 || typeof body.name !== 'string' || body.name.length > 300) return c.json({error:'invalid_template'},400);
+    // Omitted templateName keeps the original FW quotation request working unchanged.
+    const name = fwTemplate(body.templateName ?? QUOTE_TEMPLATE);
+    if (!name) return c.json({error:'template_not_allowed'},400);
+    const quote = name === QUOTE_TEMPLATE;
+    if ((quote ? typeof body.name !== 'string' || body.name.length > 300 : body.name !== undefined)
+      || (body.pdf !== undefined && (typeof body.pdf !== 'string' || body.pdf.length > 14_000_000))
+      || (body.link !== undefined && !linkValid(body.link)) || (body.filename !== undefined && !pdfNameValid(body.filename))) return c.json({error:'invalid_template'},400);
     const catalogue = await templateCall(c.env,ctx.friend.id,'templates');
-    const selected = catalogue.templates.find((t:any)=>t.name==='flat_travel_requested_quote_v2' && t.language==='en_US' && t.available);
-    if (!catalogue.canSend || !selected) return c.json({error:'approved_quote_template_unavailable'},409);
-    const bytes = Uint8Array.from(atob(body.pdf),ch=>ch.charCodeAt(0));
-    const form = new FormData(); form.set('file',new Blob([bytes],{type:'application/pdf'}),'quotation.pdf');
-    const document = await templateCall(c.env,ctx.friend.id,'documents',form);
-    const input = {templateName:selected.name,templateLanguage:selected.language,values:{'body:1':body.name},buttonValues:{},documentKey:document.key};
+    const selected = catalogue.templates.find((t:any)=>t.name===name && t.language==='en_US' && t.available);
+    if (!catalogue.canSend || !selected) return c.json({error:quote?'approved_quote_template_unavailable':'approved_template_unavailable'},409);
+    // Variables FW cannot fill would fail at Meta; refuse before uploading anything.
+    if (selected.parameters.length !== (quote ? 1 : 0)) return c.json({error:'template_definition_unsupported'},409);
+    if (selected.documentRequired !== (body.pdf !== undefined)) return c.json({error:selected.documentRequired?'pdf_required':'pdf_not_allowed'},400);
+    const links = selected.urlButtons.filter((b:any)=>b.dynamic);
+    if (links.length > 1) return c.json({error:'template_definition_unsupported'},409);
+    if ((links.length === 1) !== (body.link !== undefined)) return c.json({error:links.length?'link_required':'link_not_allowed'},400);
+    let documentKey: string | null = null;
+    if (selected.documentRequired) {
+      const bytes = Uint8Array.from(atob(body.pdf),ch=>ch.charCodeAt(0));
+      const form = new FormData(); form.set('file',new Blob([bytes],{type:'application/pdf'}),body.filename || FW_TEMPLATES[name].pdfName || 'flat-travel.pdf');
+      documentKey = (await templateCall(c.env,ctx.friend.id,'documents',form)).key;
+    }
+    const input = {templateName:selected.name,templateLanguage:selected.language,values:quote?{'body:1':body.name}:{},
+      buttonValues:links.length?{[String(links[0].index)]:body.link}:{},documentKey};
     const preview = await templateCall(c.env,ctx.friend.id,'template-preview',input);
-    return c.json({contact:ctx.view, text:preview.text, canSend:preview.canSend,
+    return c.json({contact:ctx.view, label:selected.label, text:preview.text, canSend:preview.canSend,
       template:{...input,previewToken:preview.previewToken,previewExpiresAt:preview.previewExpiresAt}});
   } catch { return c.json({error:'template_preview_unavailable'},409); }
 });
@@ -94,7 +142,7 @@ fwWhatsapp.post(`${BASE}/contacts/:id/send`, async c => {
     if (!/^[a-f0-9]{64}$/.test(key || '') || body.confirmed !== true || body.fingerprint !== ctx.view.fingerprint) return c.json({error:'review_required',outcome:'not_started'},409);
     const template = body.template;
     if (template) {
-      if (body.optInConfirmed !== true || template.templateName !== 'flat_travel_requested_quote_v2' || template.templateLanguage !== 'en_US') return c.json({error:'template_confirmation_required',outcome:'not_started'},409);
+      if (body.optInConfirmed !== true || !fwTemplate(template.templateName) || template.templateLanguage !== 'en_US') return c.json({error:'template_confirmation_required',outcome:'not_started'},409);
     } else {
       if (typeof body.text !== 'string' || !body.text.trim() || body.text.length>3000 || typeof body.url!=='string') return c.json({error:'invalid_message',outcome:'not_started'},400);
       const url=new URL(body.url);
