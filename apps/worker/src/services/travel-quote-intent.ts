@@ -185,6 +185,9 @@ export type TravelQuoteIntent = {
   givenName: string;
   familyName: string;
   email: string;
+  residenceCountry: string;
+  nationality: string;
+  sourceLocale: string;
   bodyHeightCm: number | null;
   bodyWeightKg: number | null;
   wheelchairBrand: string;
@@ -515,6 +518,10 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const customerName = [givenName, familyName].filter(Boolean).join(' ') || legacyCustomerName;
   const email = text(body.email, 320) || '';
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Invalid traveller email' };
+  const residenceCountry = text(body.residenceCountry || body.countryCode, 120) || '';
+  const nationality = text(body.nationality, 120) || '';
+  const requestedLocale = text(body.sourceLocale, 16) || '';
+  const sourceLocale = /^(en|tc|sc|kr)(?:-[A-Za-z]{2})?$/.test(requestedLocale) ? requestedLocale : '';
   const wheelchairBrand = text(body.wheelchairBrand, 100) || '';
   const wheelchairModel = text(body.wheelchairModel, 100) || '';
   const mobilityDeviceType = text(body.mobilityDeviceType, 100);
@@ -529,7 +536,7 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const studio = mode === 'private' && body.source === 'private-travel-studio';
   const supportNote = text(body.supportNote, 1000);
   const supportNeeds = textList(body.supportNeeds, 12, 160);
-  const profileProvided = Boolean(customerName || givenName || familyName || email || wheelchairBrand || wheelchairModel || mobilityDeviceType || bodyHeightCm || bodyWeightKg || wheelchairWeightKg || assistanceMethod || boardingPreference || supportNote || supportNeeds.length);
+  const profileProvided = Boolean(customerName || givenName || familyName || email || residenceCountry || nationality || wheelchairBrand || wheelchairModel || mobilityDeviceType || bodyHeightCm || bodyWeightKg || wheelchairWeightKg || assistanceMethod || boardingPreference || supportNote || supportNeeds.length);
   const profileConsentVersion = text(body.profileConsentVersion, 80);
   const consentedAt = text(body.profileConsentedAt, 40);
   const profileConsentedAt = consentedAt && !Number.isNaN(Date.parse(consentedAt)) ? new Date(consentedAt).toISOString() : null;
@@ -638,6 +645,9 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       givenName,
       familyName,
       email,
+      residenceCountry,
+      nationality,
+      sourceLocale,
       bodyHeightCm,
       bodyWeightKg,
       wheelchairBrand,

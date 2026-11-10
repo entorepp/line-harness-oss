@@ -103,6 +103,9 @@ const payload = {
   givenName: 'Alex',
   familyName: 'Traveller',
   email: 'system-test@example.com',
+  residenceCountry: 'United Kingdom',
+  nationality: 'Canada',
+  sourceLocale: 'en',
   bodyHeightCm: 178.5,
   bodyWeightKg: 81.5,
   wheelchairBrand: 'Permobil',
@@ -267,6 +270,8 @@ const missingProfile = await request({
   givenName: '',
   familyName: '',
   email: '',
+  residenceCountry: '',
+  nationality: '',
   bodyHeightCm: null,
   bodyWeightKg: null,
   wheelchairBrand: '',
@@ -366,6 +371,16 @@ if (nameOnlyCopy.ok) {
 
 console.log('travel quote intent route: create, deduplicate, validate, staff name and redaction passed');
 
+assert.equal(flatworkerPosts[0].body.residenceCountry, 'United Kingdom');
+assert.equal(flatworkerPosts[0].body.nationality, 'Canada');
+assert.equal(flatworkerPosts[0].body.sourceLocale, 'en');
+const navigationAt = '2026-11-11T01:00:00.000Z';
+const detailedAttribution = normalizeLeadAttribution({schemaVersion:'flat-travel-attribution-v1',status:'captured',firstTouch:{capturedAt:navigationAt},events:[{type:'page_view',path:'/en',at:navigationAt,elapsedMs:12000},{type:'action',path:'/en/tailor-made',at:navigationAt,action:'profile_submit',email:'private@example.com'}]});
+assert.equal(detailedAttribution.firstTouch.capturedAt, navigationAt);
+assert.equal(detailedAttribution.events[0].elapsedMs,12000);
+assert.equal(detailedAttribution.events[1].action,'profile_submit');
+assert(!JSON.stringify(detailedAttribution).includes('private@example.com'));
+assert(!normalizeLeadAttribution({schemaVersion:'flat-travel-attribution-v1',status:'captured',events:[{type:'action',path:'/en',at:navigationAt,action:'private@example.com'}]}).events);
 const untrusted = normalizeLeadAttribution({schemaVersion:'flat-travel-attribution-v1',status:'captured',lastTouch:{utm:{source:'meta',campaign:'person@example.com',content:'09012345678'},referrerOrigin:'https://example.com/path?email=private'},route:['/en?email=private',...Array(40).fill('/en')]});
 assert.deepEqual(untrusted.lastTouch.utm,{source:'meta'});
 assert.equal(untrusted.lastTouch.referrerOrigin,'https://example.com');
