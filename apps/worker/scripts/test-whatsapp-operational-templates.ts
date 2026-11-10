@@ -29,6 +29,19 @@ const files=new Map<string,{value:ArrayBuffer,metadata:any}>();
 const env:any={DB:db,API_KEY:'staff-key',UPLOADS:{async put(k:string,value:ArrayBuffer,opts:any){files.set(k,{value,metadata:opts.metadata});assert.equal(opts.expirationTtl,180*86400)},async getWithMetadata(k:string){return files.get(k)||{value:null,metadata:null}}}};
 const app=new Hono<any>();app.use('*',authMiddleware);app.route('/',whatsappTemplates);app.route('/',uploads);app.route('/',waWebhook);app.route('/',friends);
 const definition=OPERATIONAL_TEMPLATES[0];
+// Customer journey notices: unique Meta-valid names, fixed copy within the body limit, previewable before approval.
+{
+ const names=OPERATIONAL_TEMPLATES.map(item=>item.name);
+ assert.equal(new Set(names).size,names.length);
+ const journey=OPERATIONAL_TEMPLATES.filter(item=>item.fields.length===0&&item.name!=='flat_travel_requested_info_ready_v1');
+ assert.equal(journey.length,18);
+ for(const item of journey){
+  assert.match(item.name,/^[a-z0-9_]{1,512}$/);
+  assert.ok(item.body.length>0&&item.body.length<=1024&&!/{{|}}/.test(item.body)&&!/\n\n\n/.test(item.body),item.name);
+  const pending=operationalTemplate({name:item.name,language:'en_US',status:'NOT_REGISTERED',category:'UTILITY',components:[...(item.document?[{type:'HEADER',format:'DOCUMENT'}]:[]),{type:'BODY',text:item.body}]})!;
+  assert.equal(pending.available,false);assert.equal(pending.documentRequired,item.document);assert.equal(pending.parameters.length,0);
+ }
+}
 let raw:any={id:'template-1',name:definition.name,language:'en_US',category:'UTILITY',status:'APPROVED',components:[{type:'HEADER',format:'DOCUMENT'},{type:'BODY',text:definition.body}]};
 let sendMode='accepted';let messages:any[]=[];let mediaCalls=0;
 let onProviderStart:(()=>void)|null=null;let providerRelease:(()=>void)|null=null;
