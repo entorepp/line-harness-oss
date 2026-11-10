@@ -20,12 +20,12 @@ const hash = async (s: string) => [...new Uint8Array(await crypto.subtle.digest(
 const QUOTE_TEMPLATE = 'flat_travel_requested_quote_v2';
 const FW_TEMPLATES: Record<string, { pdfName?: string; link?: string }> = {
   [QUOTE_TEMPLATE]: { pdfName: 'quotation.pdf' },
-  flat_travel_enquiry_received_v1: {}, flat_travel_call_offer_v1: {},
-  flat_travel_updated_quote_v1: { pdfName: 'updated-quotation.pdf' }, flat_travel_price_feedback_v1: {},
-  flat_travel_priority_question_v1: {}, flat_travel_itinerary_draft_v1: { pdfName: 'itinerary.pdf' },
-  flat_travel_cultural_experience_v1: { pdfName: 'cultural-experiences.pdf' },
-  flat_travel_quote_reminder_1_v1: {}, flat_travel_quote_reminder_2_v1: {}, flat_travel_quote_reminder_3_v1: {},
-  flat_travel_reply_reminder_v1: {}, flat_travel_payment_received_v1: {}, flat_travel_payment_due_reminder_v1: {},
+  flat_travel_enquiry_received_v1: {}, flat_travel_call_offer_v2: {},
+  flat_travel_updated_quote_v1: { pdfName: 'updated-quotation.pdf' }, flat_travel_price_feedback_v2: {},
+  flat_travel_priority_question_v2: {}, flat_travel_itinerary_draft_v1: { pdfName: 'itinerary.pdf' },
+  flat_travel_cultural_experience_v2: { pdfName: 'cultural-experiences.pdf' },
+  flat_travel_quote_reminder_1_v1: {}, flat_travel_quote_reminder_2_v2: {}, flat_travel_quote_reminder_3_v2: {},
+  flat_travel_reply_reminder_v2: {}, flat_travel_payment_received_v1: {}, flat_travel_payment_due_reminder_v1: {},
   flat_travel_arrangements_confirmed_v1: { pdfName: 'booking-confirmations.pdf' }, flat_travel_pre_departure_v1: {},
   flat_travel_arrival_check_v1: {}, flat_travel_shinkansen_tips_v1: {},
   flat_travel_post_trip_feedback_v1: { link: 'https://liffform-studio.pages.dev/public-form?id=8dc19365-8dd7-49e7-92fb-fdd697572771&lang=en&issue={{1}}' },
