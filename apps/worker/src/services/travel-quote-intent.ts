@@ -160,7 +160,7 @@ export type AgreementSnapshot = {
   includedItems: string[];
   excludedItems: string[];
   estimate: { currency: 'JPY'; total: number | null; kind: string; priceConfirmed: false };
-  tailorMade: { choices: Record<string, string | string[]>; budgetUsd: number | null } | null;
+  tailorMade: { briefVersion?: 2; choices: Record<string, string | string[]>; budgetUsd: number | null } | null;
   openConfirmations: string[];
 };
 
@@ -250,9 +250,10 @@ function dateValue(value: unknown): string | null {
   return result && /^\d{4}-\d{2}-\d{2}$/.test(result) ? result : null;
 }
 
-function parseChoiceMap(value: unknown): Record<string, string | string[]> {
+function parseChoiceMap(value: unknown, studioBrief: boolean): Record<string, string | string[]> {
   const source = objectValue(value);
   const allowed = new Set(['destinations', 'cityStays', 'themes', 'startDate', 'startMonth', 'duration', 'partySize', 'budget', 'namedHotels', 'transportPreferences']);
+  const scopeChoices = new Set(['full', 'partial', 'hotel_only', 'transport_only', 'activity_only', 'unknown']);
   const longAnswers = new Set(['cityStays', 'namedHotels', 'transportPreferences']);
   const result: Record<string, string | string[]> = {};
   for (const [key, item] of Object.entries(source)) {
@@ -264,6 +265,12 @@ function parseChoiceMap(value: unknown): Record<string, string | string[]> {
     const normalized = text(item, longAnswers.has(key) ? 1000 : 240);
     if (normalized) result[key] = normalized;
   }
+  if (studioBrief) {
+    result.stayOrder = source.stayOrder === 'ordered' ? 'ordered' : 'undecided';
+    result.arrangementScope = typeof source.arrangementScope === 'string' && scopeChoices.has(source.arrangementScope)
+      ? source.arrangementScope : 'unknown';
+    if (result.stayOrder !== 'ordered') delete result.cityStays;
+  }
   return result;
 }
 
@@ -272,6 +279,8 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
   const itinerarySource = objectValue(source.itinerary);
   const estimateSource = objectValue(source.estimate);
   const tailorMadeSource = objectValue(source.tailorMade);
+  const studio = fallback.mode === 'private' && fallback.source === 'private-travel-studio';
+  const studioBrief = studio && tailorMadeSource.briefVersion === 2;
   const capturedAt = text(source.capturedAt, 40);
   const capturedIso = capturedAt && !Number.isNaN(Date.parse(capturedAt)) ? new Date(capturedAt).toISOString() : new Date(String(fallback.createdAt)).toISOString();
   const route = textList(itinerarySource.route, 12, 80);
@@ -445,7 +454,7 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       deliveryAndPickupIncluded: item.deliveryAndPickupIncluded === true,
     };
   });
-  const choices = parseChoiceMap(tailorMadeSource.choices);
+  const choices = parseChoiceMap(tailorMadeSource.choices, studioBrief);
   const budgetUsd = tailorMadeSource.budgetUsd == null ? null : integer(tailorMadeSource.budgetUsd, 0, 10_000_000);
   return {
     schemaVersion: 'flat-travel-agreement-v1',
@@ -456,9 +465,9 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       title: text(itinerarySource.title, 180) || text(fallback.title, 180) || '',
       tourId: text(itinerarySource.tourId, 120) || text(fallback.tourId, 120) || '',
       startDate: dateValue(itinerarySource.startDate) || dateValue(fallback.startDate),
-      days: itinerarySource.days == null ? integer(fallback.days, 1, 60) : integer(itinerarySource.days, 1, 60),
-      travellers: itinerarySource.travellers == null ? integer(fallback.travellers, 1, 30) : integer(itinerarySource.travellers, 1, 30),
-      route: route.length ? route : textList(fallback.route, 12, 80),
+      days: integer(itinerarySource.days ?? fallback.days, 1, studio ? 365 : 60),
+      travellers: integer(studioBrief ? itinerarySource.travellers : itinerarySource.travellers ?? fallback.travellers, 1, studio ? 200 : 30),
+      route: studioBrief ? (choices.stayOrder === 'ordered' ? route : []) : route.length ? route : textList(fallback.route, 12, 80),
     },
     customer: {
       name: '',
@@ -479,7 +488,7 @@ function parseAgreementSnapshot(value: unknown, fallback: Record<string, unknown
       kind: text(estimateSource.kind, 60) || 'not_quoted',
       priceConfirmed: false,
     },
-    tailorMade: Object.keys(choices).length || budgetUsd != null ? { choices, budgetUsd } : null,
+    tailorMade: Object.keys(choices).length || budgetUsd != null ? { ...(studioBrief ? { briefVersion: 2 as const } : {}), choices, budgetUsd } : null,
     openConfirmations: textList(source.openConfirmations, 30, 240),
   };
 }
@@ -517,6 +526,7 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   if ((body.bodyHeightCm != null && bodyHeightCm == null) || (body.bodyWeightKg != null && bodyWeightKg == null) || (body.wheelchairWeightKg != null && wheelchairWeightKg == null)) return { ok: false, error: 'Invalid traveller measurement' };
   const assistanceMethod = text(body.assistanceMethod, 40);
   const boardingPreference = text(body.boardingPreference, 160);
+  const studio = mode === 'private' && body.source === 'private-travel-studio';
   const supportNote = text(body.supportNote, 1000);
   const supportNeeds = textList(body.supportNeeds, 12, 160);
   const profileProvided = Boolean(customerName || givenName || familyName || email || wheelchairBrand || wheelchairModel || mobilityDeviceType || bodyHeightCm || bodyWeightKg || wheelchairWeightKg || assistanceMethod || boardingPreference || supportNote || supportNeeds.length);
@@ -536,7 +546,9 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
   const normalizedCreatedAt = new Date(createdAt).toISOString();
   const fallback = { ...body, createdAt: normalizedCreatedAt };
   const agreementSnapshot = parseAgreementSnapshot(body.agreementSnapshot, fallback);
-  if (mode === 'private' && body.source === 'private-travel-studio') {
+  const studioBrief = agreementSnapshot.tailorMade?.briefVersion === 2;
+  if (studioBrief && agreementSnapshot.itinerary.travellers == null) return { ok: false, error: 'Traveller count must be a whole number from 1 to 200' };
+  if (studio) {
     const month = agreementSnapshot.tailorMade?.choices.startMonth;
     const validMonth = typeof month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
     const parsedDate = startDate ? new Date(`${startDate}T00:00:00Z`) : null;
@@ -616,9 +628,9 @@ export function parseTravelQuoteIntent(input: unknown): ParseResult {
       tourId: text(body.tourId, 120),
       title: text(body.title, 180),
       startDate,
-      days: body.days == null ? null : integer(body.days, 1, 60),
-      travellers: body.travellers == null ? null : integer(body.travellers, 1, 30),
-      route,
+      days: studioBrief ? agreementSnapshot.itinerary.days : integer(body.days, 1, studio ? 365 : 60),
+      travellers: studioBrief ? agreementSnapshot.itinerary.travellers : integer(body.travellers, 1, studio ? 200 : 30),
+      route: studioBrief ? agreementSnapshot.itinerary.route : route,
       packageTotalJpy: body.packageTotalJpy == null ? null : integer(body.packageTotalJpy, 0, 100_000_000),
       priceStatus: text(body.priceStatus, 240),
       profileSchemaVersion: PROFILE_SCHEMA_VERSIONS.has(profileSchemaVersion || '') ? profileSchemaVersion as TravelQuoteIntent['profileSchemaVersion'] : null,

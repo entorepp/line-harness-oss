@@ -515,3 +515,45 @@ await Promise.all([notifyNewFormLead(env, 'flatcare', 'fixture-submission'), not
 assert.equal(leadPosts().length, 4);
 assert.match(leadPosts().at(-1)!.text, /^新規問い合わせ｜Flatcare\n受付番号 fixture-submission/);
 console.log('PASS: website and Flatcare new-lead routing, de-duplication, and excluded sources');
+
+const orderedRoute = ['Tokyo', 'Hakone', 'Tokyo'];
+const studioBrief = {
+  ...monthlyPayload,
+  quoteReference: 'FT-20261110-TAILOR05',
+  route: ['Hakone', 'Tokyo'],
+  travellers: 2,
+  supportNote: 'Hotels already booked. Please arrange transport and activities.',
+  agreementSnapshot: {
+    ...monthlyPayload.agreementSnapshot,
+    itinerary: { ...monthlyPayload.agreementSnapshot.itinerary, days: 75, travellers: 40, route: orderedRoute },
+    hotels: [], railAndTransfers: [], selections: [], supportSelections: [],
+    tailorMade: {
+      briefVersion: 2,
+      choices: { startMonth: '2027-11', destinations: ['Hakone', 'Tokyo'], stayOrder: 'ordered',
+        cityStays: 'Tokyo: 2 days → Hakone: 2 days → Tokyo: 5 days', arrangementScope: 'partial' },
+    },
+  },
+};
+assert.equal((await request(studioBrief)).status, 202);
+const forwarded = flatworkerPosts.at(-1)?.body;
+assert.equal(forwarded.travellers, 40);
+assert.equal(forwarded.days, 75);
+assert.deepEqual(forwarded.route, orderedRoute);
+assert.deepEqual(forwarded.agreementSnapshot.tailorMade, { ...studioBrief.agreementSnapshot.tailorMade, budgetUsd: null });
+assert.equal(forwarded.supportNote, studioBrief.supportNote);
+assert.ok(!JSON.stringify(rows).includes(studioBrief.supportNote));
+assert.ok(!JSON.stringify(slackPosts).includes(studioBrief.supportNote));
+
+const undecided = structuredClone(studioBrief);
+undecided.agreementSnapshot.tailorMade.choices.stayOrder = 'undecided';
+const normalized = parseTravelQuoteIntent(undecided);
+assert.ok(normalized.ok);
+assert.deepEqual(normalized.value.route, []);
+assert.equal(normalized.value.agreementSnapshot.tailorMade?.choices.cityStays, undefined);
+for (const count of [null, 0, 201, 5.5, '5+']) {
+  const invalid = { ...studioBrief, agreementSnapshot: { ...studioBrief.agreementSnapshot,
+    itinerary: { ...studioBrief.agreementSnapshot.itinerary, travellers: count },
+  } };
+  assert.equal(parseTravelQuoteIntent(invalid).ok, false);
+}
+console.log('PASS: studio brief preserves explicit order, exact party and scope while keeping free text private');
