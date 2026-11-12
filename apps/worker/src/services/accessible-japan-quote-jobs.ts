@@ -152,6 +152,8 @@ async function processOne(env: QuoteJobEnv, job: QuoteJobRow, endpoint: URL, int
   try {
     const response = await fetch(endpoint.toString(), {
       method: 'POST',
+      // Leave time for the staff notification inside the HTTP waitUntil budget.
+      signal: AbortSignal.timeout(20_000),
       headers: {
         'content-type': 'application/json',
         'x-accessible-japan-quote-token': env.ACCESSIBLE_JAPAN_QUOTE_INTAKE_TOKEN!.trim(),

@@ -150,6 +150,8 @@ async function processSlackNotification(
       return;
     }
 
+    if (payload.eventData?.newLeadIntake === true) return;
+
     const answerRows = Array.isArray(payload.eventData?.answers)
       ? payload.eventData.answers
       : [];
