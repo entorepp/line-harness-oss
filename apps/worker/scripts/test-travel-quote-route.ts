@@ -537,6 +537,18 @@ assert.equal(leadPosts().length, 5);
 assert.match(leadPosts().at(-1)!.text, /^新規問い合わせ｜Flatcare\n受付番号 fixture-submission/);
 console.log('PASS: website and Flatcare new-lead routing, de-duplication, and excluded sources');
 
+// Dedicated portable package form shares secure lead intake without AJ auto-quote.
+const packageOrigin = 'https://travel-agent-flatcare.pages.dev';
+const packageInput = { ...monthlyPayload, source: 'accessible-japan-package', quoteReference: 'FT-20261112-AJTEST01' };
+const packageBefore = leadPosts().length;
+assert.equal((await request(packageInput, packageOrigin, packageOrigin)).status, 202);
+assert.equal(leadPosts().length, packageBefore + 1);
+assert.match(leadPosts().at(-1)!.text, /^新規問い合わせ｜パッケージ/);
+assert.equal((await request(packageInput, packageOrigin, packageOrigin)).status, 200);
+assert.equal(leadPosts().length, packageBefore + 1, 'Retry must not duplicate package notification');
+assert.equal((await request(packageInput, 'https://unapproved.example')).status, 403);
+console.log('PASS: portable AJ package secure intake, package notification, duplicate and origin checks');
+
 const orderedRoute = ['Tokyo', 'Hakone', 'Tokyo'];
 const studioBrief = {
   ...monthlyPayload,

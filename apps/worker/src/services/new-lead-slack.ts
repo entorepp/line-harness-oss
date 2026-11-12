@@ -18,7 +18,7 @@ type SocialKind = 'whatsapp' | 'instagram' | 'messenger' | 'line';
 export function websiteLeadKind(intent: TravelQuoteIntent): LeadKind | null {
   if (intent.hotelRequestStage === 'supplement') return null;
   if (intent.source === 'partner-portal' || intent.mode === 'agent') return 'agency';
-  if (intent.mode === 'journey') return 'package';
+  if (intent.mode === 'journey' || intent.source === 'accessible-japan-package') return 'package';
   if (intent.mode !== 'private') return null;
   if (intent.source === 'flat-travel-hotel-request') return 'hotel';
   return 'tailor';

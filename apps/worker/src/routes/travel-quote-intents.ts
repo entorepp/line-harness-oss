@@ -70,8 +70,10 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
   }
   const siteOrigin = c.req.header('X-Flat-Travel-Request-Origin') || origin;
   const leadKind = flatworkerReady && !duplicate
-    && ['https://flat-travel.com', 'https://www.flat-travel.com'].includes(origin)
-    && ['https://flat-travel.com', 'https://www.flat-travel.com'].includes(siteOrigin)
+    && (['https://flat-travel.com', 'https://www.flat-travel.com'].includes(origin)
+      || (origin === 'https://travel-agent-flatcare.pages.dev' && intent.source === 'accessible-japan-package'))
+    && (['https://flat-travel.com', 'https://www.flat-travel.com'].includes(siteOrigin)
+      || (siteOrigin === 'https://travel-agent-flatcare.pages.dev' && intent.source === 'accessible-japan-package'))
     ? websiteLeadKind(intent) : null;
   if (leadKind) {
     c.executionCtx.waitUntil((async () => {
