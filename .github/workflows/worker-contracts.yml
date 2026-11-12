@@ -52,6 +52,7 @@ jobs:
       - run: pnpm --filter worker test:slack-incoming-text
       - run: pnpm --filter worker test:slack-form-files
       - run: pnpm --filter worker test:whatsapp-initiation
+      - run: pnpm --filter worker test:new-lead-slack
       - run: pnpm --filter worker test:lead-route-topology
       - run: pnpm --filter worker test:quote-reference
       - run: node scripts/test-worker-release-contract.mjs

@@ -33,7 +33,8 @@
     "test:whatsapp-intake-runtime": "esbuild scripts/test-whatsapp-intake-runtime.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-intake-runtime.mjs && node .wrangler/tests/whatsapp-intake-runtime.mjs",
     "test:whatsapp-travel-scenario": "esbuild scripts/test-whatsapp-travel-scenario.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/whatsapp-travel-scenario.mjs && node .wrangler/tests/whatsapp-travel-scenario.mjs",
     "test:travel-quote-background": "esbuild scripts/test-travel-quote-background.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/travel-quote-background.mjs && node .wrangler/tests/travel-quote-background.mjs",
-    "test:fw-whatsapp": "esbuild scripts/test-fw-whatsapp.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/fw-whatsapp.mjs && node .wrangler/tests/fw-whatsapp.mjs"
+    "test:fw-whatsapp": "esbuild scripts/test-fw-whatsapp.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/fw-whatsapp.mjs && node .wrangler/tests/fw-whatsapp.mjs",
+    "test:new-lead-slack": "esbuild scripts/test-new-lead-slack.ts --bundle --platform=node --format=esm --outfile=.wrangler/tests/new-lead-slack.mjs && node .wrangler/tests/new-lead-slack.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",

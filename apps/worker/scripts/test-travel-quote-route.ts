@@ -514,20 +514,26 @@ for (const [input, expected, siteOrigin] of [
   [{ ...hotelInput, hotelRequestStage: 'initial', quoteReference: 'FT-20261108-HOTEL001' }, 'ホテル', productionOrigin],
   [{ ...hotelInput, hotelRequestStage: 'supplement', quoteReference: 'FT-20261108-HOTEL001' }, null, productionOrigin],
   [{ ...payload, quoteReference: 'FTQ-20261108-PREVIEW1' }, null, 'https://flat-travel-design-preview.flat-travel.workers.dev'],
-  [{ ...payload, source: 'partner-portal', quoteReference: 'FTQ-20261108-PARTNER1' }, null, productionOrigin],
+  [{ ...payload, source: 'partner-portal', quoteReference: 'FTQ-20261108-PARTNER1' }, '代理店', productionOrigin],
 ] as const) {
   const before = slackPosts.length;
   const response = await request(input, productionOrigin, siteOrigin);
   assert.ok([200, 202].includes(response.status), await response.text());
   const leadPosts = slackPosts.slice(before).filter(post => post.channel === 'C0CFMU4KKDK');
-  assert.deepEqual(leadPosts.map(post => post.text), expected ? [`新規問い合わせ｜${expected}\n受付番号 ${input.quoteReference}`] : []);
+  assert.equal(leadPosts.length, expected ? 1 : 0);
+  if (expected) {
+    assert.ok(leadPosts[0].text.startsWith(`新規問い合わせ｜${expected}\n`));
+    for (const field of ['FlatWorkerで案件を開く', '流入元 ', '顧客名 ', '旅行開始日 ', `受付番号 ${input.quoteReference}`]) {
+      assert.ok(leadPosts[0].text.includes(field), field);
+    }
+  }
 }
 const leadPosts = () => slackPosts.filter(post => post.channel === 'C0CFMU4KKDK');
 assert.equal((await request({ ...payload, quoteReference: 'FTQ-20261108-PACKAGE1' }, productionOrigin, productionOrigin)).status, 200);
 assert.equal((await request({ ...payload, quoteReference: 'FTQ-20260801-FF12AA34' }, productionOrigin, productionOrigin)).status, 503);
-assert.equal(leadPosts().length, 3, 'A retry, a supplement, partner/preview traffic and failed intake do not notify new-lead');
+assert.equal(leadPosts().length, 4, 'A retry, a supplement, preview traffic and failed intake do not notify new-lead');
 await Promise.all([notifyNewFormLead(env, 'flatcare', 'fixture-submission'), notifyNewFormLead(env, 'flatcare', 'fixture-submission')]);
-assert.equal(leadPosts().length, 4);
+assert.equal(leadPosts().length, 5);
 assert.match(leadPosts().at(-1)!.text, /^新規問い合わせ｜Flatcare\n受付番号 fixture-submission/);
 console.log('PASS: website and Flatcare new-lead routing, de-duplication, and excluded sources');
 

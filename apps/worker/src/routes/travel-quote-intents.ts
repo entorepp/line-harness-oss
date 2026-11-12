@@ -8,7 +8,7 @@ import {
   travelQuoteReceiptMetadata,
   travelQuoteNotificationCopy,
 } from '../services/travel-quote-intent.js';
-import { notifyNewFormLead, websiteLeadKind } from '../services/new-lead-slack.js';
+import { notifyNewFormLead, websiteLeadKind, websiteLeadDetails } from '../services/new-lead-slack.js';
 import { postToSlack, resolveSlackChannelId } from '../services/slack.js';
 import { syncTravelQuoteToFlatworker } from '../services/flatworker-travel-quote.js';
 import {deferredReviewEnabled,enqueueTravelQuoteReview} from '../services/travel-quote-review-jobs.js';
@@ -74,14 +74,21 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
     && ['https://flat-travel.com', 'https://www.flat-travel.com'].includes(siteOrigin)
     ? websiteLeadKind(intent) : null;
   if (leadKind) {
-    c.executionCtx.waitUntil(notifyNewFormLead(c.env, leadKind, intent.quoteReference));
+    c.executionCtx.waitUntil((async () => {
+      const sent = await notifyNewFormLead(c.env, leadKind, intent.quoteReference, websiteLeadDetails(intent, flatworkerDraft));
+      // Deferred internal review owns the original receipt when enabled.
+      if (!flatworkerDraft.internalNotificationPending || !deferredReviewEnabled(c.env)) {
+        await c.env.DB.prepare('UPDATE notifications SET status = ? WHERE id = ?')
+          .bind(sent ? 'sent' : 'failed', notificationId).run();
+      }
+    })());
   }
   let slackNotified: boolean | null = null;
   if(flatworkerReady&&deferredReviewEnabled(c.env)&&flatworkerDraft.internalNotificationPending){
     await enqueueTravelQuoteReview(c.env,intent,flatworkerDraft,notificationId);
     return c.json({success:true,duplicate,slackNotified:null,reference:intent.quoteReference,flatworkerDraft,internalReviewQueued:true},duplicate?200:202);
   }
-  if (!duplicate) {
+  if (!duplicate && !leadKind) {
     // Include the submitted name only in staff Slack, not the persisted receipt.
     const slackCopy = travelQuoteNotificationCopy(intent, flatworkerDraft, true);
     slackNotified = Boolean(c.env.SLACK_BOT_TOKEN) && await postToSlack({

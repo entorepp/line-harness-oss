@@ -33,7 +33,7 @@ import type {
   FormSubmission as DbFormSubmission,
 } from '@line-crm/db';
 import type { Env } from '../index.js';
-import { FLATCARE_ENQUIRY_FORM_ID, notifyNewFormLead } from '../services/new-lead-slack.js';
+import { FLATCARE_ENQUIRY_FORM_ID, notifyNewFormLead, leadDetails, planningFormLeadDetails, isPublicEnquiryForm, NEW_LEAD_CHANNEL } from '../services/new-lead-slack.js';
 import { fireEvent } from '../services/event-bus.js';
 import { POST_ORDER_FORM_ID, isCaseBoundPreOrder, validatePostOrderAnswers } from '../lib/survey-validation.js';
 import {
@@ -1009,7 +1009,11 @@ forms.post('/api/forms/:id/submit', async (c) => {
     }
 
     const friend = enableLineFollowup && friendId ? await getFriendById(db, friendId) : null;
-    const resolvedSubmissionSlackChannelId = slackChannelId || friend?.slack_channel_id || null;
+    const newLeadIntake = (form.id === ACCESSIBLE_JAPAN_FORM_ID && !isCaseBoundPreOrder(issue))
+      || (form.id === FLATCARE_ENQUIRY_FORM_ID && !issue)
+      || isPublicEnquiryForm(form.id, Boolean(issue));
+    const resolvedSubmissionSlackChannelId = newLeadIntake
+      ? NEW_LEAD_CHANNEL : slackChannelId || friend?.slack_channel_id || null;
 
     // Save submission (friendId null if not resolved — avoids FK constraint)
     const submission = await createFormSubmission(c.env.DB, {
@@ -1029,6 +1033,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
       ? (await getLineAccountById(db, friend.line_account_id))?.channel_access_token || c.env.LINE_CHANNEL_ACCESS_TOKEN
       : undefined;
     const eventData = {
+      newLeadIntake,
       formId: form.id,
       formIssueId: issue?.id || undefined,
       formIssueName: issue?.name || undefined,
@@ -1061,7 +1066,16 @@ forms.post('/api/forms/:id/submit', async (c) => {
     // Side effects (best-effort, don't fail the request)
     const sideEffects: Promise<unknown>[] = [];
     if (form.id === FLATCARE_ENQUIRY_FORM_ID && !issue) {
-      sideEffects.push(notifyNewFormLead(c.env, 'flatcare', submission.id));
+      sideEffects.push(notifyNewFormLead(c.env, 'flatcare', submission.id, leadDetails({
+        reference: submission.id, source: 'Flatcare会社サイト', name: submissionData.contact_name || eventData.respondentName,
+      }) + '\n<https://liffform-studio.pages.dev/|Forms Studioで確認>'));
+    }
+
+    if (isPublicEnquiryForm(form.id, Boolean(issue))) {
+      sideEffects.push(notifyNewFormLead(c.env, 'form', submission.id, leadDetails({
+        reference: submission.id, source: form.name, name: eventData.respondentName,
+        start: submissionData.startDate || submissionData.start_date || submissionData.travel_start_date,
+      }) + '\n<https://liffform-studio.pages.dev/|Forms Studioで回答を確認>'));
     }
 
     if (enableLineFollowup && friendId) {
@@ -1112,10 +1126,17 @@ forms.post('/api/forms/:id/submit', async (c) => {
 
     if (form.id === ACCESSIBLE_JAPAN_FORM_ID && !isCaseBoundPreOrder(issue)) {
       sideEffects.push(
-        processAccessibleJapanQuoteJobs(c.env, {
-          submissionId: submission.id,
-          limit: 1,
-        }),
+        (async () => {
+          try {
+            await processAccessibleJapanQuoteJobs(c.env, { submissionId: submission.id, limit: 1 });
+          } finally {
+            const job = await db.prepare('SELECT case_id FROM accessible_japan_quote_jobs WHERE submission_id = ?')
+              .bind(submission.id).first<{ case_id: string | null }>();
+            await notifyNewFormLead(c.env, 'accessibleJapan', submission.id,
+              planningFormLeadDetails(submission.id, submissionData, job?.case_id || undefined)
+              + '\n<https://liffform-studio.pages.dev/|Forms Studioで回答を確認>');
+          }
+        })(),
       );
     }
 

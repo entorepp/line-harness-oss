@@ -25,6 +25,8 @@ import {
   buildLineContentProxyUrl,
   getLineContentSigningSecret,
 } from '../services/line-content-proxy.js';
+import { deliverFirstSocialLead, firstSocialLeadClaim } from '../services/new-lead-slack.js';
+import { extractSingleQuoteReference } from '../services/quote-reference.js';
 import { tryDeliverCustomerQuote } from '../services/quote-chat-delivery.js';
 
 const webhook = new Hono<Env>();
@@ -496,16 +498,18 @@ async function handleEvent(
     const logId = crypto.randomUUID();
 
     // 受信メッセージをログに記録
-    await db
-      .prepare(
-        `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
-         VALUES (?, ?, 'incoming', 'text', ?, NULL, NULL, ?)`,
-      )
-      .bind(logId, friend.id, incomingText, now)
-      .run();
+    const lead = env && !extractSingleQuoteReference(incomingText)
+      ? firstSocialLeadClaim(env, 'line', friend.id, event.timestamp) : null;
+    const saved = await db.batch([
+      ...(lead ? [lead.statement] : []),
+      db.prepare(`INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
+        VALUES (?, ?, 'incoming', 'text', ?, NULL, NULL, ?)`).bind(logId, friend.id, incomingText, now),
+    ]);
+    const newLead = lead && saved[0].meta.changes ? lead : null;
 
     // チャットを作成/更新（オペレーター機能連携）
     await upsertChatOnMessage(db, friend.id);
+    if (newLead && env) await deliverFirstSocialLead(env, 'line', newLead.id, friend.id);
 
     if (env) {
       const quoteHandled = await tryDeliverCustomerQuote({
@@ -916,16 +920,17 @@ async function handleEvent(
     }
 
     // メッセージログ記録
-    await db
-      .prepare(
-        `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
-         VALUES (?, ?, 'incoming', ?, ?, NULL, NULL, ?)`,
-      )
-      .bind(logId, friend.id, messageType, content, now)
-      .run();
+    const lead = env ? firstSocialLeadClaim(env, 'line', friend.id, event.timestamp) : null;
+    const saved = await db.batch([
+      ...(lead ? [lead.statement] : []),
+      db.prepare(`INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
+        VALUES (?, ?, 'incoming', ?, ?, NULL, NULL, ?)`).bind(logId, friend.id, messageType, content, now),
+    ]);
+    const newLead = lead && saved[0].meta.changes ? lead : null;
 
     // チャットを作成/更新
     await upsertChatOnMessage(db, friend.id);
+    if (newLead && env) await deliverFirstSocialLead(env, 'line', newLead.id, friend.id);
 
     // イベントバス発火
     const eventText = msg.type === 'image' ? '📷 画像を送信'
