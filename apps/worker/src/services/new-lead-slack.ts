@@ -48,11 +48,18 @@ export async function deliverNewLead(
 ): Promise<boolean> {
   try {
     if (!env.SLACK_BOT_TOKEN) return false;
+    const lines = details.split('\n').filter(Boolean);
+    if (!lines.some(line => line.startsWith('顧客名 '))) lines.push('顧客名 未取得');
+    if (!lines.some(line => line.includes('|FlatWorker'))) {
+      lines.push(`<${CASES_URL}|FlatWorker>（案件未連携）`);
+    }
+    details = lines.join('\n');
     const delivered = await postToSlack({
       token: env.SLACK_BOT_TOKEN,
       channel: NEW_LEAD_CHANNEL,
       signal: AbortSignal.timeout(4000),
       text: `新規問い合わせ｜${labels[kind]}${details ? `\n${details}` : ''}`,
+      blocks: newLeadBlocks(kind, details),
     });
     await env.DB.prepare("UPDATE notifications SET status = ? WHERE id = ?")
       .bind(delivered ? 'sent' : 'failed', id).run();
@@ -61,6 +68,27 @@ export async function deliverNewLead(
     console.error('New lead notification outcome unavailable', { kind });
     return false;
   }
+}
+
+function newLeadBlocks(kind: LeadKind, details: string): unknown[] {
+  const lines = details.split('\n').filter(Boolean);
+  const name = lines.find(line => line.startsWith('顧客名 ')) || '顧客名 未取得';
+  const worker = lines.find(line => line.includes('|FlatWorker'))
+    || `<${CASES_URL}|FlatWorker>（案件未連携）`;
+  const remaining = lines.filter(line => line !== name && line !== worker);
+  const fields = [
+    `*顧客名*\n>${name.slice('顧客名 '.length)}`,
+    `*FlatWorker*\n>${worker}`,
+    ...remaining.map(line => {
+      const match = /^(流入元|旅行開始日|受付番号) (.*)$/.exec(line);
+      return match ? `*${match[1]}*\n>${match[2]}` : line;
+    }),
+  ];
+  return [
+    { type: 'section', text: { type: 'mrkdwn', text: `*新規問い合わせ｜${labels[kind]}*` } },
+    { type: 'divider' },
+    ...fields.map(text => ({ type: 'section', text: { type: 'mrkdwn', text } })),
+  ];
 }
 
 export async function deliverFirstSocialLead(

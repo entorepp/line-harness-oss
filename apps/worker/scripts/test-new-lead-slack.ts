@@ -80,6 +80,13 @@ try {
     assert.ok(aj.notices[0].text.includes(expected), expected);
   }
   assert.ok(!aj.notices[0].text.includes('PRIVATE_MEDICAL_DETAIL'));
+  const blocks = aj.notices[0].blocks;
+  assert.equal(blocks[0].type, 'section');
+  assert.equal(blocks[1].type, 'divider');
+  assert.equal(blocks[2].text.text, '*顧客名*\n>Test &lt;!channel&gt; Traveller');
+  assert.match(blocks[3].text.text, /^\*FlatWorker\*\n>.*\/cases\/persisted-case-123/);
+  assert.match(blocks[4].text.text, /^\*流入元\*\n>/);
+  assert.ok(!JSON.stringify(blocks).includes('PRIVATE_MEDICAL_DETAIL'));
   assert.equal(sql.prepare('SELECT slack_channel_id FROM form_submissions WHERE id = ?').get(aj.response.data.id)?.slack_channel_id, NEW_LEAD_CHANNEL);
   await Promise.all([notifyNewFormLead(env, 'accessibleJapan', aj.response.data.id), notifyNewFormLead(env, 'accessibleJapan', aj.response.data.id)]);
   assert.equal(posts.length, 1, 'Same submission cannot notify twice');
@@ -104,6 +111,12 @@ try {
   assert.equal(supplier.notices[0].channel, 'C0AL6RG7V9Q');
   assert.match(planningFormLeadDetails('fixture', { ...data, dates_decided: 'No', approximate_timing: 'Spring 2027' }), /旅行開始日 Spring 2027/);
   assert.match(planningFormLeadDetails('fixture', {}), /旅行開始日 未定・要確認/);
+  await notifyNewFormLead(env, 'flatcare', 'missing-details-fixture');
+  const missing = posts.at(-1);
+  assert.match(missing.text, /顧客名 未取得/);
+  assert.match(missing.text, /FlatWorker/);
+  assert.equal(missing.blocks[2].text.text, '*顧客名*\n>未取得');
+  assert.match(missing.blocks[3].text.text, /案件未連携/);
 
   // Exercise the signed LINE webhook and actual D1 batch, including replay.
   async function line(messageId: string, userId: string, text: string) {
