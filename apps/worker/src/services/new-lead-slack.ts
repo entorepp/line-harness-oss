@@ -50,7 +50,7 @@ export async function deliverNewLead(
     if (!env.SLACK_BOT_TOKEN) return false;
     const lines = details.split('\n').filter(Boolean);
     if (!lines.some(line => line.startsWith('顧客名 '))) lines.push('顧客名 未取得');
-    if (!lines.some(line => line.includes('|FlatWorker'))) {
+    if (!lines.some(line => line.startsWith(`<${CASES_URL}`))) {
       lines.push(`<${CASES_URL}|FlatWorker>（案件未連携）`);
     }
     details = lines.join('\n');
@@ -73,7 +73,7 @@ export async function deliverNewLead(
 function newLeadBlocks(kind: LeadKind, details: string): unknown[] {
   const lines = details.split('\n').filter(Boolean);
   const name = lines.find(line => line.startsWith('顧客名 ')) || '顧客名 未取得';
-  const worker = lines.find(line => line.includes('|FlatWorker'))
+  const worker = lines.find(line => line.startsWith(`<${CASES_URL}`))
     || `<${CASES_URL}|FlatWorker>（案件未連携）`;
   const remaining = lines.filter(line => line !== name && line !== worker);
   const fields = [
