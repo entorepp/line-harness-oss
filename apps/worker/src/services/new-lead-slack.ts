@@ -163,7 +163,7 @@ export function websiteLeadDetails(intent: TravelQuoteIntent, draft: FlatworkerD
   const source = first?.utm?.source || first?.referrerOrigin || last?.utm?.source || last?.referrerOrigin;
   const month = intent.agreementSnapshot.tailorMade?.choices.startMonth;
   return leadDetails({reference: intent.quoteReference, caseId: draft.caseId,
-    source: `${intent.source === 'partner-portal' ? '代理店ポータル' : 'Flat Travel公式サイト'} / ${labels[websiteLeadKind(intent) || 'tailor']}${source ? ` / ${source}` : ''} / 連絡方法 ${intent.channel}`,
+    source: `${intent.source === 'partner-portal' ? '代理店ポータル' : intent.source === 'accessible-japan-package' ? 'Accessible Japan' : 'Flat Travel公式サイト'} / ${labels[websiteLeadKind(intent) || 'tailor']}${source ? ` / ${source}` : ''} / 連絡方法 ${intent.channel}`,
     name: intent.customerName,
     start: intent.startDate || intent.agreementSnapshot.itinerary.startDate
       || (typeof month === 'string' ? `${month}（日付未定）` : ''),

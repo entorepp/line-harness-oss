@@ -207,6 +207,10 @@ export type TravelQuoteIntent = {
 };
 
 export type FlatworkerDraftSummary = {
+  leadRegistered?: boolean;
+  customerSent?: boolean;
+  priceConfirmed?: boolean;
+  booked?: boolean;
   status: 'created' | 'updated' | 'existing' | 'failed' | 'not_configured';
   caseId: string;
   caseUrl?: string;
