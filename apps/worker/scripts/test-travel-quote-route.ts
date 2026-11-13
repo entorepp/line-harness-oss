@@ -577,6 +577,7 @@ assert.equal((await request(packageInput, 'https://unapproved.example')).status,
 console.log('PASS: portable AJ package secure intake, package notification, duplicate and origin checks');
 
 const emailDb = new DatabaseSync(':memory:');
+emailDb.exec('CREATE TABLE notification_rules(id TEXT PRIMARY KEY)');
 const notificationSchema = readFileSync('../../packages/db/schema.sql', 'utf8').match(/CREATE TABLE IF NOT EXISTS notifications \([\s\S]+?\n\);/)![0];
 emailDb.exec(notificationSchema);
 const emailEnv = {...env, DB: {prepare(sql: string) {
