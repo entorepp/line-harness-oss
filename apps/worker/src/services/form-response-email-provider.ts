@@ -15,7 +15,7 @@ export async function sendFormResponseEmailViaTravelworker(input: {
   env: Env['Bindings'];
   requestId: string;
   submissionId: string;
-  recipientRole: 'respondent' | 'agency_contact';
+  recipientRole: 'respondent' | 'agency_contact' | 'package_staff';
   recipientEmail: string;
   recipientName: string;
   subject: string;

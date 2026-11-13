@@ -12,6 +12,7 @@ import { notifyNewFormLead, websiteLeadKind, websiteLeadDetails } from '../servi
 import { postToSlack, resolveSlackChannelId } from '../services/slack.js';
 import { syncTravelQuoteToFlatworker } from '../services/flatworker-travel-quote.js';
 import {deferredReviewEnabled,enqueueTravelQuoteReview} from '../services/travel-quote-review-jobs.js';
+import { notifyPackageStaffEmail } from '../services/package-staff-email.js';
 
 const travelQuoteIntents = new Hono<Env>();
 const recentRequests = new Map<string, number[]>();
@@ -56,6 +57,11 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
     && (intent.source !== 'accessible-japan-package' || (flatworkerDraft.leadRegistered === true && !flatworkerDraft.customerSent && !flatworkerDraft.priceConfirmed && !flatworkerDraft.booked));
   if(!flatworkerReady&&flatworkerDraft.upstreamStatus===409)return c.json({success:false,reference:intent.quoteReference,error:'Hotel request update conflicts with the saved receipt'},409);
   const copy = travelQuoteNotificationCopy(intent, flatworkerDraft);
+  if (flatworkerReady && intent.source === 'accessible-japan-package') {
+    c.executionCtx.waitUntil(notifyPackageStaffEmail(c.env, intent, flatworkerDraft).catch(() => {
+      console.error('Package staff email receipt unavailable', intent.quoteReference);
+    }));
+  }
   const metadata = JSON.stringify(travelQuoteReceiptMetadata(intent, flatworkerDraft));
   const notificationId = `${flatworkerReady ? 'travel-quote' : 'travel-quote-intake-failed'}:${intent.quoteReference}:${intent.channel}`;
   const inserted = await c.env.DB.prepare(

@@ -13,6 +13,7 @@ assert.equal(FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS, 45_000);
 const rows: Array<Record<string, any>> = [];
 const slackPosts: Array<Record<string, any>> = [];
 const flatworkerPosts: Array<Record<string, any>> = [];
+const packageEmailPosts: Array<Record<string, any>> = [];
 
 function statement(sql: string) {
   let bindings: any[] = [];
@@ -23,6 +24,12 @@ function statement(sql: string) {
     },
     async run() {
       if (sql.startsWith('INSERT OR IGNORE INTO notifications')) {
+        if (sql.includes("'package_staff_email'")) {
+          const [id, metadata] = bindings;
+          if (rows.some(item => item.id === id)) return {success: true, meta: {changes: 0}};
+          rows.push({id, metadata, status: 'sending', channel: 'email'});
+          return {success: true, meta: {changes: 1}};
+        }
         const [id, title, body, metadata] = bindings;
         if (rows.some((item) => item.id === id)) return { success: true, meta: { changes: 0 } };
         rows.push({
@@ -37,6 +44,12 @@ function statement(sql: string) {
         return { success: true, meta: { changes: 1 } };
       }
       if (sql.startsWith('UPDATE notifications SET status')) {
+        if (sql.includes('providerMessageId')) {
+          const [status, messageId, id] = bindings;
+          const row = rows.find(item => item.id === id);
+          if (row) Object.assign(row, {status, metadata: JSON.stringify({...JSON.parse(row.metadata), providerMessageId: messageId})});
+          return {success: true, meta: {changes: row ? 1 : 0}};
+        }
         const [status, id] = bindings;
         const row = rows.find((item) => item.id === id);
         if (row) row.status = status;
@@ -59,6 +72,10 @@ const env = { DB: { prepare: statement }, SLACK_BOT_TOKEN: 'test-slack-token', F
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  if (String(input) === 'https://travelworker.example/api/integrations/form-response-email/send') {
+    packageEmailPosts.push(JSON.parse(String(init?.body || '{}')));
+    return Response.json({status: 'accepted', messageId: 'gmail-package-1', testRecipientUsed: false});
+  }
   if (String(input) === 'https://slack.com/api/chat.postMessage') {
     slackPosts.push(JSON.parse(String(init?.body || '{}')));
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -539,13 +556,20 @@ console.log('PASS: website and Flatcare new-lead routing, de-duplication, and ex
 
 // Dedicated portable package form shares secure lead intake without AJ auto-quote.
 const packageOrigin = 'https://travel-agent-flatcare.pages.dev';
-const packageInput = { ...monthlyPayload, source: 'accessible-japan-package', quoteReference: 'FT-20261112-AJTEST01' };
+const packageInput = { ...monthlyPayload, source: 'accessible-japan-package', quoteReference: 'FT-20261112-AABBCCDD' };
 const packageBefore = leadPosts().length;
 assert.equal((await request(packageInput, packageOrigin, packageOrigin)).status, 202);
 assert.equal(leadPosts().length, packageBefore + 1);
 assert.match(leadPosts().at(-1)!.text, /^新規問い合わせ｜パッケージ/);
 assert.equal((await request(packageInput, packageOrigin, packageOrigin)).status, 200);
 assert.equal(leadPosts().length, packageBefore + 1, 'Retry must not duplicate package notification');
+assert.equal(packageEmailPosts.length, 1, 'Retry must not duplicate organisation email');
+assert.equal(packageEmailPosts[0].recipientEmail, 'info@flatcare.jp');
+assert.equal(packageEmailPosts[0].recipientRole, 'package_staff');
+assert.equal(packageEmailPosts[0].submissionId, packageInput.quoteReference);
+assert.ok(packageEmailPosts[0].text.includes(monthlyPayload.customerName));
+assert.ok(!packageEmailPosts[0].text.includes(monthlyPayload.supportNote));
+assert.equal(rows.find(row => row.id === 'package-staff:' + packageInput.quoteReference)?.status, 'sent');
 assert.equal((await request(packageInput, 'https://unapproved.example')).status, 403);
 console.log('PASS: portable AJ package secure intake, package notification, duplicate and origin checks');
 
