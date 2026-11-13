@@ -18,7 +18,7 @@ type SocialKind = 'whatsapp' | 'instagram' | 'messenger' | 'line';
 export function websiteLeadKind(intent: TravelQuoteIntent): LeadKind | null {
   if (intent.hotelRequestStage === 'supplement') return null;
   if (intent.source === 'partner-portal' || intent.mode === 'agent') return 'agency';
-  if (intent.mode === 'journey') return 'package';
+  if (intent.mode === 'journey' || intent.source === 'accessible-japan-package') return 'package';
   if (intent.mode !== 'private') return null;
   if (intent.source === 'flat-travel-hotel-request') return 'hotel';
   return 'tailor';
@@ -163,7 +163,7 @@ export function websiteLeadDetails(intent: TravelQuoteIntent, draft: FlatworkerD
   const source = first?.utm?.source || first?.referrerOrigin || last?.utm?.source || last?.referrerOrigin;
   const month = intent.agreementSnapshot.tailorMade?.choices.startMonth;
   return leadDetails({reference: intent.quoteReference, caseId: draft.caseId,
-    source: `${intent.source === 'partner-portal' ? '代理店ポータル' : 'Flat Travel公式サイト'} / ${labels[websiteLeadKind(intent) || 'tailor']}${source ? ` / ${source}` : ''} / 連絡方法 ${intent.channel}`,
+    source: `${intent.source === 'partner-portal' ? '代理店ポータル' : intent.source === 'accessible-japan-package' ? 'Accessible Japan' : 'Flat Travel公式サイト'} / ${labels[websiteLeadKind(intent) || 'tailor']}${source ? ` / ${source}` : ''} / 連絡方法 ${intent.channel}`,
     name: intent.customerName,
     start: intent.startDate || intent.agreementSnapshot.itinerary.startDate
       || (typeof month === 'string' ? `${month}（日付未定）` : ''),

@@ -77,6 +77,7 @@ export async function syncTravelQuoteToFlatworker(
       caseId: String(body.caseId || caseId),
       ...(typeof body.caseUrl === 'string' && body.caseUrl ? { caseUrl: body.caseUrl } : {}),
       profileStored: body.profileStored === true,
+      ...(intent.source === 'accessible-japan-package' ? {leadRegistered: body.leadRegistered === true, customerSent: body.customerSent === true, priceConfirmed: body.priceConfirmed === true, booked: body.booked === true} : {}),
       ...(intent.hotelRequestStage?{hotelRequestStage:intent.hotelRequestStage}:{}),
       ...(typeof body.updatedAt==='string'?{updatedAt:body.updatedAt}:{}),
       ...(body.internalNotificationPending===true?{internalNotificationPending:true}:{}),

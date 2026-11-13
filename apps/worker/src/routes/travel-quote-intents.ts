@@ -12,6 +12,7 @@ import { notifyNewFormLead, websiteLeadKind, websiteLeadDetails } from '../servi
 import { postToSlack, resolveSlackChannelId } from '../services/slack.js';
 import { syncTravelQuoteToFlatworker } from '../services/flatworker-travel-quote.js';
 import {deferredReviewEnabled,enqueueTravelQuoteReview} from '../services/travel-quote-review-jobs.js';
+import { notifyPackageStaffEmail } from '../services/package-staff-email.js';
 
 const travelQuoteIntents = new Hono<Env>();
 const recentRequests = new Map<string, number[]>();
@@ -52,9 +53,15 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
 
   const flatworkerDraft = await syncTravelQuoteToFlatworker(intent, c.env);
   const flatworkerReady = new Set(['created', 'updated', 'existing']).has(flatworkerDraft.status)
-    && (!intent.profileProvided || flatworkerDraft.profileStored === true);
+    && (!intent.profileProvided || flatworkerDraft.profileStored === true)
+    && (intent.source !== 'accessible-japan-package' || (flatworkerDraft.leadRegistered === true && !flatworkerDraft.customerSent && !flatworkerDraft.priceConfirmed && !flatworkerDraft.booked));
   if(!flatworkerReady&&flatworkerDraft.upstreamStatus===409)return c.json({success:false,reference:intent.quoteReference,error:'Hotel request update conflicts with the saved receipt'},409);
   const copy = travelQuoteNotificationCopy(intent, flatworkerDraft);
+  if (flatworkerReady && intent.source === 'accessible-japan-package') {
+    c.executionCtx.waitUntil(notifyPackageStaffEmail(c.env, intent, flatworkerDraft).catch(() => {
+      console.error('Package staff email receipt unavailable', intent.quoteReference);
+    }));
+  }
   const metadata = JSON.stringify(travelQuoteReceiptMetadata(intent, flatworkerDraft));
   const notificationId = `${flatworkerReady ? 'travel-quote' : 'travel-quote-intake-failed'}:${intent.quoteReference}:${intent.channel}`;
   const inserted = await c.env.DB.prepare(
@@ -70,8 +77,10 @@ travelQuoteIntents.post(TRAVEL_QUOTE_INTENT_PATH, async (c) => {
   }
   const siteOrigin = c.req.header('X-Flat-Travel-Request-Origin') || origin;
   const leadKind = flatworkerReady && !duplicate
-    && ['https://flat-travel.com', 'https://www.flat-travel.com'].includes(origin)
-    && ['https://flat-travel.com', 'https://www.flat-travel.com'].includes(siteOrigin)
+    && (['https://flat-travel.com', 'https://www.flat-travel.com'].includes(origin)
+      || (origin === 'https://travel-agent-flatcare.pages.dev' && intent.source === 'accessible-japan-package'))
+    && (['https://flat-travel.com', 'https://www.flat-travel.com'].includes(siteOrigin)
+      || (siteOrigin === 'https://travel-agent-flatcare.pages.dev' && intent.source === 'accessible-japan-package'))
     ? websiteLeadKind(intent) : null;
   if (leadKind) {
     c.executionCtx.waitUntil((async () => {

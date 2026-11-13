@@ -7,6 +7,7 @@ export const TRAVEL_PROFILE_LEGACY_SCHEMA_VERSION = 'flat-travel-traveller-v2';
 
 export const TRAVEL_QUOTE_ALLOWED_ORIGINS = new Set([
   'https://flat-travel-design-preview.flat-travel.workers.dev',
+  'https://travel-agent-flatcare.pages.dev',
   'https://flat-travel.com',
   'https://www.flat-travel.com',
 ]);
@@ -206,6 +207,10 @@ export type TravelQuoteIntent = {
 };
 
 export type FlatworkerDraftSummary = {
+  leadRegistered?: boolean;
+  customerSent?: boolean;
+  priceConfirmed?: boolean;
+  booked?: boolean;
   status: 'created' | 'updated' | 'existing' | 'failed' | 'not_configured';
   caseId: string;
   caseUrl?: string;
