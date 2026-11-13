@@ -9,6 +9,8 @@ import ChatMessageContent from '../src/components/chat-message-content'
 const storage = new Map<string,string>()
 ;(globalThis as any).localStorage = { getItem: (key:string) => storage.get(key) || null, setItem: (key:string,value:string) => storage.set(key,value), removeItem: (key:string) => storage.delete(key) }
 const template = {id:'t',name:'flat_travel_booking_confirmation_v1',label:'予約確定書',language:'en_US',status:'APPROVED',category:'UTILITY',bodyText:'Hello {{1}}',available:true,unavailableReason:null,documentRequired:false,parameters:[{key:'body:1',label:'お客様名',isUrl:false}],urlButtons:[]}
+// The 18 customer journey notices (A1-G3) defined in the Worker's OPERATIONAL_TEMPLATES.
+const JOURNEY=['flat_travel_enquiry_received_v1','flat_travel_call_offer_v2','flat_travel_updated_quote_v1','flat_travel_price_feedback_v2','flat_travel_priority_question_v2','flat_travel_itinerary_draft_v1','flat_travel_cultural_experience_v2','flat_travel_quote_reminder_1_v1','flat_travel_quote_reminder_2_v2','flat_travel_quote_reminder_3_v2','flat_travel_reply_reminder_v2','flat_travel_payment_received_v1','flat_travel_payment_due_reminder_v1','flat_travel_arrangements_confirmed_v1','flat_travel_pre_departure_v1','flat_travel_arrival_check_v1','flat_travel_shinkansen_tips_v1','flat_travel_post_trip_feedback_v1']
 const preview:any = {friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',accountName:'Flat Travel',templateName:'flat_travel_booking_confirmation_v1',templateLanguage:'en_US',category:'UTILITY',text:'Hello Alex',quickReplies:['Continue chat'],document:null,previewToken:'token',previewExpiresAt:Date.now()+600000,canSend:true}
 let sends=0;let postOutcome='accepted';let canSend=true;let refreshes=0
 let previewError=false;let resultScrolls=0;let quoteApproved=true
@@ -17,7 +19,7 @@ const originalFetch=globalThis.fetch
 const calls: any[]=[]
 globalThis.fetch=(async(url:any,options:any={})=>{
  const path=String(url);calls.push({path,...options})
- if(path.endsWith('/templates'))return Response.json({success:true,data:{friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',releaseMode:canSend?'live':'off',canSend,templates:[{...template,name:'flat_travel_requested_info_ready_v1'},template, {...template,name:'flat_travel_requested_quote_v2',documentRequired:true,available:quoteApproved,status:quoteApproved?'APPROVED':'PENDING'}, {...template,name:'flat_travel_requested_quote_v1',documentRequired:true,parameters:[...template.parameters,{key:'body:2',label:'問合せ・見積り番号',isUrl:false}]}, {...template,name:'flat_travel_payment_link_v1',urlButtons:[{index:0,label:'お支払い',url:'https://example.com/pay/{{1}}',dynamic:true}]}, {...template,name:'flat_travel_rail_document_v1'}, {...template,name:'hello_world'}]}})
+ if(path.endsWith('/templates'))return Response.json({success:true,data:{friendId:'a',recipientName:'Alex',recipientPhone:'+15555550100',releaseMode:canSend?'live':'off',canSend,templates:[{...template,name:'flat_travel_requested_info_ready_v1'},template, {...template,name:'flat_travel_requested_quote_v2',documentRequired:true,available:quoteApproved,status:quoteApproved?'APPROVED':'PENDING'}, {...template,name:'flat_travel_requested_quote_v1',documentRequired:true,parameters:[...template.parameters,{key:'body:2',label:'問合せ・見積り番号',isUrl:false}]}, {...template,name:'flat_travel_payment_link_v1',urlButtons:[{index:0,label:'お支払い',url:'https://example.com/pay/{{1}}',dynamic:true}]}, {...template,name:'flat_travel_rail_document_v1'}, ...JOURNEY.map(name=>name==='flat_travel_pre_departure_v1'?{...template,name,parameters:[],available:false,status:'PENDING'}:{...template,name,parameters:[]}), {...template,name:'hello_world'}]}})
  if(path.endsWith('/documents'))return Response.json({success:true,data:{key:'private-quote',name:'Quote.pdf',size:100}})
  if(path.endsWith('/template-preview')) {
   if(previewError)return Response.json({success:false,error:'承認状態が更新されました。再確認してください'},{status:400})
@@ -46,7 +48,9 @@ async function make(){
 }
 async function prepare(renderer:ReactTestRenderer){
  await click(renderer,'会話再開・見積書・決済リンク・予約確定書')
- assert.deepEqual(renderer.root.findAllByType('option').map(node=>node.props.value), ['', 'flat_travel_requested_info_ready_v1:en_US', 'flat_travel_requested_quote_v2:en_US', 'flat_travel_payment_link_v1:en_US', 'flat_travel_booking_confirmation_v1:en_US'])
+ assert.deepEqual(renderer.root.findAllByType('option').map(node=>node.props.value), ['', 'flat_travel_requested_info_ready_v1:en_US', 'flat_travel_requested_quote_v2:en_US', 'flat_travel_payment_link_v1:en_US', 'flat_travel_booking_confirmation_v1:en_US', ...JOURNEY.map(name=>`${name}:en_US`)])
+ assert.match(textOf(renderer.toJSON()), /C1 見積りリマインド1回目 · en_US(?!（)/, 'approved reminder is selectable')
+ assert.match(textOf(renderer.toJSON()), /F1 出発直前の案内 · en_US（使用不可: PENDING \/ UTILITY）/, 'templates under review stay unavailable')
  assert.match(textOf(renderer.toJSON()), /見積書を送る（PDF）/)
  assert.match(textOf(renderer.toJSON()), /決済リンクを送る/)
  assert.match(textOf(renderer.toJSON()), /予約確定書を送る（PDF）/)

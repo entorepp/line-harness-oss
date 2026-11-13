@@ -25,6 +25,25 @@ const NOTICE_PURPOSES = [
   { name: 'flat_travel_requested_quote_v2', label: '見積書を送る（PDF）' },
   { name: 'flat_travel_payment_link_v1', label: '決済リンクを送る' },
   { name: 'flat_travel_booking_confirmation_v1', label: '予約確定書を送る（PDF）' },
+  // Customer journey notices (A1-G3). The Worker keeps any that are not APPROVED/UTILITY unavailable.
+  { name: 'flat_travel_enquiry_received_v1', label: 'A1 初回お礼' },
+  { name: 'flat_travel_call_offer_v2', label: 'A2 通話の案内' },
+  { name: 'flat_travel_updated_quote_v1', label: 'B2 見積り修正版の送付（PDF）' },
+  { name: 'flat_travel_price_feedback_v2', label: 'B3 「高い」と言われたとき' },
+  { name: 'flat_travel_priority_question_v2', label: 'B4 一番重視することを聞く' },
+  { name: 'flat_travel_itinerary_draft_v1', label: 'B5 旅程・チャーター行程の提案（PDF）' },
+  { name: 'flat_travel_cultural_experience_v2', label: 'B6 文化体験の提案（PDF）' },
+  { name: 'flat_travel_quote_reminder_1_v1', label: 'C1 見積りリマインド1回目' },
+  { name: 'flat_travel_quote_reminder_2_v2', label: 'C2 見積りリマインド2回目（通話の提案）' },
+  { name: 'flat_travel_quote_reminder_3_v2', label: 'C3 見積りリマインド3回目（ホテルのみの提案）' },
+  { name: 'flat_travel_reply_reminder_v2', label: 'C4 返信待ちの確認' },
+  { name: 'flat_travel_payment_received_v1', label: 'D1 入金確認' },
+  { name: 'flat_travel_payment_due_reminder_v1', label: 'D2 支払い期限のリマインド' },
+  { name: 'flat_travel_arrangements_confirmed_v1', label: 'E1 手配確定書の送付（PDF）' },
+  { name: 'flat_travel_pre_departure_v1', label: 'F1 出発直前の案内' },
+  { name: 'flat_travel_arrival_check_v1', label: 'G1 到着確認' },
+  { name: 'flat_travel_shinkansen_tips_v1', label: 'G2 新幹線に乗る前' },
+  { name: 'flat_travel_post_trip_feedback_v1', label: 'G3 帰国後のお礼・感想' },
 ] as const
 const fieldClass = 'min-w-0 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900'
 const buttonClass = 'rounded-full border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-800 disabled:opacity-40'
