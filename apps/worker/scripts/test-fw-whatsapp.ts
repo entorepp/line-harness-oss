@@ -153,5 +153,32 @@ try {
  assert.equal(state.replied,true);
  assert.equal((await call('/contacts/friend/send',{...blocked,followup:{...blocked.followup,stage:4}})).status,502);
  assert.equal(sends,before,'only C1-C3 may use the scheduled path');
+ // Contact-aware policy retains an acknowledged reply, but fences activity
+ // arriving after review and recognises a manual composer reminder.
+ sql.exec("DELETE FROM fw_whatsapp_sends; DELETE FROM whatsapp_template_sends; DELETE FROM messages_log;");
+ const receipt='contact-aware-original';original(receipt);
+ sql.prepare("INSERT INTO messages_log(id,friend_id,direction,message_type,content,created_at) VALUES('old-reply','friend','incoming','text','hello',?)")
+   .run(dayAgo(5)+'T09:00:00+09:00');
+ const readState=async()=>await(await call('/contacts/friend/followup-state?fingerprint='+contact.fingerprint+'&quoteMessageId='+receipt)).json() as any;
+ let contactState=await readState();assert.equal(contactState.contactPolicyVersion,2);assert.equal(contactState.replied,true);
+ let policyBody=await scheduled(1,receipt,{contactPolicyVersion:2,activityVersion:contactState.activityVersion});
+ before=sends;
+ result=await(await call('/contacts/friend/send',policyBody)).json() as any;
+ assert.equal(result.status,'accepted',JSON.stringify(result));assert.equal(sends,before+1,'a reviewed reply alone does not end followups');
+ await call('/contacts/friend/send',policyBody);assert.equal(sends,before+1,'contact-aware receipt recovery never resends');
+ // Age the automatic message to exercise the next stage without a recent contact.
+ sql.prepare("UPDATE messages_log SET created_at=? WHERE direction='outgoing'").run(dayAgo(4)+'T09:00:00+09:00');
+ contactState=await readState();policyBody=await scheduled(2,receipt,{contactPolicyVersion:2,activityVersion:contactState.activityVersion});
+ inbound();before=sends;
+ assert.equal((await call('/contacts/friend/send',policyBody)).status,502);assert.equal(sends,before,'new incoming activity invalidates review');
+ // Send C2 manually through the same template ledger as the Harness composer.
+ const manual=await sendPrepared({templateName:'flat_travel_quote_reminder_2_v2'},'9');
+ assert.equal(manual.result.status,'accepted');
+ contactState=await readState();
+ assert.deepEqual(contactState.manualStages.map((s:any)=>s.stage),[2],'automatic C1 is excluded from manual stages');
+ policyBody=await scheduled(2,receipt,{contactPolicyVersion:2,activityVersion:contactState.activityVersion});before=sends;
+ assert.equal((await call('/contacts/friend/send',policyBody)).status,502);assert.equal(sends,before,'manual C2 is never sent again');
+ policyBody=await scheduled(3,receipt,{contactPolicyVersion:2,activityVersion:contactState.activityVersion});
+ assert.equal((await call('/contacts/friend/send',policyBody)).status,502);assert.equal(sends,before,'recent outgoing contact requires three days spacing');
  console.log('FW WhatsApp: auth, recipient, stale review, window, template consent/approval, receipts, idempotency and unknown-outcome tests and journey template tests passed');
 } finally {globalThis.fetch=realFetch;sql.close();}
