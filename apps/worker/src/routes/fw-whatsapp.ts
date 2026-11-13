@@ -61,6 +61,40 @@ async function templateCall(env: Env['Bindings'], id: string, path: string, body
   if (!response.ok || !result.success) throw new BridgeError(result.error || 'template_unavailable',result.outcome==='not_started');
   return result.data;
 }
+const FOLLOWUP_TEMPLATES = ['flat_travel_quote_reminder_1_v1', 'flat_travel_quote_reminder_2_v2', 'flat_travel_quote_reminder_3_v2'];
+const jstDay = (value: string) => {
+  const stamp = Date.parse(value);
+  if (!Number.isFinite(stamp)) throw new Error('invalid_followup_time');
+  return new Date(stamp + 9 * 3600_000).toISOString().slice(0, 10);
+};
+async function followupOrigin(env: Env['Bindings'], friendId: string, messageId: string, ownKey = '') {
+  if (!idValid(messageId)) throw new Error('invalid_quote_receipt');
+  const original = await env.DB.prepare("SELECT * FROM fw_whatsapp_sends WHERE friend_id=? AND message_log_id=? AND status='accepted'")
+    .bind(friendId, messageId).first<any>();
+  if (!original) throw new Error('quote_not_accepted');
+  const incoming = await env.DB.prepare("SELECT id FROM messages_log WHERE friend_id=? AND direction='incoming' AND julianday(created_at)>=julianday(?) LIMIT 1")
+    .bind(friendId, original.created_at).first<any>();
+  const keys = await Promise.all([1,2,3].map(stage => hash(JSON.stringify(['fw-followup', messageId, stage]))));
+  const attempts = await env.DB.prepare("SELECT s.status, d.status AS delivery_status FROM fw_whatsapp_sends s LEFT JOIN whatsapp_delivery_receipts d ON d.message_log_id=s.message_log_id WHERE s.id IN (?,?,?,?) AND s.id != ?")
+    .bind(original.id, ...keys, ownKey).all<any>();
+  return { original, replied: Boolean(incoming), failed: attempts.results.some(r => r.status === 'failed' || r.delivery_status === 'failed'),
+    uncertain: attempts.results.some(r => r.status === 'pending' || r.status === 'unknown') };
+}
+async function validateFollowup(env: Env['Bindings'], friendId: string, body: any) {
+  const f = body.followup;
+  if (!f || !Number.isInteger(f.stage) || f.stage < 1 || f.stage > 3 || typeof f.approvedBy !== 'string' || !f.approvedBy.trim()
+    || body.template?.templateName !== FOLLOWUP_TEMPLATES[f.stage - 1] || !/^[a-f0-9]{64}$/.test(f.textHash || '')) throw new Error('invalid_followup');
+  const today = jstNow().slice(0, 10);
+  const yesterday = new Date(Date.parse(today + 'T00:00:00Z') - 86400_000).toISOString().slice(0, 10);
+  if (f.sendOn !== today || jstDay(f.approvedAt) !== yesterday) throw new Error('stale_followup_approval');
+  const key = await hash(JSON.stringify(['fw-followup', f.quoteMessageId, f.stage]));
+  const origin = await followupOrigin(env, friendId, f.quoteMessageId, key);
+  const quoteDay = jstDay(origin.original.created_at);
+  const elapsed = (Date.parse(today) - Date.parse(quoteDay)) / 86400_000;
+  if (origin.replied || origin.failed || origin.uncertain || elapsed < [3, 7, 14][f.stage - 1]) throw new Error('followup_stopped');
+  if (body.idempotencyKey !== key) throw new Error('invalid_followup_key');
+  return key;
+}
 fwWhatsapp.use(`${BASE}/*`, bodyLimit({ maxSize: 14 * 1024 * 1024, onError: c => c.json({error:'payload_too_large'},413) }));
 fwWhatsapp.get(`${BASE}/contacts`, async c => {
   const query = (c.req.query('q') || '').trim();
@@ -90,6 +124,15 @@ fwWhatsapp.get(`${BASE}/contacts/:id/history`, async c => {
       WHERE m.friend_id=? ORDER BY m.created_at DESC,m.id DESC LIMIT 101`).bind(ctx.friend.id).all();
     return c.json({contact:ctx.view, events:rows.results.slice(0,100), hasMore:rows.results.length>100});
   } catch { return c.json({error:'contact_unavailable'},409); }
+});
+// Read-only, bounded reply/receipt check for the existing daily FW follow-up job.
+fwWhatsapp.get(`${BASE}/contacts/:id/followup-state`, async c => {
+  try {
+    const ctx = await contact(c.env, c.req.param('id'));
+    if (c.req.query('fingerprint') !== ctx.view.fingerprint) return c.json({error:'contact_changed'},409);
+    const origin = await followupOrigin(c.env, ctx.friend.id, c.req.query('quoteMessageId') || '');
+    return c.json({replied:origin.replied, failed:origin.failed, uncertain:origin.uncertain});
+  } catch { return c.json({error:'quote_receipt_unavailable'},409); }
 });
 // The FW picker: only allowlisted templates, with what each one needs. Unapproved ones are listed but unavailable.
 fwWhatsapp.get(`${BASE}/contacts/:id/templates`, async c => {
@@ -147,6 +190,7 @@ fwWhatsapp.post(`${BASE}/contacts/:id/send`, async c => {
     const ctx = await contact(c.env,c.req.param('id')); const body = await c.req.json<any>();
     key = body.idempotencyKey;
     if (!/^[a-f0-9]{64}$/.test(key || '') || body.confirmed !== true || body.fingerprint !== ctx.view.fingerprint) return c.json({error:'review_required',outcome:'not_started'},409);
+    if (body.followup) await validateFollowup(c.env, ctx.friend.id, body);
     const template = body.template;
     if (template) {
       if (body.optInConfirmed !== true || !fwTemplate(template.templateName) || template.templateLanguage !== 'en_US') return c.json({error:'template_confirmation_required',outcome:'not_started'},409);
@@ -155,6 +199,10 @@ fwWhatsapp.post(`${BASE}/contacts/:id/send`, async c => {
       const url=new URL(body.url);
       if (url.origin!=='https://go.flat-travel.com' || !url.pathname.startsWith('/')) return c.json({error:'invalid_quote_url',outcome:'not_started'},400);
       if (!ctx.view.window.canSend) return c.json({error:'whatsapp_window_closed',outcome:'not_started'},409);
+    }
+    if (body.followup) {
+      const preview = await templateCall(c.env,ctx.friend.id,'template-preview',template);
+      if (await hash(preview.text) !== body.followup.textHash) return c.json({error:'followup_text_changed',outcome:'not_started'},409);
     }
     const digest = await hash(JSON.stringify(body));
     const existing = await c.env.DB.prepare('SELECT * FROM fw_whatsapp_sends WHERE id=?').bind(key).first<any>();
@@ -168,6 +216,7 @@ fwWhatsapp.post(`${BASE}/contacts/:id/send`, async c => {
     if (result.meta.changes!==1) return c.json({error:'send_in_progress',outcome:'unknown'},409);
     claimed=true;
     if (template) {
+      if (body.followup) await validateFollowup(c.env, ctx.friend.id, body);
       started=true;
       const receipt=await templateCall(c.env,ctx.friend.id,'template-messages',{...template,idempotencyKey:key,optInConfirmed:true,contentConfirmed:true});
       await c.env.DB.prepare('UPDATE fw_whatsapp_sends SET status=?,message_log_id=?,updated_at=? WHERE id=?').bind(receipt.status,receipt.messageId||logId,jstNow(),key).run();

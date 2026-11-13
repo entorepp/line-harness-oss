@@ -118,5 +118,40 @@ try {
  (journey[0].components as any[]).push({type:'BUTTONS',buttons:[{type:'URL',text:'Open',url:'https://example.com/'}]});
  assert.equal((await prepare({templateName:'flat_travel_payment_received_v1'})).status,409,'an unexpected URL button is refused');
  (journey[0].components as any[]).pop();assert.equal(sends,before);
+ // Scheduled C1-C3 reuse only evidenced original quote receipts and the previous day's approval.
+ const sha=async(value:string)=>Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))).toString('hex');
+ const today=new Date(Date.now()+9*3600_000).toISOString().slice(0,10);
+ const dayAgo=(n:number)=>new Date(Date.parse(today+'T00:00:00Z')-n*86400_000).toISOString().slice(0,10);
+ journey[3].category='UTILITY';
+ journey.push(...['flat_travel_quote_reminder_2_v2','flat_travel_quote_reminder_3_v2'].map(name=>({name,language:'en_US',status:'APPROVED',category:'UTILITY',components:[{type:'BODY',text:'Following up on your requested quotation.'}]})));
+ const scheduled=async(stage:number,receipt:string,extra:any={})=>{
+  const templateName=['flat_travel_quote_reminder_1_v1','flat_travel_quote_reminder_2_v2','flat_travel_quote_reminder_3_v2'][stage-1];
+  const prepared=await(await prepare({templateName})).json() as any;
+  return {idempotencyKey:await sha(JSON.stringify(['fw-followup',receipt,stage])),fingerprint:contact.fingerprint,confirmed:true,optInConfirmed:true,template:prepared.template,
+    followup:{stage,quoteMessageId:receipt,approvedBy:'U1',approvedAt:dayAgo(1)+'T15:00:00+09:00',sendOn:today,textHash:await sha(prepared.text),...extra}};
+ };
+ const original=(receipt:string)=>sql.prepare("INSERT INTO fw_whatsapp_sends(id,friend_id,request_hash,status,message_log_id,created_at,updated_at) VALUES(?,?,'quote','accepted',?,?,?)")
+  .run(receipt,'friend',receipt,dayAgo(14)+'T09:00:00+09:00',dayAgo(14)+'T09:00:00+09:00');
+ // Existing incoming messages predate this synthetic quotation.
+ sql.prepare("UPDATE messages_log SET created_at=? WHERE direction='incoming'").run(dayAgo(20)+'T00:00:00+09:00');
+ unknown=false;
+ for(const stage of [1,2,3]) {
+  const receipt='original-'+stage;original(receipt);
+  const body=await scheduled(stage,receipt);before=sends;
+  assert.equal((await call('/contacts/friend/send',{...body,followup:{...body.followup,approvedAt:dayAgo(2)+'T15:00:00+09:00'}})).status,502);
+  assert.equal(sends,before,'stale approval never sends');
+  assert.equal((await call('/contacts/friend/send',{...body,followup:{...body.followup,textHash:'0'.repeat(64)}})).status,409);
+  assert.equal(sends,before,'reviewed text must match');
+  const sent=await(await call('/contacts/friend/send',body)).json() as any;
+  assert.equal(sent.status,'accepted',JSON.stringify(sent));assert.equal(sends,before+1);
+  await call('/contacts/friend/send',body);assert.equal(sends,before+1,'same quote/stage never sends twice');
+ }
+ const repliedReceipt='original-replied';original(repliedReceipt);const blocked=await scheduled(1,repliedReceipt);before=sends;
+ inbound();
+ assert.equal((await call('/contacts/friend/send',blocked)).status,502);assert.equal(sends,before,'incoming reply stops an approved follow-up');
+ const state=await(await call('/contacts/friend/followup-state?fingerprint='+contact.fingerprint+'&quoteMessageId='+repliedReceipt)).json() as any;
+ assert.equal(state.replied,true);
+ assert.equal((await call('/contacts/friend/send',{...blocked,followup:{...blocked.followup,stage:4}})).status,502);
+ assert.equal(sends,before,'only C1-C3 may use the scheduled path');
  console.log('FW WhatsApp: auth, recipient, stale review, window, template consent/approval, receipts, idempotency and unknown-outcome tests and journey template tests passed');
 } finally {globalThis.fetch=realFetch;sql.close();}
