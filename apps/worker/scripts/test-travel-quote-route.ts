@@ -4,6 +4,7 @@ import { normalizeLeadAttribution } from '../src/services/lead-attribution.js';
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import { notifyNewFormLead } from '../src/services/new-lead-slack.js';
+import { notifyPackageStaffEmail } from '../src/services/package-staff-email.js';
 import { travelQuoteIntents } from '../src/routes/travel-quote-intents.js';
 import { FLATWORKER_TRAVEL_QUOTE_TIMEOUT_MS, syncTravelQuoteToFlatworker } from '../src/services/flatworker-travel-quote.js';
 import { parseTravelQuoteIntent, travelQuoteNotificationCopy, travelQuoteReceiptMetadata as travelQuoteReceiptMetadataForTest } from '../src/services/travel-quote-intent.js';
@@ -14,6 +15,7 @@ const rows: Array<Record<string, any>> = [];
 const slackPosts: Array<Record<string, any>> = [];
 const flatworkerPosts: Array<Record<string, any>> = [];
 const packageEmailPosts: Array<Record<string, any>> = [];
+let failPackageEmail = false;
 
 function statement(sql: string) {
   let bindings: any[] = [];
@@ -27,7 +29,7 @@ function statement(sql: string) {
         if (sql.includes("'package_staff_email'")) {
           const [id, metadata] = bindings;
           if (rows.some(item => item.id === id)) return {success: true, meta: {changes: 0}};
-          rows.push({id, metadata, status: 'sending', channel: 'email'});
+          rows.push({id, metadata, status: 'pending', channel: 'email'});
           return {success: true, meta: {changes: 1}};
         }
         const [id, title, body, metadata] = bindings;
@@ -74,6 +76,7 @@ const originalFetch = globalThis.fetch;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   if (String(input) === 'https://travelworker.example/api/integrations/form-response-email/send') {
     packageEmailPosts.push(JSON.parse(String(init?.body || '{}')));
+    if (failPackageEmail) return Response.json({error: 'form_response_email_gmail_unavailable'}, {status: 503});
     return Response.json({status: 'accepted', messageId: 'gmail-package-1', testRecipientUsed: false});
   }
   if (String(input) === 'https://slack.com/api/chat.postMessage') {
@@ -572,6 +575,29 @@ assert.ok(!packageEmailPosts[0].text.includes(monthlyPayload.supportNote));
 assert.equal(rows.find(row => row.id === 'package-staff:' + packageInput.quoteReference)?.status, 'sent');
 assert.equal((await request(packageInput, 'https://unapproved.example')).status, 403);
 console.log('PASS: portable AJ package secure intake, package notification, duplicate and origin checks');
+
+const emailDb = new DatabaseSync(':memory:');
+const notificationSchema = readFileSync('../../packages/db/schema.sql', 'utf8').match(/CREATE TABLE IF NOT EXISTS notifications \([\s\S]+?\n\);/)![0];
+emailDb.exec(notificationSchema);
+const emailEnv = {...env, DB: {prepare(sql: string) {
+  return {bind(...values: any[]) {return {async run() {const result = emailDb.prepare(sql).run(...values); return {meta: {changes: Number(result.changes)}};}};}};
+}}} as any;
+const emailIntent = parseTravelQuoteIntent({...packageInput, quoteReference: 'FT-20261112-11223344'});
+assert.ok(emailIntent.ok);
+const emailDraft = {status: 'existing', caseId: 'synthetic-case', profileStored: true, leadRegistered: true} as const;
+await notifyPackageStaffEmail(emailEnv, emailIntent.value, emailDraft);
+await notifyPackageStaffEmail(emailEnv, emailIntent.value, emailDraft);
+assert.equal(emailDb.prepare('SELECT status FROM notifications').get()!.status, 'sent');
+failPackageEmail = true;
+const failedIntent = {...emailIntent.value, quoteReference: 'FT-20261112-55667788'};
+await notifyPackageStaffEmail(emailEnv, failedIntent, emailDraft);
+await notifyPackageStaffEmail(emailEnv, failedIntent, emailDraft);
+const failedEmail = emailDb.prepare('SELECT status, metadata FROM notifications WHERE id = ?').get('package-staff:' + failedIntent.quoteReference)!;
+assert.equal(failedEmail.status, 'failed');
+assert.equal(JSON.parse(String(failedEmail.metadata)).failureOutcome, 'failed');
+failPackageEmail = false;
+emailDb.close();
+console.log('PASS: package email uses the real notification schema, deduplicates and preserves failed delivery evidence');
 
 const orderedRoute = ['Tokyo', 'Hakone', 'Tokyo'];
 const studioBrief = {

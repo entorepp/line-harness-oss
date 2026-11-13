@@ -13,7 +13,7 @@ export async function notifyPackageStaffEmail(env: Env['Bindings'], intent: Trav
   const requestId = `package-staff:${intent.quoteReference}`;
   const reserved = await env.DB.prepare(
     `INSERT OR IGNORE INTO notifications (id, event_type, title, body, channel, status, metadata, created_at)
-     VALUES (?, 'package_staff_email', 'Package enquiry email', 'Internal notification', 'email', 'sending', ?, datetime('now', '+9 hours'))`,
+     VALUES (?, 'package_staff_email', 'Package enquiry email', 'Internal notification', 'email', 'pending', ?, datetime('now', '+9 hours'))`,
   ).bind(requestId, JSON.stringify({reference: intent.quoteReference, recipient: RECIPIENT})).run();
   if (!(reserved.meta.changes || 0)) return;
 
@@ -42,8 +42,9 @@ export async function notifyPackageStaffEmail(env: Env['Bindings'], intent: Trav
     await env.DB.prepare('UPDATE notifications SET status = ?, metadata = json_set(metadata, \'$.providerMessageId\', ?) WHERE id = ?')
       .bind('sent', result.messageId, requestId).run();
   } catch (error) {
-    const status = error instanceof FormResponseEmailProviderError ? error.outcome : 'unknown';
-    await env.DB.prepare('UPDATE notifications SET status = ? WHERE id = ?').bind(status, requestId).run();
-    console.error('Package staff email requires review', requestId, status);
+    const outcome = error instanceof FormResponseEmailProviderError ? error.outcome : 'unknown';
+    await env.DB.prepare("UPDATE notifications SET status = 'failed', metadata = json_set(metadata, '$.failureOutcome', ?) WHERE id = ?")
+      .bind(outcome, requestId).run();
+    console.error('Package staff email requires review', requestId, outcome);
   }
 }
