@@ -72,13 +72,37 @@ async function followupOrigin(env: Env['Bindings'], friendId: string, messageId:
   const original = await env.DB.prepare("SELECT * FROM fw_whatsapp_sends WHERE friend_id=? AND message_log_id=? AND status='accepted'")
     .bind(friendId, messageId).first<any>();
   if (!original) throw new Error('quote_not_accepted');
-  const incoming = await env.DB.prepare("SELECT id FROM messages_log WHERE friend_id=? AND direction='incoming' AND julianday(created_at)>=julianday(?) LIMIT 1")
+  const incoming = await env.DB.prepare("SELECT id, created_at FROM messages_log WHERE friend_id=? AND direction='incoming' AND julianday(created_at)>=julianday(?) ORDER BY julianday(created_at) DESC,id DESC LIMIT 1")
     .bind(friendId, original.created_at).first<any>();
+  const outgoing = await env.DB.prepare(`SELECT m.id, m.created_at FROM messages_log m
+    WHERE m.friend_id=? AND m.direction='outgoing' AND julianday(m.created_at)>julianday(?)
+    ORDER BY julianday(m.created_at) DESC,m.id DESC LIMIT 1`).bind(friendId, original.created_at).first<any>();
   const keys = await Promise.all([1,2,3].map(stage => hash(JSON.stringify(['fw-followup', messageId, stage]))));
   const attempts = await env.DB.prepare("SELECT s.status, d.status AS delivery_status FROM fw_whatsapp_sends s LEFT JOIN whatsapp_delivery_receipts d ON d.message_log_id=s.message_log_id WHERE s.id IN (?,?,?,?) AND s.id != ?")
     .bind(original.id, ...keys, ownKey).all<any>();
-  return { original, replied: Boolean(incoming), failed: attempts.results.some(r => r.status === 'failed' || r.delivery_status === 'failed'),
-    uncertain: attempts.results.some(r => r.status === 'pending' || r.status === 'unknown') };
+  // The template ledger covers both the Harness composer and FlatWorker. Automatic
+  // stages have their own deterministic FW keys and must not be counted as manual.
+  const templates = await env.DB.prepare(`SELECT t.template_name, t.status, t.created_at, t.message_log_id,
+    d.status AS delivery_status FROM whatsapp_template_sends t
+    LEFT JOIN whatsapp_delivery_receipts d ON d.message_log_id=t.message_log_id
+    WHERE t.friend_id=? AND julianday(t.created_at)>julianday(?)
+      AND t.template_name IN (?,?,?)
+      AND NOT EXISTS (SELECT 1 FROM fw_whatsapp_sends f WHERE f.message_log_id=t.message_log_id AND f.id IN (?,?,?))
+    ORDER BY julianday(t.created_at) DESC,t.message_log_id DESC LIMIT 101`)
+    .bind(friendId, original.created_at, ...FOLLOWUP_TEMPLATES, ...keys).all<any>();
+  if (templates.results.length > 100) throw new Error('contact_history_incomplete');
+  const manualStages = FOLLOWUP_TEMPLATES.flatMap((name, index) => {
+    const sent = templates.results.find(t => t.template_name === name && t.status === 'accepted' && t.delivery_status !== 'failed');
+    return sent ? [{stage:index + 1, at:sent.created_at, messageId:sent.message_log_id}] : [];
+  });
+  const activityVersion = await hash(JSON.stringify([incoming?.id || '', outgoing?.id || '', manualStages]));
+  return { original, replied: Boolean(incoming), incomingAt: incoming?.created_at || '', outgoingAt: outgoing?.created_at || '',
+    manualStages, activityVersion, contactPolicyVersion: 2,
+    failed: attempts.results.some(r => r.status === 'failed' || r.delivery_status === 'failed') ||
+      templates.results.some(t => t.delivery_status === 'failed'),
+    uncertain: attempts.results.some(r => r.status === 'pending' || r.status === 'unknown') ||
+      templates.results.some(t => t.status === 'pending' || t.status === 'unknown') };
+
 }
 async function validateFollowup(env: Env['Bindings'], friendId: string, body: any) {
   const f = body.followup;
@@ -91,7 +115,13 @@ async function validateFollowup(env: Env['Bindings'], friendId: string, body: an
   const origin = await followupOrigin(env, friendId, f.quoteMessageId, key);
   const quoteDay = jstDay(origin.original.created_at);
   const elapsed = (Date.parse(today) - Date.parse(quoteDay)) / 86400_000;
-  if (origin.replied || origin.failed || origin.uncertain || elapsed < [3, 7, 14][f.stage - 1]) throw new Error('followup_stopped');
+  const contactPolicy = f.contactPolicyVersion === 2;
+  if (contactPolicy && (f.activityVersion !== origin.activityVersion ||
+      origin.manualStages.some(s => s.stage === f.stage) ||
+      (origin.outgoingAt && Date.parse(today) - Date.parse(jstDay(origin.outgoingAt)) < 3 * 86400_000))) {
+    throw new Error('followup_contact_changed');
+  }
+  if ((!contactPolicy && origin.replied) || origin.failed || origin.uncertain || elapsed < [3, 7, 14][f.stage - 1]) throw new Error('followup_stopped');
   if (body.idempotencyKey !== key) throw new Error('invalid_followup_key');
   return key;
 }
@@ -131,7 +161,8 @@ fwWhatsapp.get(`${BASE}/contacts/:id/followup-state`, async c => {
     const ctx = await contact(c.env, c.req.param('id'));
     if (c.req.query('fingerprint') !== ctx.view.fingerprint) return c.json({error:'contact_changed'},409);
     const origin = await followupOrigin(c.env, ctx.friend.id, c.req.query('quoteMessageId') || '');
-    return c.json({replied:origin.replied, failed:origin.failed, uncertain:origin.uncertain});
+    const { original, ...state } = origin;
+    return c.json(state);
   } catch { return c.json({error:'quote_receipt_unavailable'},409); }
 });
 // The FW picker: only allowlisted templates, with what each one needs. Unapproved ones are listed but unavailable.
@@ -190,7 +221,6 @@ fwWhatsapp.post(`${BASE}/contacts/:id/send`, async c => {
     const ctx = await contact(c.env,c.req.param('id')); const body = await c.req.json<any>();
     key = body.idempotencyKey;
     if (!/^[a-f0-9]{64}$/.test(key || '') || body.confirmed !== true || body.fingerprint !== ctx.view.fingerprint) return c.json({error:'review_required',outcome:'not_started'},409);
-    if (body.followup) await validateFollowup(c.env, ctx.friend.id, body);
     const template = body.template;
     if (template) {
       if (body.optInConfirmed !== true || !fwTemplate(template.templateName) || template.templateLanguage !== 'en_US') return c.json({error:'template_confirmation_required',outcome:'not_started'},409);
@@ -200,15 +230,16 @@ fwWhatsapp.post(`${BASE}/contacts/:id/send`, async c => {
       if (url.origin!=='https://go.flat-travel.com' || !url.pathname.startsWith('/')) return c.json({error:'invalid_quote_url',outcome:'not_started'},400);
       if (!ctx.view.window.canSend) return c.json({error:'whatsapp_window_closed',outcome:'not_started'},409);
     }
-    if (body.followup) {
-      const preview = await templateCall(c.env,ctx.friend.id,'template-preview',template);
-      if (await hash(preview.text) !== body.followup.textHash) return c.json({error:'followup_text_changed',outcome:'not_started'},409);
-    }
     const digest = await hash(JSON.stringify(body));
     const existing = await c.env.DB.prepare('SELECT * FROM fw_whatsapp_sends WHERE id=?').bind(key).first<any>();
     if (existing) {
       if (existing.friend_id!==ctx.friend.id || existing.request_hash!==digest) return c.json({error:'idempotency_conflict',outcome:'unknown'},409);
       return c.json({status:existing.status,messageId:existing.message_log_id,duplicate:true});
+    }
+    if (body.followup) await validateFollowup(c.env, ctx.friend.id, body);
+    if (body.followup) {
+      const preview = await templateCall(c.env,ctx.friend.id,'template-preview',template);
+      if (await hash(preview.text) !== body.followup.textHash) return c.json({error:'followup_text_changed',outcome:'not_started'},409);
     }
     const now = jstNow(); const logId = crypto.randomUUID();
     const result=await c.env.DB.prepare("INSERT OR IGNORE INTO fw_whatsapp_sends(id,friend_id,request_hash,status,message_log_id,created_at,updated_at) VALUES(?,?,?,'pending',?,?,?)")
@@ -238,6 +269,7 @@ fwWhatsapp.post(`${BASE}/contacts/:id/send`, async c => {
     if (error instanceof WhatsappReplyWindowError || (error instanceof WhatsappSendError && error.code==='WHATSAPP_PROVIDER_REJECTED') || (error instanceof BridgeError && error.notStarted)) started=false;
     // An uncertain provider outcome is never retried automatically, even after a lost receipt.
     if (claimed) await c.env.DB.prepare('UPDATE fw_whatsapp_sends SET status=?,updated_at=? WHERE id=?').bind(started?'unknown':'failed',jstNow(),key).run();
-    return c.json({error:'whatsapp_send_unavailable',outcome:started?'unknown':'not_started'},502);
+    const reason = !started && error instanceof Error && error.message === 'followup_contact_changed' ? 'followup_contact_changed' : 'whatsapp_send_unavailable';
+    return c.json({error:reason,outcome:started?'unknown':'not_started'},502);
   }
 });
