@@ -204,3 +204,19 @@ const timedOut = new MediaUploader(async () => {
 await assert.rejects(timedOut.call('/api/form-media/start', {}, () => {}), /upload timed out/)
 assert.equal(abortAttempts, 4)
 console.log('POST_TRIP_FAILURE_CONDITIONS_OK missing timeout API, expired-session recovery, saved-file reuse, delayed collection visibility, 408/429/503, permanent content rejection, timeout exhaustion')
+
+// Window.fetch rejects a MediaUploader receiver. Node's fetch does not, so
+// explicitly model this Web IDL requirement for the default production path.
+const receiverOriginalFetch = globalThis.fetch
+let defaultFetchCalls = 0
+globalThis.fetch = function () {
+  if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation')
+  defaultFetchCalls++
+  return Promise.resolve(Response.json({ success: true, data: { reachedServer: true } }))
+}
+try {
+  const productionUploader = new MediaUploader(undefined, async () => {})
+  assert.equal((await productionUploader.call('/api/form-media/start', {}, () => {})).reachedServer, true)
+  assert.equal(defaultFetchCalls, 1)
+  console.log('POST_TRIP_NATIVE_FETCH_OK default uploader preserves the native fetch receiver')
+} finally { globalThis.fetch = receiverOriginalFetch }
