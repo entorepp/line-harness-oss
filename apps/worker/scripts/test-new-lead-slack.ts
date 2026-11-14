@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { ACCESSIBLE_JAPAN_FORM_ID } from '@line-crm/shared';
 import { forms } from '../src/routes/forms.js';
 import { webhook } from '../src/routes/webhook.js';
-import { FLATCARE_ENQUIRY_FORM_ID, NEW_LEAD_CHANNEL, notifyNewFormLead, planningFormLeadDetails } from '../src/services/new-lead-slack.js';
+import { FLATCARE_ENQUIRY_FORM_ID, NEW_LEAD_CHANNEL, notifyNewFormLead, planningFormLeadDetails, websiteLeadDetails } from '../src/services/new-lead-slack.js';
 
 const sql = new DatabaseSync(':memory:');
 sql.exec(readFileSync('../../packages/db/schema.sql', 'utf8'));
@@ -30,7 +30,7 @@ const db = {
     } catch (error) { sql.exec('ROLLBACK'); throw error; }
   },
 };
-const fields = ['first_name', 'last_name', 'contact_name', 'city_schedule', 'dates_decided', 'approximate_timing', 'private_note']
+const fields = ['first_name', 'last_name', 'contact_name', 'city_schedule', 'dates_decided', 'approximate_timing', 'private_note', 'source_partner', 'source_hotel_slug', 'source_hotel_name', 'source_page_url', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
   .map(name => ({ name, label: name, type: name === 'city_schedule' ? 'city_dates' : 'text' }));
 for (const id of [ACCESSIBLE_JAPAN_FORM_ID, FLATCARE_ENQUIRY_FORM_ID, '514279b7-3426-43bc-9226-9fcd13113ee7', 'supplier-survey']) {
   sql.prepare('INSERT INTO forms(id,name,fields) VALUES(?,?,?)').run(id, id, JSON.stringify(fields));
@@ -60,13 +60,14 @@ globalThis.fetch = async (input, init) => {
 const data = { first_name: 'Test <!channel>', last_name: 'Traveller', contact_name: 'Corporate Fixture',
   city_schedule: [{ city: 'Kyoto', startDate: '2027-05-09', endDate: '2027-05-12' },
     { city: 'Tokyo', startDate: '2027-05-02', endDate: '2027-05-09' }],
+  source_partner: 'Accessible Japan', source_hotel_slug: 'top', source_page_url: 'https://www.accessible-japan.com/?email=private', utm_source: 'accessiblejapan', utm_medium: 'cta', utm_campaign: 'hotel_area', utm_content: 'top',
   dates_decided: 'Yes', private_note: 'PRIVATE_MEDICAL_DETAIL',
 };
 async function submit(id: string, issueId?: string) {
   const jobs: Promise<unknown>[] = [];
   const before = posts.length;
   const response = await forms.fetch(new Request(`https://worker.test/api/forms/${id}/submit`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, issueId }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, issueId, attribution: data }),
   }), env, { waitUntil(job: Promise<unknown>) { jobs.push(job); }, passThroughOnException() {} } as any);
   assert.equal(response.status, 201, await response.clone().text());
   await Promise.all(jobs);
@@ -76,10 +77,19 @@ try {
   const aj = await submit(ACCESSIBLE_JAPAN_FORM_ID);
   assert.equal(aj.notices.length, 1, 'AJ initial submission has one staff notice');
   assert.equal(aj.notices[0].channel, NEW_LEAD_CHANNEL);
-  for (const expected of ['Accessible Japan', '/cases/persisted-case-123', 'Test &lt;!channel&gt; Traveller', '2027-05-02']) {
+  for (const expected of ['Accessible Japan', '/cases/persisted-case-123', 'Test &lt;!channel&gt; Traveller', '2027-05-02', 'UTM source accessiblejapan', 'UTM medium cta', 'UTM campaign hotel_area', 'UTM content top', '流入ページ・ホテル トップページ']) {
     assert.ok(aj.notices[0].text.includes(expected), expected);
   }
   assert.ok(!aj.notices[0].text.includes('PRIVATE_MEDICAL_DETAIL'));
+  assert.ok(!aj.notices[0].text.includes('email=private'));
+  const hotel = planningFormLeadDetails('hotel', {...data, source_hotel_slug: 'hotel-kyoto', source_hotel_name: 'Hotel <!channel>'});
+  assert.match(hotel, /流入ページ・ホテル Hotel &lt;!channel&gt;/);
+  const website = websiteLeadDetails({source:'flat-travel-hotel-request', mode:'private', quoteReference:'fixture', channel:'email', customerName:'Fixture', attribution:{firstTouch:{utm:{source:'first'},landingPath:'/en'},lastTouch:{utm:{source:'last',medium:'cta'}}},agreementSnapshot:{itinerary:{}}} as any,{caseId:'fixture-case'} as any);
+  assert.match(website, /UTM source first/);
+  assert.ok(!website.includes('UTM medium cta'), 'One selected touch must not mix campaigns');
+  const websiteFallback = websiteLeadDetails({source:'flat-travel-hotel-request',mode:'private',quoteReference:'fixture',channel:'email',attribution:{firstTouch:{},lastTouch:{utm:{source:'last',medium:'cta'}}},agreementSnapshot:{itinerary:{}}} as any,{} as any);
+  assert.match(websiteFallback, /UTM medium cta/);
+
   const blocks = aj.notices[0].blocks;
   assert.equal(blocks[0].type, 'section');
   assert.equal(blocks[1].type, 'divider');
