@@ -77,6 +77,7 @@ const originalFetch = globalThis.fetch
 const originalLocation = globalThis.location
 const originalAddEventListener = globalThis.addEventListener
 let submitted
+let answerAttempts = 0
 let selectedUploads = 0
 globalThis.location = { search: '' }
 globalThis.addEventListener = () => {}
@@ -87,7 +88,12 @@ globalThis.fetch = async (path, options = {}) => {
   else if (path.includes('/chunks/')) data = { received: 1 }
   else if (path.endsWith('/complete')) data = { file: { key: `${path.split('/')[3]}.media`, url: 'https://fixture/media' } }
   else if (path.endsWith('/collection')) data = { key: 'test.album', url: 'https://fixture/album', count: JSON.parse(options.body).files.length }
-  else if (path.endsWith('/submit')) { submitted = JSON.parse(options.body); data = { id: 'test-only' } }
+  else if (path.endsWith('/submit')) {
+    submitted = JSON.parse(options.body)
+    answerAttempts++
+    if (answerAttempts === 1) return Response.json({ success: false, error: 'Temporary failure' }, { status: 503 })
+    data = { id: 'test-only' }
+  }
   else throw new Error(`Unexpected path ${path}`)
   return new Response(JSON.stringify({ success: true, data }))
 }
@@ -112,7 +118,13 @@ try {
   list.childNodes[1].childNodes[1].handlers.click()
   assert.equal(list.childNodes.length, 2)
   await elements.feedback.handlers.submit({ preventDefault() {} })
+  assert.equal(answerAttempts, 1, 'Answer failures must not automatically resend a potentially saved response')
+  assert.equal(elements.feedback.hidden, false)
+  assert.equal(elements.error.hidden, false)
   assert.equal(selectedUploads, 2)
+  await elements.feedback.handlers.submit({ preventDefault() {} })
+  assert.equal(answerAttempts, 2)
+  assert.equal(selectedUploads, 2, 'Manual answer retry retains completed uploads')
   assert.equal(submitted.data.memory_photos[0].count, 2)
   assert.equal(elements.feedback.hidden, true)
   assert.equal(elements.success.hidden, false)
@@ -122,3 +134,73 @@ try {
   globalThis.location = originalLocation
   globalThis.addEventListener = originalAddEventListener
 }
+
+// Browsers without AbortSignal.timeout must still reach the upload API.
+const nativeTimeout = AbortSignal.timeout
+AbortSignal.timeout = undefined
+let compatibilityCalls = 0
+try {
+  const compatible = new MediaUploader(async (path, options) => {
+    compatibilityCalls++
+    assert.ok(options.signal instanceof AbortSignal)
+    const data = path.endsWith('/start') ? { id: 'compatible', count: 1, chunkBytes: 8, token: 't' }
+      : path.includes('/chunks/') ? {}
+      : path.endsWith('/complete') ? { file: { key: 'compatible.media', url: 'https://fixture/media' } }
+      : { key: 'compatible.album', url: 'https://fixture/album' }
+    return Response.json({ success: true, data })
+  }, async () => {})
+  await compatible.uploadAll([new File(['photo'], 'compatible.jpg')], () => {})
+  assert.equal(compatibilityCalls, 4)
+} finally { AbortSignal.timeout = nativeTimeout }
+
+// Expiry after one successful file must allow a new session for only the
+// failed file on manual retry. The old implementation reused it indefinitely.
+let recoveryStarts = 0
+let expired = true
+const recoveryParts = []
+let albumAttempts = 0
+const recover = new MediaUploader(async (path, options) => {
+  let data = {}
+  if (path.endsWith('/start')) data = { id: `session-${++recoveryStarts}`, count: 1, chunkBytes: 16, token: 't' }
+  else if (path.includes('/chunks/')) {
+    recoveryParts.push(path)
+    if (path.includes('session-2') && expired) return Response.json({ success: false, error: 'Upload session expired. Please retry.' }, { status: 403 })
+  } else if (path.endsWith('/complete')) data = { file: { key: `${path.split('/')[3]}.media`, url: 'https://fixture/media' } }
+  else {
+    albumAttempts++
+    if (albumAttempts === 1) return Response.json({ success: false, error: 'A media file is not ready yet. Please retry.' }, { status: 400 })
+    data = { key: 'recovered.album', url: 'https://fixture/album', count: JSON.parse(options.body).files.length }
+  }
+  return Response.json({ success: true, data })
+}, async () => {})
+const recoveryFiles = [new File(['one'], 'saved.jpg'), new File(['two'], 'expired.jpg')]
+await assert.rejects(recover.uploadAll(recoveryFiles, () => {}), /expired.jpg: Upload session expired/)
+expired = false
+assert.equal((await recover.uploadAll(recoveryFiles, () => {}))[0].count, 2)
+assert.equal(recoveryStarts, 3)
+assert.equal(recoveryParts.filter(path => path.includes('session-1/')).length, 1)
+assert.equal(albumAttempts, 2, 'Delayed collection visibility retries without uploading files again')
+
+for (const status of [408, 429, 503]) {
+  let tries = 0
+  const transient = new MediaUploader(async () => ++tries === 1
+    ? Response.json({ success: false, error: 'Temporary failure' }, { status })
+    : Response.json({ success: true, data: { recovered: true } }), async () => {})
+  assert.equal((await transient.call('/api/form-media/start', {}, () => {})).recovered, true)
+  assert.equal(tries, 2)
+}
+let rejectedAttempts = 0
+const rejected = new MediaUploader(async () => {
+  rejectedAttempts++
+  return Response.json({ success: false, error: 'Please choose a supported photo or video file.' }, { status: 400 })
+}, async () => {})
+await assert.rejects(rejected.call('/api/form-media/id/chunks/0', {}, () => {}), /supported photo/)
+assert.equal(rejectedAttempts, 1, 'Permanent content errors are surfaced immediately')
+let abortAttempts = 0
+const timedOut = new MediaUploader(async () => {
+  abortAttempts++
+  throw new DOMException('Aborted', 'AbortError')
+}, async () => {})
+await assert.rejects(timedOut.call('/api/form-media/start', {}, () => {}), /upload timed out/)
+assert.equal(abortAttempts, 4)
+console.log('POST_TRIP_FAILURE_CONDITIONS_OK missing timeout API, expired-session recovery, saved-file reuse, delayed collection visibility, 408/429/503, permanent content rejection, timeout exhaustion')

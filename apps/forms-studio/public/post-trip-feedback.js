@@ -6,20 +6,30 @@ export class MediaUploader {
   }
   async call(path, options, notify) {
     for (let attempt = 0; ; attempt++) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 120000)
       try {
-        const response = await this.request(path, { ...options, signal: AbortSignal.timeout(120000) })
+        const response = await this.request(path, { ...options, signal: controller.signal })
         const json = await response.json().catch(() => ({}))
         if (!response.ok || !json.success) {
           const error = new Error(json.error || 'Your upload could not be saved. Please try again.')
-          error.retryable = response.status >= 500 || response.status === 429 || json.retryable
+          error.status = response.status
+          error.retryable = response.status >= 500 || response.status === 408 || response.status === 429 || json.retryable
+          if (path === '/api/form-media/collection' && ['A media file is not ready yet. Please retry.', 'Previous media page is unavailable.'].includes(json.error)) error.retryable = true
           throw error
         }
         return json.data
       } catch (error) {
-        const retryable = error.retryable || error instanceof TypeError || error.name === 'TimeoutError'
-        if (!retryable || attempt >= 3) throw new Error(error instanceof TypeError ? 'Connection interrupted. Your selected files and completed uploads are still here. Please try again.' : error.message)
+        const retryable = error.retryable || error instanceof TypeError || ['TimeoutError', 'AbortError'].includes(error.name)
+        if (!retryable || attempt >= 3) {
+          if (error instanceof TypeError) throw new Error('Connection interrupted. Your selected files and completed uploads are still here. Please try again.')
+          if (['TimeoutError', 'AbortError'].includes(error.name)) throw new Error('The upload timed out. Please check your connection and try again.')
+          throw error
+        }
         notify('Connection interrupted. Retrying this part; completed uploads will be kept…')
         await this.wait([1500, 4000, 10000][attempt])
+      } finally {
+        clearTimeout(timeout)
       }
     }
   }
@@ -48,7 +58,12 @@ export class MediaUploader {
     const completed = []
     for (let i = 0; i < files.length; i++) {
       notify(`Saving file ${i + 1} of ${files.length}…`)
-      completed.push(await this.upload(files[i], text => notify(`File ${i + 1} of ${files.length}: ${text}`)))
+      try {
+        completed.push(await this.upload(files[i], text => notify(`File ${i + 1} of ${files.length}: ${text}`)))
+      } catch (error) {
+        if (error.status === 403) this.states.delete(files[i])
+        throw new Error(`${files[i].name}: ${error.message}`)
+      }
     }
     const fingerprint = completed.map(f => f.key).join('|')
     if (this.collection?.fingerprint !== fingerprint) this.collection = { fingerprint, offset: 0, last: null }
