@@ -80,7 +80,7 @@ function newLeadBlocks(kind: LeadKind, details: string): unknown[] {
     `*顧客名*\n>${name.slice('顧客名 '.length)}`,
     `*FlatWorker*\n>${worker}`,
     ...remaining.map(line => {
-      const match = /^(流入元|旅行開始日|受付番号) (.*)$/.exec(line);
+      const match = /^(流入元|旅行開始日|受付番号|流入ページ・ホテル|参照ページ|紹介元|UTM source|UTM medium|UTM campaign|UTM content|UTM term) (.*)$/.exec(line);
       return match ? `*${match[1]}*\n>${match[2]}` : line;
     }),
   ];
@@ -157,25 +157,48 @@ export function leadDetails(input: {
     `受付番号 ${slackText(input.reference)}`].join('\n');
 }
 
+function acquisitionLines(data: Record<string, unknown>): string[] {
+  const slug = slackText(data.source_hotel_slug);
+  const page = typeof data.source_page_url === 'string' ? data.source_page_url : '';
+  let publicPage = '';
+  try {
+    const url = new URL(page);
+    if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) {
+      publicPage = url.origin + url.pathname;
+    }
+  } catch { /* Missing source pages are common for older inquiries. */ }
+  return [
+    ['流入ページ・ホテル', slug === 'top' ? 'トップページ' : slackText(data.source_hotel_name) || slug],
+    ['参照ページ', slackText(publicPage)], ['紹介元', slackText(data.source_partner)],
+    ...['source', 'medium', 'campaign', 'content', 'term'].map(key => [`UTM ${key}`, slackText(data[`utm_${key}`])]),
+  ].filter(([, value]) => value).map(([label, value]) => `${label} ${value}`);
+}
+
 export function websiteLeadDetails(intent: TravelQuoteIntent, draft: FlatworkerDraftSummary): string {
   const first = intent.attribution?.firstTouch;
   const last = intent.attribution?.lastTouch;
   const source = first?.utm?.source || first?.referrerOrigin || last?.utm?.source || last?.referrerOrigin;
   const month = intent.agreementSnapshot.tailorMade?.choices.startMonth;
-  return leadDetails({reference: intent.quoteReference, caseId: draft.caseId,
+  const details = leadDetails({reference: intent.quoteReference, caseId: draft.caseId,
     source: `${intent.source === 'partner-portal' ? '代理店ポータル' : intent.source === 'accessible-japan-package' ? 'Accessible Japan' : 'Flat Travel公式サイト'} / ${labels[websiteLeadKind(intent) || 'tailor']}${source ? ` / ${source}` : ''} / 連絡方法 ${intent.channel}`,
     name: intent.customerName,
     start: intent.startDate || intent.agreementSnapshot.itinerary.startDate
       || (typeof month === 'string' ? `${month}（日付未定）` : ''),
   });
+  const touch = first && (Object.keys(first.utm || {}).length || first.referrerOrigin) ? first : last;
+  return [details, ...acquisitionLines({
+    source_partner: touch?.referrerOrigin,
+    source_page_url: touch?.landingPath ? `https://flat-travel.com${touch.landingPath}` : '',
+    ...Object.fromEntries(Object.entries(touch?.utm || {}).map(([key, value]) => [`utm_${key}`, value])),
+  })].join('\n');
 }
 
 export function planningFormLeadDetails(reference: string, data: Record<string, unknown>, caseId?: string): string {
   const starts = normalizeCityDateEntries(data.city_schedule).map(row => row.startDate).filter(Boolean).sort();
-  return leadDetails({reference, caseId, source: 'Accessible Japan / Flat Travel Planning Form',
+  return [leadDetails({reference, caseId, source: 'Accessible Japan / Flat Travel Planning Form',
     name: [data.first_name, data.last_name].filter(value => typeof value === 'string').join(' '),
     start: data.dates_decided === 'No' ? data.approximate_timing : starts[0] || data.approximate_timing,
-  });
+  }), ...acquisitionLines(data)].join('\n');
 }
 
 // Existing public enquiry/consultation and agent-kit forms. Supplier surveys,
