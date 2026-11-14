@@ -1,7 +1,7 @@
 export const FORM_ID = '8dc19365-8dd7-49e7-92fb-fdd697572771'
 const PAGE_FILES = 64
 export class MediaUploader {
-  constructor(request = fetch, wait = ms => new Promise(resolve => setTimeout(resolve, ms))) {
+  constructor(request = (path, options) => fetch(path, options), wait = ms => new Promise(resolve => setTimeout(resolve, ms))) {
     this.request = request; this.wait = wait; this.states = new Map(); this.collection = null
   }
   async call(path, options, notify) {
