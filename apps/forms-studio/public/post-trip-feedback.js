@@ -110,10 +110,31 @@ export async function mountFeedback(doc = document) {
       section.append(fieldset)
     } else if (field.type === 'file') {
       section.append(label); if (hint) section.append(hint)
-      const picker = element('label', 'Add photos and videos', 'picker'); const input = doc.createElement('input'); input.type = 'file'; input.accept = field.accept; input.multiple = true; input.id = id
-      input.addEventListener('change', () => { files.push(...Array.from(input.files || [])); input.value = ''; drawFiles(list) })
-      picker.append(input); section.append(picker)
-      const list = element('ul', '', 'files'); section.append(list); controls.set('__filesList', list); inputs.push(input)
+      const list = element('ul', '', 'files')
+      // Unknown extensions can disable Android's photo picker. Keep its filter
+      // MIME-only and offer a generic file chooser for other media providers.
+      const pickers = [
+        { label: 'Add photos and videos', accept: 'image/*,video/*', id },
+        { label: 'Choose from files', accept: '', id: `${id}-files` },
+      ]
+      for (const option of pickers) {
+        const picker = element('label', option.label, 'picker')
+        const input = doc.createElement('input')
+        input.type = 'file'
+        input.accept = option.accept
+        input.multiple = true
+        input.id = option.id
+        input.addEventListener('change', () => {
+          files.push(...Array.from(input.files || []))
+          input.value = ''
+          drawFiles(list)
+        })
+        picker.append(input)
+        section.append(picker)
+        inputs.push(input)
+      }
+      section.append(element('p', 'If your photos do not appear, choose them from files.', 'hint'), list)
+      controls.set('__filesList', list)
     } else {
       section.append(label); if (hint) section.append(hint)
       const input = doc.createElement(field.type === 'textarea' ? 'textarea' : 'input'); if (field.type !== 'textarea') input.type = field.type
