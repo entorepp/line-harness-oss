@@ -37,6 +37,59 @@ function serializeForm(row: DbForm) {
   };
 }
 
+// Explicit public allowlist: never include webhook URLs, credentials or automation settings.
+function serializePublicForm(row: DbForm) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    fields: JSON.parse(row.fields || '[]') as unknown[],
+    isActive: Boolean(row.is_active),
+    hasSubmitWebhook: Boolean(row.on_submit_webhook_url),
+    hasEngagementGate: Boolean(engagementUrl(row)),
+    onSubmitMessageContent: row.on_submit_message_content,
+    onSubmitWebhookFailMessage: row.on_submit_webhook_fail_message,
+  };
+}
+
+function engagementUrl(row: DbForm): URL | null {
+  try {
+    const url = new URL(row.on_submit_webhook_url || '');
+    return /^https?:$/.test(url.protocol) &&
+      /^\/api\/engagement-gates\/[^/]+\/verify$/.test(url.pathname) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+// Fixed read-only operations against the administrator-configured gate only.
+// Credentials stay server-side; redirects cannot forward them to another host.
+forms.get('/api/forms/:id/engagement/:action', async (c) => {
+  const action = c.req.param('action');
+  if (action !== 'repliers' && action !== 'verify') return c.json({ success: false }, 404);
+  try {
+    const form = await getFormById(c.env.DB, c.req.param('id'));
+    const url = form && engagementUrl(form);
+    if (!form || !form.is_active || !url) return c.json({ success: false }, 404);
+    url.pathname = url.pathname.replace(/verify$/, action);
+    if (action === 'verify') {
+      const username = c.req.query('username') || '';
+      if (!/^[A-Za-z0-9_]{1,15}$/.test(username)) return c.json({ success: false }, 400);
+      url.searchParams.set('username', username);
+    }
+    const response = await fetch(url, {
+      headers: JSON.parse(form.on_submit_webhook_headers || '{}'),
+      redirect: 'error',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return c.json({ success: false, error: 'Gate unavailable' }, 502);
+    c.header('Cache-Control', 'private, no-store');
+    return c.json(await response.json());
+  } catch {
+    return c.json({ success: false, error: 'Gate unavailable' }, 502);
+  }
+});
+
 function serializeSubmission(row: DbFormSubmission & { friend_name?: string | null }) {
   return {
     id: row.id,
@@ -67,7 +120,9 @@ forms.get('/api/forms/:id', async (c) => {
     if (!form) {
       return c.json({ success: false, error: 'Form not found' }, 404);
     }
-    return c.json({ success: true, data: serializeForm(form) });
+    c.header('Cache-Control', 'private, no-store');
+    c.header('Vary', 'Authorization');
+    return c.json({ success: true, data: c.get('staff') ? serializeForm(form) : serializePublicForm(form) });
   } catch (err) {
     console.error('GET /api/forms/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

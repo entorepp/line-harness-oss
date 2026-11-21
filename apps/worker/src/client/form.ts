@@ -40,8 +40,9 @@ interface FormDef {
   fields: FormField[];
   isActive: boolean;
   hideProfile?: boolean;
-  onSubmitWebhookUrl?: string | null;
-  onSubmitWebhookHeaders?: string | null;
+  onSubmitMessageContent?: string | null;
+  hasSubmitWebhook?: boolean;
+  hasEngagementGate?: boolean;
   onSubmitWebhookFailMessage?: string | null;
 }
 
@@ -384,7 +385,7 @@ function render(): void {
   // Split fields: survey fields (page 1) vs x_username field (page 2)
   const surveyFields = formDef.fields.filter((f) => f.name !== 'x_username');
   const xUsernameField = formDef.fields.find((f) => f.name === 'x_username');
-  const hasTwoPages = !!xUsernameField && !!formDef.onSubmitWebhookUrl;
+  const hasTwoPages = !!xUsernameField && !!formDef.hasSubmitWebhook;
 
   const surveyFieldsHtml = surveyFields.map(renderField).join('');
   const xFieldHtml = xUsernameField ? renderField(xUsernameField) : '';
@@ -395,7 +396,7 @@ function render(): void {
       <div class="form-page">
         <div class="form-header">
           <h1>${escapeHtml(formDef.name).replace(/\\n|\n/g, '<br>')}</h1>
-          ${formDef.description && !formDef.onSubmitWebhookUrl ? `<p class="form-description">${escapeHtml(formDef.description).replace(/\\n|\n/g, '<br>')}</p>` : ''}
+          ${formDef.description && !formDef.hasSubmitWebhook ? `<p class="form-description">${escapeHtml(formDef.description).replace(/\\n|\n/g, '<br>')}</p>` : ''}
           ${profileHtml}
         </div>
         <!-- Page 1: Survey -->
@@ -501,7 +502,7 @@ function render(): void {
       <div class="form-page">
         <div class="form-header">
           <h1>${escapeHtml(formDef.name).replace(/\\n|\n/g, '<br>')}</h1>
-          ${formDef.description && !formDef.onSubmitWebhookUrl ? `<p class="form-description">${escapeHtml(formDef.description).replace(/\\n|\n/g, '<br>')}</p>` : ''}
+          ${formDef.description && !formDef.hasSubmitWebhook ? `<p class="form-description">${escapeHtml(formDef.description).replace(/\\n|\n/g, '<br>')}</p>` : ''}
           ${profileHtml}
         </div>
         <form id="liff-form" class="form-body" novalidate>
@@ -741,7 +742,7 @@ async function submitForm(): Promise<void> {
     console.log('Form data collected:', JSON.stringify(data));
 
     // Webhook gate — pre-verified by /repliers endpoint
-    if (state.formDef.onSubmitWebhookUrl) {
+    if (state.formDef.hasSubmitWebhook) {
       // Check that user was selected from pre-verified repliers list
       const xField = ((data.x_username as string) ?? '').trim().replace(/^@/, '');
       if (!xField || xField !== state.verifiedXUsername) {
@@ -849,33 +850,23 @@ function attachXAutocomplete(): void {
   let focusedIndex = -1;
   let replierPool: XFollowerSuggestion[] = [];
 
-  // Extract gateId from URL param (priority) or onSubmitWebhookUrl
+  // Configured gates use the Worker proxy; credentials never enter the browser.
   function getGateId(): string | null {
-    const urlParams = new URLSearchParams(window.location.search);
-    const gateParam = urlParams.get('gate');
-    if (gateParam) return gateParam;
-    const url = state.formDef?.onSubmitWebhookUrl ?? '';
-    const m = url.match(/engagement-gates\/([^/]+)\/verify/);
-    return m ? m[1] : null;
+    if (state.formDef?.hasEngagementGate) return 'configured';
+    return new URLSearchParams(window.location.search).get('gate');
   }
 
-  // Parse webhook headers once for reuse in X Harness API calls
-  function getWebhookHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {};
-    if (state.formDef?.onSubmitWebhookHeaders) {
-      try {
-        Object.assign(headers, JSON.parse(state.formDef.onSubmitWebhookHeaders));
-      } catch { /* ignore */ }
+  function engagementRequestUrl(action: string, gateId: string): string {
+    if (state.formDef?.hasEngagementGate) {
+      return `/api/forms/${encodeURIComponent(state.formDef.id)}/engagement/${action}`;
     }
-    return headers;
+    return `${state.xHarnessBaseUrl}/api/engagement-gates/${encodeURIComponent(gateId)}/${action}`;
   }
 
   // Prefetch repliers on form load
   const gateIdForPool = getGateId();
-  if (state.xHarnessBaseUrl && gateIdForPool) {
-    fetch(`${state.xHarnessBaseUrl}/api/engagement-gates/${encodeURIComponent(gateIdForPool)}/repliers`, {
-      headers: getWebhookHeaders(),
-    })
+  if ((state.formDef?.hasEngagementGate || state.xHarnessBaseUrl) && gateIdForPool) {
+    apiCall(engagementRequestUrl('repliers', gateIdForPool))
       .then(r => r.json())
       .then((json: { success: boolean; data?: XFollowerSuggestion[] }) => {
         replierPool = json.data ?? [];
@@ -1011,13 +1002,13 @@ function attachXAutocomplete(): void {
 
   async function triggerVerify(username: string): Promise<void> {
     const clean = username.trim().replace(/^@/, '');
-    if (!state.xHarnessBaseUrl || !clean) return;
+    if ((!state.formDef?.hasEngagementGate && !state.xHarnessBaseUrl) || !clean) return;
     const gateId = getGateId();
     if (!gateId) return;
 
     try {
-      const url = `${state.xHarnessBaseUrl}/api/engagement-gates/${encodeURIComponent(gateId)}/verify?username=${encodeURIComponent(clean)}`;
-      const res = await fetch(url, { headers: getWebhookHeaders() });
+      const url = `${engagementRequestUrl('verify', gateId)}?username=${encodeURIComponent(clean)}`;
+      const res = await apiCall(url);
       if (!res.ok) throw new Error('verify failed');
       const json = await res.json() as { success: boolean; data?: VerifyResult };
       const verifyData = json.data;
@@ -1232,11 +1223,6 @@ export async function initForm(formId: string | null): Promise<void> {
     const xhParam = urlParams.get('xh');
     if (xhParam) {
       state.xHarnessBaseUrl = xhParam.replace(/\/$/, '');
-    } else if (json.data.onSubmitWebhookUrl) {
-      const baseUrlMatch = json.data.onSubmitWebhookUrl.match(/^(https?:\/\/[^/]+)/);
-      if (baseUrlMatch) {
-        state.xHarnessBaseUrl = baseUrlMatch[1];
-      }
     }
 
     // Capture tracked link ref so submit can attribute reward to this campaign

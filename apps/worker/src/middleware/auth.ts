@@ -23,7 +23,10 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path.match(/^\/api\/forms\/[^/]+\/submit$/) ||
     path.match(/^\/api\/forms\/[^/]+\/opened$/) ||
     path.match(/^\/api\/forms\/[^/]+\/partial$/) ||
-    path.match(/^\/api\/forms\/[^/]+$/) || // GET form definition (public for LIFF)
+    (c.req.method === 'GET' && !c.req.header('Authorization') && (
+      /^\/api\/forms\/[^/]+$/.test(path) ||
+      /^\/api\/forms\/[^/]+\/engagement\/(repliers|verify)$/.test(path)
+    )) || // Public form reads; supplied credentials must still be validated
     path === '/api/meet-callback' || // Meet Harness completion callback
     path === '/api/qr' // Public QR proxy — used by desktop landing pages
   ) {
