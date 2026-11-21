@@ -97,6 +97,11 @@ function apiCall(path: string, options?: RequestInit): Promise<Response> {
   });
 }
 
+// External X Harness GETs must stay simple CORS requests (no JSON header).
+export function requestEngagementRead(url: string, configuredGate: boolean): Promise<Response> {
+  return configuredGate ? apiCall(url) : fetch(url);
+}
+
 function getApp(): HTMLElement {
   return document.getElementById('app')!;
 }
@@ -866,7 +871,7 @@ function attachXAutocomplete(): void {
   // Prefetch repliers on form load
   const gateIdForPool = getGateId();
   if ((state.formDef?.hasEngagementGate || state.xHarnessBaseUrl) && gateIdForPool) {
-    apiCall(engagementRequestUrl('repliers', gateIdForPool))
+    requestEngagementRead(engagementRequestUrl('repliers', gateIdForPool), Boolean(state.formDef?.hasEngagementGate))
       .then(r => r.json())
       .then((json: { success: boolean; data?: XFollowerSuggestion[] }) => {
         replierPool = json.data ?? [];
@@ -1008,7 +1013,7 @@ function attachXAutocomplete(): void {
 
     try {
       const url = `${engagementRequestUrl('verify', gateId)}?username=${encodeURIComponent(clean)}`;
-      const res = await apiCall(url);
+      const res = await requestEngagementRead(url, Boolean(state.formDef?.hasEngagementGate));
       if (!res.ok) throw new Error('verify failed');
       const json = await res.json() as { success: boolean; data?: VerifyResult };
       const verifyData = json.data;
