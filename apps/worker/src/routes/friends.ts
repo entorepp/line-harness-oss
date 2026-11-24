@@ -489,6 +489,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
     const dispatchResult = await dispatchOutboundMessage({
       env: c.env,
       friend,
+      messageLogId: logId,
       input: {
         messageType,
         content,

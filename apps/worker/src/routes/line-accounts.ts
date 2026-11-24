@@ -238,13 +238,14 @@ lineAccounts.get('/api/line-accounts', async (c) => {
         const isWhatsApp = item.channel_type === 'whatsapp';
         const isKakao = item.channel_type === 'kakao';
         const isWeChat = item.channel_type === 'wechat';
+        const isWebChat = item.channel_type === 'web';
         const isMetaMessaging = isMetaMessagingChannel(item.channel_type);
         const [profile, friendCount, scenarioCount, msgCount] = await Promise.all([
           isWhatsApp
             ? fetchWhatsAppPhoneProfile(item.channel_id, item.channel_access_token)
             : isMetaMessaging
               ? fetchMetaMessagingAccountProfile(item)
-            : isKakao || isWeChat
+            : isKakao || isWeChat || isWebChat
               ? { displayName: item.name, pictureUrl: undefined, basicId: item.channel_id }
               : fetchBotProfile(item.channel_access_token),
           db.prepare(`SELECT COUNT(*) as count FROM friends WHERE is_following = 1 AND line_account_id = ?`).bind(item.id).first<{ count: number }>(),

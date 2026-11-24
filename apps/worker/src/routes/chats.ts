@@ -461,6 +461,7 @@ chats.post('/api/chats/:id/send', async (c) => {
     const dispatchResult = await dispatchOutboundMessage({
       env: c.env,
       friend,
+      messageLogId: logId,
       input: {
         messageType,
         content,

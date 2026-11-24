@@ -11,6 +11,7 @@ import {
 } from './meta-messaging.js';
 import { dispatchWeChatKfText } from './wechat-kf.js';
 import { dispatchWeChatText } from './wechat.js';
+import { dispatchWebChatReply } from './web-chat.js';
 import { assertWhatsappReplyWindow } from './whatsapp-reply-window.js';
 import { takeOverIntake } from './whatsapp-intake-store.js';
 import { whatsappRecipientFields } from './whatsapp-recipient.js';
@@ -453,8 +454,26 @@ export async function dispatchOutboundMessage(opts: {
   intakeAutomation?: boolean;
   intakeInteractive?: object;
   signal?: AbortSignal;
+  /** The messages_log id the caller records this send under (FW keeps it as harnessMessageId). */
+  messageLogId?: string;
 }): Promise<DispatchedMessage> {
   const messageType = opts.input.messageType ?? 'text';
+
+  if (opts.friend.channel_type === 'web') {
+    if (messageType !== 'text') {
+      throw new Error('見積ページのチャットは文字だけ送れます');
+    }
+    const content = serializeOutboundContent(opts.input);
+    const providerMessageId = await dispatchWebChatReply({
+      env: opts.env,
+      friend: opts.friend,
+      text: content,
+      harnessMessageId: opts.messageLogId || crypto.randomUUID(),
+      sentAt: new Date().toISOString(),
+      signal: opts.signal,
+    });
+    return { messageType, storedContent: content, providerMessageId };
+  }
 
   if (isMetaMessagingChannel(opts.friend.channel_type)) {
     if (!['text', 'image', 'video', 'audio', 'file'].includes(messageType)) {

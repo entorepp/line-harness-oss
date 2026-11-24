@@ -107,7 +107,7 @@ interface MessageLog {
 function DirectMessagePanel({ friendId, friend, channelType, onBack, onSent, onError }: {
   friendId: string
   friend: FriendItem | null
-  channelType?: 'line' | 'whatsapp' | 'kakao'
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'web'
   onBack: () => void
   onSent: () => void
   onError: (message: string) => void
@@ -653,6 +653,8 @@ export default function ChatsPage() {
                 const friendCount = account.stats?.friendCount ?? 0
                 const channelLabel = account.channelType === 'kakao'
                   ? 'Kakao'
+                  : account.channelType === 'web'
+                    ? '見積ページ'
                   : account.channelType === 'whatsapp'
                     ? 'WhatsApp'
                     : 'LINE'

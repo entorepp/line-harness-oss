@@ -5,7 +5,7 @@ import { api, type KakaoStatus, type WhatsAppBusinessProfile, type WhatsAppPhone
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 
-type ChannelType = 'line' | 'whatsapp' | 'kakao'
+type ChannelType = 'line' | 'whatsapp' | 'kakao' | 'web'
 
 interface LineAccountListItem {
   id: string
@@ -32,12 +32,14 @@ const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787').
 function getChannelLabel(channelType?: ChannelType): string {
   if (channelType === 'whatsapp') return 'WhatsApp'
   if (channelType === 'kakao') return 'Kakao'
+  if (channelType === 'web') return '見積ページ'
   return 'LINE'
 }
 
 function getChannelColor(channelType?: ChannelType): string {
   if (channelType === 'whatsapp') return '#25D366'
   if (channelType === 'kakao') return '#FEE500'
+  if (channelType === 'web') return '#2A7058'
   return '#06C755'
 }
 
@@ -467,7 +469,9 @@ export default function AccountsPage() {
                         ? 'W'
                         : account.channelType === 'kakao'
                           ? 'K'
-                          : account.displayName?.charAt(0) || 'L'}
+                          : account.channelType === 'web'
+                            ? 'Q'
+                            : account.displayName?.charAt(0) || 'L'}
                     </div>
                   )}
                   <div>
@@ -479,6 +483,8 @@ export default function AccountsPage() {
                             ? 'bg-emerald-100 text-emerald-700'
                             : account.channelType === 'kakao'
                               ? 'bg-yellow-100 text-yellow-800'
+                            : account.channelType === 'web'
+                              ? 'bg-teal-100 text-teal-800'
                             : 'bg-green-100 text-green-700'
                         }`}
                       >
@@ -491,7 +497,9 @@ export default function AccountsPage() {
                         ? 'Phone Number ID'
                         : account.channelType === 'kakao'
                           ? 'Profile ID'
-                          : 'Channel ID'}: {account.channelId}
+                          : account.channelType === 'web'
+                            ? 'FlatWorker ID'
+                            : 'Channel ID'}: {account.channelId}
                     </p>
                   </div>
                 </div>

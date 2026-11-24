@@ -90,6 +90,7 @@ export async function processScheduledMessageById(
     const dispatchResult = await dispatchOutboundMessage({
       env,
       friend,
+      messageLogId: logId,
       input: {
         messageType: item.message_type,
         content: item.content,

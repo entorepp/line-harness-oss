@@ -292,7 +292,7 @@ export const api = {
       name: string
       channelAccessToken: string
       channelSecret?: string
-      channelType?: 'line' | 'whatsapp' | 'kakao'
+      channelType?: 'line' | 'whatsapp' | 'kakao' | 'web'
       locale?: string
       defaultSlackChannel?: string | null
     }) =>
