@@ -13,7 +13,7 @@ export interface AccountWithStats {
   displayName?: string
   pictureUrl?: string
   basicId?: string
-  channelType?: 'line' | 'whatsapp' | 'kakao'
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'web'
   locale?: string
   defaultSlackChannel?: string | null
   isActive: boolean

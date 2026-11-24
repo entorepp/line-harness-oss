@@ -28,7 +28,9 @@ export default function FriendTable({ friends, allTags, onRefresh }: FriendTable
       ? 'WhatsApp番号'
       : selectedAccount?.channelType === 'kakao'
         ? 'Kakao ID'
-        : 'LINE ユーザーID'
+        : selectedAccount?.channelType === 'web'
+          ? '見積ページの会話ID'
+          : 'LINE ユーザーID'
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id)

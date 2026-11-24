@@ -9,7 +9,8 @@ export type LineAccountChannelType =
   | 'kakao'
   | 'wechat'
   | 'facebook'
-  | 'instagram';
+  | 'instagram'
+  | 'web';
 
 export interface LineAccount {
   id: string;

@@ -311,7 +311,7 @@ export default function ChatComposer({
 }: {
   friendId: string
   chatId?: string | null
-  channelType?: 'line' | 'whatsapp' | 'kakao'
+  channelType?: 'line' | 'whatsapp' | 'kakao' | 'web'
   onSent?: () => void | Promise<void>
   onError?: (message: string) => void
 }) {
@@ -337,8 +337,9 @@ export default function ChatComposer({
   const [undoRemaining, setUndoRemaining] = useState(0)
   const isWhatsApp = channelType === 'whatsapp'
   const isKakao = channelType === 'kakao'
-  const textOnlyChannel = isWhatsApp || isKakao
-  const textOnlyChannelLabel = isKakao ? 'Kakao' : 'WhatsApp'
+  const isWebChat = channelType === 'web'
+  const textOnlyChannel = isWhatsApp || isKakao || isWebChat
+  const textOnlyChannelLabel = isKakao ? 'Kakao' : isWebChat ? '見積ページのチャット' : 'WhatsApp'
   const allEmojiPresets = [...DEFAULT_EMOJI_PRESETS, ...customEmojiPresets]
 
   useEffect(() => {

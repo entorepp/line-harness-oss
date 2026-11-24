@@ -68,13 +68,14 @@ function AccountAvatar({ account, size = 32 }: { account: AccountWithStats; size
   }
   const isWhatsApp = account.channelType === 'whatsapp'
   const isKakao = account.channelType === 'kakao'
+  const isWebChat = account.channelType === 'web'
   return (
     <div
       className="rounded-full flex items-center justify-center text-white font-bold shrink-0"
       style={{
         width: size,
         height: size,
-        backgroundColor: isWhatsApp ? '#25D366' : isKakao ? '#FEE500' : '#06C755',
+        backgroundColor: isWhatsApp ? '#25D366' : isKakao ? '#FEE500' : isWebChat ? '#2A7058' : '#06C755',
         color: isKakao ? '#111827' : '#ffffff',
         fontSize: size * 0.4,
       }}
